@@ -9,8 +9,7 @@ env:
   - CGO_ENABLED=0
 
 before:
-  hooks:
-    - go mod tidy
+  hooks: []
 
 builds:
   - id: gentooinstall
