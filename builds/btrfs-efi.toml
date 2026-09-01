@@ -1,0 +1,37 @@
+# Btrfs RAID0 systemd build profile over two devices.
+[disk]
+    scheme = "btrfs_centric"
+    boot_type = "efi"
+    devices = ["/dev/sdX", "/dev/sdY"]
+    use_swap = true
+    swap_size = "8GiB"
+    use_luks = false
+    btrfs_raid_type = "raid0"
+
+[system]
+    hostname = "gentoo"
+    timezone = "UTC"
+    keymap = "us"
+    locales = ["C.UTF-8 UTF-8"]
+    locale = "C.UTF-8"
+    systemd_networkd = true
+    systemd_networkd_interface_name = "en*"
+    systemd_networkd_dhcp = true
+
+[gentoo]
+    mirror = "https://mirror.leaseweb.com/gentoo"
+    arch = "amd64"
+    stage3_variant = "systemd"
+    profile = "default/linux/amd64/23.0/systemd"
+    portage_sync_type = "git"
+    portage_git_mirror = "https://anongit.gentoo.org/git/repo/sync/gentoo.git"
+    use_portage_testing = false
+
+[packages]
+    enabling_repos = []
+    enable_sshd = true
+    enable_binpkg = true
+    kernel_type = "bin"
+
+[makeconf]
+    options = ["jobs"]

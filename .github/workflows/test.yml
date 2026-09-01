@@ -1,0 +1,29 @@
+name: Test
+
+# Runs the hermetic unit test suite (config, disklayout, sysinfo, TUI, ...)
+# in a plain, unprivileged environment. The destructive block-device install
+# path is not exercised here.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "internal/**"
+      - "cmd/**"
+      - "tests/**"
+      - "builds/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run tests
+        run: make test

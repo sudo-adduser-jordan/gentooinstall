@@ -1,0 +1,40 @@
+# Desktop systemd build profile.
+[disk]
+    scheme = "classic_single_disk"
+    boot_type = "efi"
+    device = "/dev/sdX"
+    use_swap = true
+    swap_size = "8GiB"
+    use_luks = false
+    root_fs = "ext4"
+
+[system]
+    hostname = "gentoo"
+    timezone = "US/Pacific"
+    keymap = "us"
+    locales = ["C.UTF-8 UTF-8"]
+    locale = "C.UTF-8"
+    systemd_networkd = true
+    systemd_networkd_interface_name = "en*"
+    systemd_networkd_dhcp = true
+
+[gentoo]
+    mirror = "https://mirror.leaseweb.com/gentoo"
+    arch = "amd64"
+    stage3_variant = "desktop-systemd"
+    profile = "default/linux/amd64/23.0/desktop/kde/systemd"
+    portage_sync_type = "git"
+    use_portage_testing = false
+
+[packages]
+    enabling_repos = ["guru", "kde", "librewolf"]
+    enable_sshd = true
+    enable_binpkg = true
+    kernel_type = "bin"
+
+[makeconf]
+    options = ["jobs"]
+    extra = """
+# Custom make.conf content
+ACCEPT_LICENSE="*"
+"""

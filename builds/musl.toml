@@ -1,0 +1,34 @@
+# Minimal musl (OpenRC) build profile.
+[disk]
+    scheme = "classic_single_disk"
+    boot_type = "efi"
+    device = "/dev/sdX"
+    use_swap = true
+    swap_size = "4GiB"
+    use_luks = false
+    root_fs = "ext4"
+
+[system]
+    hostname = "muslbox"
+    timezone = "UTC"
+    keymap = "us"
+    locales = ["C.UTF-8 UTF-8"]
+    locale = "C.UTF-8"
+    systemd_networkd = false
+
+[gentoo]
+    mirror = "https://mirror.leaseweb.com/gentoo"
+    arch = "amd64"
+    stage3_variant = "musl"
+    profile = "default/linux/amd64/23.0/musl"
+    portage_sync_type = "git"
+    use_portage_testing = false
+
+[packages]
+    enabling_repos = []
+    enable_sshd = true
+    enable_binpkg = false
+    kernel_type = "source"
+
+[makeconf]
+    options = ["jobs"]

@@ -1,0 +1,20 @@
+app-admin/sudo 1.9.15: Execute commands with elevated privileges
+app-editors/nano 8.0: GNU nano text editor
+app-editors/vim 9.1: Vim text editor
+app-misc/screen 4.9.1: Screen manager with VT100/ANSI terminal emulation
+app-misc/tmux 3.4: Terminal multiplexer
+app-portage/eix 0.36.8: Small utility for searching ebuilds
+app-portage/gentoolkit 0.6.5: Collection of administration scripts for Gentoo
+dev-vcs/git 2.45: Stupid content tracker - distributed revision control
+net-misc/curl 8.9: Client that groks URLs
+net-misc/networkmanager 1.48: NetworkManager daemon
+net-misc/openssh 9.8: OpenSSH free version of the SSH connectivity tools
+net-misc/wget 1.24: Network utility to retrieve files from the WWW
+net-wireless/iw 6.9: nl80211-based CLI configuration utility for wireless devices
+sys-apps/htop 3.3: Interactive process viewer
+sys-apps/iotop 1.26: top-like utility for I/O
+sys-apps/pciutils 3.13: PCI enumeration and configuration utilities
+sys-apps/usbutils 017: USB enumeration utilities
+sys-block/parted 3.6: Create, destroy, resize, check and copy partitions
+sys-process/btop 1.3: Resource monitor that shows usage and stats
+www-client/firefox 128: Firefox Web Browser

@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Build configuration for goreleaser >= v2. Run `goreleaser release`
+# on a v* tag to publish, see .github/workflows/release.yml.
+version: 2
+
+project_name: gentooinstall
+
+env:
+  - CGO_ENABLED=0
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gentooinstall
+    main: ./cmd/gentooinstall
+    binary: gentooinstall
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: gentooinstall
+    formats:
+      - tar.gz
+    files:
+      - src: builds/*.toml
+        dst: builds
+
+source:
+  enabled: true
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  # Attach the live ISO (built by scripts/iso.sh into live/ before goreleaser
+  # runs) to the release so goreleaser uploads it atomically with the release
+  # creation, rather than a separate, fragile `gh release upload` step.
+  extra_files:
+    - glob: ./live/gentooinstall-live-amd64.iso
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^readme:'

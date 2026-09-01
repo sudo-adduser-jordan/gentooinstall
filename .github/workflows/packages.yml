@@ -1,0 +1,30 @@
+name: Update packages
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # daily at 03:00 UTC
+  workflow_dispatch: {} # manual run
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh package lists
+        run: ./scripts/repo.sh
+
+      - name: Commit updated lists
+        run: |
+          git config user.name "gentooinstall bot"
+          git config user.email "noreply@gentooinstall.local"
+          if git diff --quiet internal/pkglists/data/repos; then
+            echo "No changes to package lists."
+            exit 0
+          fi
+          git add internal/pkglists/data/repos
+          git commit -m "chore: update embedded package lists"
+          git push

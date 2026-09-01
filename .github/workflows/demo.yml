@@ -1,0 +1,54 @@
+name: Demo
+on:
+  workflow_dispatch: {} 
+  push:
+    branches: [main]
+    paths:
+      - "cmd/gentooinstall/**"
+      - "internal/tui/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/demo-gif.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build gentooinstall
+        run: go build -o bin/gentooinstall ./cmd/gentooinstall
+
+      - name: Install vhs
+        run: |
+          go install github.com/charmbracelet/vhs@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install ffmpeg and ttyd
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg ttyd
+
+      - name: Record demo.gif
+        env:
+          CI: ""
+        run: ./bin/gentooinstall gif
+
+      - name: Commit updated demo.gif
+        run: |
+          git config user.name "gentooinstall bot"
+          git config user.email "noreply@gentooinstall.local"
+          if git diff --quiet demo.gif; then
+            echo "No change to demo.gif."
+            exit 0
+          fi
+          git add demo.gif
+          git commit -m "chore: regenerate demo gif"
+          git pull --rebase origin main
+          git push

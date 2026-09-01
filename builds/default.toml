@@ -1,0 +1,38 @@
+# Default build configuration shipped with gentooinstall.
+# Running `gentooinstall` with no arguments opens this file; the first save writes
+# builds/custom.toml instead so the template is never overwritten.
+[disk]
+    scheme = "classic_single_disk"
+    boot_type = "efi"
+    device = "/dev/sdX"
+    use_swap = true
+    swap_size = "8GiB"
+    use_luks = true
+    root_fs = "ext4"
+    zfs_pool_type = "standard"
+    zfs_compression = "zstd"
+    btrfs_raid_type = "raid0"
+
+[system]
+    hostname = "gentoo"
+    keymap_initramfs_other = false
+    locales = ["C.UTF-8 UTF-8"]
+    locale = "C.UTF-8"
+    systemd_networkd = true
+    systemd_networkd_interface_name = "en*"
+    systemd_networkd_dhcp = true
+    systemd_networkd_addresses = ["192.168.1.100/32", "fd00::1/64"]
+    systemd_networkd_gateway = "192.168.1.1"
+    initramfs_sshd = false
+
+[gentoo]
+    mirror = "https://mirror.leaseweb.com/gentoo"
+    arch = "amd64"
+    stage3_variant = "systemd"
+    portage_sync_type = "git"
+    portage_git_mirror = "https://anongit.gentoo.org/git/repo/sync/gentoo.git"
+    use_portage_testing = true
+
+[packages]
+    enable_sshd = true
+    kernel_type = "bin"

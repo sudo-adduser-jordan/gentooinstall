@@ -1,0 +1,7 @@
+app-editors/zed 0.100: A high-performance, multiplayer code editor
+app-misc/fastfetch 2.16: Like neofetch, but much faster since written in C
+dev-lang/zig 0.13.0: System programming language
+games-util/gamemode 1.8.1: Optimize system performance on demand
+media-gfx/curtail 1.9.0: Simple image compressor GUI
+sys-apps/btop 1.3.2: Resource monitor that shows usage and stats
+www-client/falkon 23.08: KDE web browser based on QtWebEngine
