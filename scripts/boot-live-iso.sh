@@ -1,24 +1,6 @@
 #!/usr/bin/env bash
-# Boot the gentooinstall live ISO (built by scripts/iso.sh) under QEMU and
-# verify it reaches the PID-1 TUI. Unlike run-vm-test.sh (which boots the
-# *installed target disk* from a Debian testkit), this exercises the live ISO
-# itself: its initramfs, /init (PID 1), the busybox shell symlink and the
-# gentooinstall binary running as the TUI on the serial console.
-#
-# Pass criterion: the Bubble Tea UI renders its first frame on ttyS0. Because
-# iso.sh boots with console=ttyS0, the TUI's VT output is visible on the serial
-# log. We wait for the config-path box ("/builds/default.toml"), which is part
-# of every non-install TUI frame, and fail on a kernel panic or a hang.
-#
-# Usage: boot-live-iso.sh [options]
-#   --iso PATH      live ISO path (default: dist/gentooinstall-live-amd64.iso)
-#   --ovmf-dir DIR  directory containing OVMF_CODE.fd / OVMF_VARS.fd
-#   --mem MB        QEMU memory in MiB (default 2048)
-#   --timeout S     boot timeout in seconds (default 120)
-set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
 ISO="${ISO:-$ROOT/dist/gentooinstall-live-amd64.iso}"
 OVMF_DIR="${OVMF_DIR:-}"
 MEM="${MEM:-2048}"

@@ -16,6 +16,15 @@ func keyDown() tea.KeyMsg           { return tea.KeyMsg{Type: tea.KeyDown} }
 func keyUp() tea.KeyMsg             { return tea.KeyMsg{Type: tea.KeyUp} }
 func keyLeft() tea.KeyMsg           { return tea.KeyMsg{Type: tea.KeyLeft} }
 
+// rowDownN advances the cursor n rows down, returning the updated model.
+func rowDownN(m *tui.Model, n int) *tui.Model {
+	for i := 0; i < n; i++ {
+		mm, _ := m.Update(keyDown())
+		m = mm.(*tui.Model)
+	}
+	return m
+}
+
 func TestTuiTabSwitchAndEdit(t *testing.T) {
 	cfg := config.Default(true)
 	m := tui.New(cfg, "/tmp/test-gentoo.toml")
@@ -133,10 +142,7 @@ func TestTuiReadOnlyProfileRows(t *testing.T) {
 
 	// Navigate down to the 'Installed by profile' row (visible pos 11)
 	// and open the package-list modal.
-	for i := 0; i < 11; i++ {
-		mm, _ = model.Update(keyDown())
-		model = mm.(*tui.Model)
-	}
+	model = rowDownN(model, 11)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -161,10 +167,7 @@ func TestTuiSelectedProfileOpensPicker(t *testing.T) {
 
 	// Navigate down to the 'Selected profile' row (visible pos 10,
 	// after the two make.conf rows and the USE flags row were added) and open the picker.
-	for i := 0; i < 10; i++ {
-		mm, _ = model.Update(keyDown())
-		model = mm.(*tui.Model)
-	}
+	model = rowDownN(model, 10)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -199,8 +202,7 @@ func TestTuiProfileModalShowsFriendlyLabel(t *testing.T) {
 	// The picker rows should show the friendly description, not the full path.
 	view := model.View()
 	if !strings.Contains(view, "desktop/systemd") && !strings.Contains(view, "Desktop") {
-		// Filter to GNOME to keep the assertion focused.
-		return
+		t.Fatalf("profile picker should list profiles, got:\n%s", view)
 	}
 	if !strings.Contains(view, "GNOME desktop") {
 		t.Fatalf("profile picker should show friendly label, got:\n%s", view)
@@ -216,10 +218,7 @@ func TestTuiReposAndPackagesPickers(t *testing.T) {
 	model := mm.(*tui.Model)
 
 	// Navigate to 'Enable repositories/overlays' (visible pos 4) and open it.
-	for i := 0; i < 4; i++ {
-		mm, _ = model.Update(keyDown())
-		model = mm.(*tui.Model)
-	}
+	model = rowDownN(model, 4)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -270,10 +269,7 @@ func TestTuiMakeConfOptionsPicker(t *testing.T) {
 	model := mm.(*tui.Model)
 
 	// Navigate to 'make.conf options' (visible selectable pos 8).
-	for i := 0; i < 8; i++ {
-		mm, _ = model.Update(keyDown())
-		model = mm.(*tui.Model)
-	}
+	model = rowDownN(model, 8)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -302,10 +298,7 @@ func TestTuiMakeConfViewer(t *testing.T) {
 	model := mm.(*tui.Model)
 
 	// Navigate to 'edit make.conf' (visible selectable pos 9).
-	for i := 0; i < 9; i++ {
-		mm, _ = model.Update(keyDown())
-		model = mm.(*tui.Model)
-	}
+	model = rowDownN(model, 9)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 

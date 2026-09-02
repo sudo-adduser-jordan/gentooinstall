@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Build the gentooinstall live ISO: a bootable image that contains nothing but the
-# statically linked gentooinstall binary (running as PID 1), a busybox fallback
-# shell and a Linux kernel. There is no login, no desktop and no disk
-# tooling - booting it drops you straight into the gentooinstall TUI.
-#
-# Requires: grub-mkrescue (grub-pc-bin + grub-efi + xorriso), cpio,
-# busybox-static, and the repository's Go toolchain.
-set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/dist/gentooinstall-live-amd64.iso"

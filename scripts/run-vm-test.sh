@@ -1,36 +1,4 @@
 #!/usr/bin/env bash
-# Fully unprivileged end-to-end test for the gentooinstall installer, run
-# inside QEMU. No privileged container is involved, so this works identically
-# on a developer machine and on a GitHub Actions runner (ubuntu-24.04 blocks
-# unprivileged user namespaces; there is nothing to fall back to).
-#
-# Test flow (two boots):
-#   boot 1  A Debian "testkit" live image (built by scripts/build-testkit.sh)
-#           boots under OVMF/EFI firmware, fetches the inject payload over
-#           the user-mode network from the host, and runs
-#           `gentooinstall install` non-interactively
-#           (GENTOOINSTALL_ASSUME_YES=1) against a fresh /dev/vdb.
-#   boot 2  The installed target disk is booted: over OVMF reusing the same
-#           NVRAM file (so the efibootmgr entry persists) for EFI targets, or
-#           plain SeaBIOS for BIOS targets. Booting to the multi-user target
-#           is the pass criterion.
-#
-# The stage3 tarball can be seeded from the host via --stage3 (renamed so it
-# matches the mirror's current listing, exactly what the installer's
-# .verified resume logic expects); without it the guest downloads live.
-#
-# Usage: run-vm-test.sh [options] <config.toml>
-#   --testkit PATH      testkit raw image (default: dist/testkit.raw)
-#   --binary PATH       gentooinstall binary (default: bin/gentooinstall)
-#   --ovmf-dir DIR      directory containing OVMF_CODE.fd / OVMF_VARS.fd
-#   --stage3 FILE       cached stage3-*.tar.xz to seed (optional)
-#   --disk-size SIZE    size of the target disk (default 16G)
-#   --mem MB            QEMU memory in MiB (default 4096)
-#   --http-port PORT    host payload HTTP port (default 8000)
-#   --timeout-install S install phase timeout in seconds (default 3600)
-#   --timeout-boot S    boot-2 timeout in seconds (default 300)
-#   -o KEY=VALUE        TOML override applied to the test config (repeatable)
-set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -41,8 +9,6 @@ STAGE3=""
 DISK_SIZE="${DISK_SIZE:-16G}"
 MEM="${MEM:-4096}"
 HTTP_PORT="${HTTP_PORT:-8000}"
-INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-3600}"
-BOOT_TIMEOUT="${BOOT_TIMEOUT:-300}"
 CONFIG=""
 OVERRIDES=()
 
@@ -59,8 +25,6 @@ while [[ $# -gt 0 ]]; do
     --disk-size) DISK_SIZE="$2"; shift 2 ;;
     --mem) MEM="$2"; shift 2 ;;
     --http-port) HTTP_PORT="$2"; shift 2 ;;
-    --timeout-install) INSTALL_TIMEOUT="$2"; shift 2 ;;
-    --timeout-boot) BOOT_TIMEOUT="$2"; shift 2 ;;
     -o) OVERRIDES+=("$2"); shift 2 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
@@ -112,9 +76,13 @@ mkdir -p "$RUN/payload/bin"
 export WORK RUN
 
 HTTP_PID=""
+SERIAL_FIFO=""
+QEMU_PID=""
 cleanup() {
+  exec 3<&- 2>/dev/null || true   # close shell's write-end copy so read unblocks
   [[ -z "$HTTP_PID" ]] || kill "$HTTP_PID" 2>/dev/null || true
-  [[ -z "${QEMU_PID:-}" ]] || kill -9 "$QEMU_PID" 2>/dev/null || true
+  [[ -z "$QEMU_PID" ]] || kill -9 "$QEMU_PID" 2>/dev/null || true
+  [[ -z "$SERIAL_FIFO" ]] || rm -f "$SERIAL_FIFO" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -208,31 +176,34 @@ echo "serving payload on port $HTTP_PORT"
 (cd "$RUN/payload" && exec busybox httpd -f -p "$HTTP_PORT" >/dev/null 2>&1) &
 HTTP_PID=$!
 
-# --- QEMU helpers ---
-launch_qemu() { # launch_qemu LOGFILE ARGS...
-  local log=$1; shift
+# --- QEMU serial streaming ---
+#
+# Each QEMU instance writes its serial console to a named pipe. The main script
+# reads the pipe line-by-line, echoing every line to a log file and checking for
+# test markers as each line arrives.  No polling, no timeouts: if QEMU crashes
+# the read returns empty immediately; if QEMU hangs producing no output the read
+# simply blocks (the user can Ctrl-C).
+
+launch_qemu() { # launch_qemu ARGS...
   QEMU_PID=""
-  "$QEMU_BIN" "$@" -serial "file:$log" >/dev/null 2>&1 &
+  "$QEMU_BIN" "$@" >/dev/null 2>&1 &
   QEMU_PID=$!
 }
 
-wait_marker() { # wait_marker LOGFILE MARKER TIMEOUT  (sets QEMU_PID)
-  local log=$1 marker=$2 timeout=$3 elapsed=0
-  while [[ $elapsed -lt $timeout ]]; do
-    if kill -0 "$QEMU_PID" 2>/dev/null; then
-      if grep -Fq "$marker" "$log" 2>/dev/null; then return 0; fi
-    else
-      if grep -Fq "$marker" "$log" 2>/dev/null; then return 0; fi
-      echo "qemu exited before '$marker' appeared" >&2
-      return 1
-    fi
-    sleep 3
-    elapsed=$((elapsed + 3))
-    if (( elapsed % 60 == 0 )); then
-      echo "elapsed ${elapsed}s waiting for '$marker' (log $(stat -c %s "$log" 2>/dev/null || echo 0) bytes)"
+# wait_marker MARKER — read serial line-by-line until MARKER appears.
+# Every line is logged to the given file.  Returns 0 on match, 1 if QEMU exits
+# before the marker is seen.
+wait_marker() { # wait_marker LOGFILE MARKER
+  local log=$1 marker=$2 elapsed=0
+  while IFS= read -r -u 3 line; do
+    echo "$line" >> "$log"
+    if [[ "$line" == *"$marker"* ]]; then return 0; fi
+    elapsed=$((elapsed + 1))
+    if (( elapsed % 120 == 0 )); then
+      echo "elapsed ~${elapsed}s waiting for '$marker' ..."
     fi
   done
-  echo "timeout after ${timeout}s waiting for '$marker'" >&2
+  echo "qemu exited before '$marker' appeared" >&2
   return 1
 }
 
@@ -256,11 +227,19 @@ QEMU_ARGS=(-machine q35 "${QEMU_COMMON[@]}"
   -drive if=pflash,format=raw,file="$VARS"
   -drive if=virtio,format=raw,file="$TESTKIT")
 for t in "${TARGETS[@]}"; do QEMU_ARGS+=(-drive if=virtio,format=raw,file="$t"); done
-launch_qemu "$RUN/boot1.log" "${QEMU_ARGS[@]}"
-if ! wait_marker "$RUN/boot1.log" "GI_TEST_DONE" "$INSTALL_TIMEOUT"; then
+
+# Stream serial via FIFO: QEMU writes to the pipe, we read line-by-line.
+SERIAL_FIFO="$RUN/serial.pipe"
+mkfifo "$SERIAL_FIFO"
+exec 3< "$SERIAL_FIFO"
+launch_qemu "${QEMU_ARGS[@]}" -serial "$SERIAL_FIFO"
+
+if ! wait_marker "$RUN/boot1.log" "GI_TEST_DONE"; then
   echo "---- boot1.log tail ----"; tail -40 "$RUN/boot1.log" || true
   echo "FAIL boot 1"; exit 1
 fi
+exec 3<&-
+
 boot1_st="$(sed -n 's/^GI_INSTALL exit=\(.*\)/\1/p' "$RUN/boot1.log" | tail -1)"
 if [[ "$boot1_st" != "0" ]]; then
   echo "FAIL boot 1: installer exited $boot1_st"
@@ -279,11 +258,19 @@ else
   QEMU_ARGS=(-machine pc "${QEMU_COMMON[@]}")
 fi
 for t in "${TARGETS[@]}"; do QEMU_ARGS+=(-drive if=virtio,format=raw,file="$t"); done
-launch_qemu "$RUN/boot2.log" "${QEMU_ARGS[@]}"
+
+SERIAL_FIFO="$RUN/serial.pipe"
+rm -f "$SERIAL_FIFO"
+mkfifo "$SERIAL_FIFO"
+exec 3< "$SERIAL_FIFO"
+launch_qemu "${QEMU_ARGS[@]}" -serial "$SERIAL_FIFO"
+
 ok=0
 for marker in "Reached target Multi-User System" "login:"; do
-  if wait_marker "$RUN/boot2.log" "$marker" "$BOOT_TIMEOUT"; then ok=1; break; fi
+  if wait_marker "$RUN/boot2.log" "$marker"; then ok=1; break; fi
 done
+exec 3<&-
+
 if [[ $ok -ne 1 ]]; then
   echo "FAIL boot 2: did not reach multi-user"
   echo "---- boot2.log tail ----"; tail -60 "$RUN/boot2.log" || true

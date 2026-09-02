@@ -1,14 +1,5 @@
 name: Install e2e
 
-# End-to-end install test inside QEMU. Completely unprivileged at test time:
-# the only privileged step is the optional testkit image build (debootstrap +
-# grub-install), which is cached across runs. GitHub Actions runners never
-# use a container here because linux runners are VMs anyway, and containers
-# would lack capabilities the install genuinely needs.
-#
-# Push runs the default (EFI/systemd) build; workflow_dispatch can pick a
-# disk-layout variant (LUKS, BIOS/openrc, btrfs RAID0) from the shipped
-# templates in builds/.
 on:
   workflow_dispatch:
     inputs:
@@ -39,9 +30,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  live-iso-boot:
+  install:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -118,7 +108,5 @@ jobs:
         run: |
           scripts/run-vm-test.sh \
             --testkit dist/testkit.raw \
-            --timeout-install 3600 \
-            --timeout-boot 300 \
             "${EXTRA[@]}" \
             "${{ steps.variant.outputs.config }}"

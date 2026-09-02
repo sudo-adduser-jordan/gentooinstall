@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# repo.sh
-#
-# Downloads the complete per-repo package lists (metadata/pkg_desc_index)
-# into internal/pkglists/data/repos/<name>.packages. These files are embedded
-# into the gentooinstall binary at build time and used by the "Additional packages"
-# picker so it offers the full catalog without any runtime network access.
-#
-# Run this to refresh the lists:
-#   ./scripts/repo.sh
-#
-# The files are committed; a (currently disabled) GitHub Action can run this
-# automatically. If a download fails the script keeps any existing file.
-set -euo pipefail
 
 REPO_DIR="internal/pkglists/data/repos"
 REPOS=(

@@ -1,24 +1,4 @@
 #!/usr/bin/env bash
-# Build the QEMU "testkit" used by the end-to-end install test harness
-# (scripts/run-vm-test.sh).
-#
-# The testkit is a small Debian live/boot environment that:
-#   * runs as the installer's host inside QEMU (OVMF/EFI firmware always),
-#   * contains every host program the installer may need (see
-#     internal/installer/prepare.go WantedPrograms),
-#   * boots to serial console ttyS0 and, on first boot, fetches the inject
-#     payload (gentooinstall binary + config + optional stage3 seed) from the
-#     host via HTTP and runs it non-interactively (GENTOOINSTALL_ASSUME_YES).
-#
-# The image build needs root (debootstrap chroot + grub-install). Only the
-# build is privileged; running the actual test (run-vm-test.sh) is fully
-# unprivileged. GitHub Actions runners are fine with the sudo apt-get phase;
-# no privileged containers are required (those are not usable on ubuntu-24.04
-# runners anyway due to disabled unprivileged user namespaces).
-#
-# Requirements (host): root, debootstrap, losetup, sgdisk, mkfs.vfat,
-# mkfs.ext4, blkid and network access to the Debian mirror.
-set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$ROOT/dist/testkit.raw}"
