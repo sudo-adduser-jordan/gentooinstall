@@ -255,7 +255,7 @@ func InstallKernelEFI(c *Context) error {
 				dev := "/dev/" + m[strings.Index(m, "/dev/")+len("/dev/"):]
 				if !seen[dev] {
 					seen[dev] = true
-					disks = append(disks, RaidMember{disk: dev})
+					disks = append(disks, RaidMember{Disk: dev})
 				}
 			}
 		}
@@ -278,14 +278,14 @@ func InstallKernelEFI(c *Context) error {
 				return err
 			}
 		}
-		disks = []RaidMember{{disk: parent}}
+		disks = []RaidMember{{Disk: parent}}
 	}
 
 	var lastDisk, lastPart string
 	for _, d := range disks {
-		lastDisk, lastPart = d.disk, efipartnum
-		c.R.logf("Adding EFI boot entry on %s", d.disk)
-		if err := c.R.Try("efibootmgr", EfiBootmgrArgs(d.disk, efipartnum, cmdline)...); err != nil {
+		lastDisk, lastPart = d.Disk, efipartnum
+		c.R.logf("Adding EFI boot entry on %s", d.Disk)
+		if err := c.R.Try("efibootmgr", EfiBootmgrArgs(d.Disk, efipartnum, cmdline)...); err != nil {
 			return err
 		}
 	}
@@ -297,13 +297,13 @@ func InstallKernelEFI(c *Context) error {
 }
 
 // RaidMember is a physical disk of a RAID array used for an EFI boot entry.
-type RaidMember struct{ disk string }
+type RaidMember struct{ Disk string }
 
 // DiskNames renders RAID member disk paths joined by spaces (for logs).
 func DiskNames(entries []RaidMember) string {
 	var names []string
 	for _, e := range entries {
-		names = append(names, e.disk)
+		names = append(names, e.Disk)
 	}
 	return strings.Join(names, " ")
 }

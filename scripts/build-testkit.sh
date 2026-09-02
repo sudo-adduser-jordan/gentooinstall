@@ -31,7 +31,7 @@ DISK_SIZE="${TESTKIT_SIZE:-6G}"
 # internal/installer/disks.go.
 PKGS="systemd udev kmod iproute2 isc-dhcp-client linux-image-amd64 grub-efi-amd64 \
  xz-utils ca-certificates util-linux gdisk parted dosfstools e2fsprogs btrfs-progs \
- mdadm cryptsetup gnupg wget python3 ntp"
+ mdadm cryptsetup gnupg wget ntp"
 
 [[ "$(id -u)" -eq 0 ]] || { echo "build-testkit.sh must run as root (image build)" >&2; exit 1; }
 for CMD in debootstrap losetup sgdisk mkfs.vfat mkfs.ext4 blkid; do

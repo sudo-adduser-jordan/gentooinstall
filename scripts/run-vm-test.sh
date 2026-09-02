@@ -73,7 +73,7 @@ done
 [[ -f "$TESTKIT" ]] || { echo "testkit not found: $TESTKIT (sudo make build-testkit)" >&2; exit 1; }
 [[ -z "$STAGE3" || -f "$STAGE3" ]] || { echo "stage3 seed not found: $STAGE3" >&2; exit 1; }
 
-for CMD in qemu-system-x86_64 qemu-img python3 tar cp sed; do
+for CMD in qemu-system-x86_64 qemu-img busybox tar cp sed curl; do
   command -v "$CMD" >/dev/null 2>&1 || { echo "required tool not found: $CMD" >&2; exit 1; }
 done
 
@@ -150,18 +150,8 @@ if [[ -n "$STAGE3" ]]; then
   arch="$(toml_get "$CONFPAY" arch)";      arch="${arch:-amd64}"
   variant="$(toml_get "$CONFPAY" stage3_variant)"; variant="${variant:-systemd}"
   base="stage3-${arch}-${variant}"
-  expected="$(python3 - "$mirror/releases/$arch/autobuilds/current-$base/" "$base" <<'PY' || true
-import re, sys, urllib.request
-url, base = sys.argv[1], sys.argv[2]
-try:
-    body = urllib.request.urlopen(url, timeout=25).read().decode()
-except Exception:
-    raise SystemExit(1)
-pat = re.compile(r'"' + re.escape(base) + r'-[0-9A-Z]*\.tar\.xz"')
-names = sorted({m.strip('"') for m in pat.findall(body)})
-print(names[0] if names else "")
-PY
-)"
+  expected="$(curl -fsSL --max-time 25 "$mirror/releases/$arch/autobuilds/current-$base/" 2>/dev/null \
+    | grep -oE "$base-[0-9A-Z]*\.tar\.xz" | sort -u | tail -1 || true)"
   if [[ -n "$expected" ]]; then
     cp "$STAGE3" "$RUN/payload/$expected"
     echo "seeding stage3 as $expected"
@@ -215,7 +205,7 @@ chmod +x "$RUN/payload/run-install.sh"
 tar czf "$RUN/payload.tgz" -C "$RUN/payload" .
 
 echo "serving payload on port $HTTP_PORT"
-(cd "$RUN/payload" && exec python3 -m http.server "$HTTP_PORT" --bind 0.0.0.0 >/dev/null 2>&1) &
+(cd "$RUN/payload" && exec busybox httpd -f -p "$HTTP_PORT" >/dev/null 2>&1) &
 HTTP_PID=$!
 
 # --- QEMU helpers ---
