@@ -98,10 +98,6 @@ func EmitInstallFailed(f InstallFailedMsg) { sendInstall(f) }
 // overlay (injected by main).
 func (m *Model) SetInstallFunc(fn InstallFunc) { m.instFn = fn }
 
-// SetChrootFunc wires the function called when the user enters a chroot
-// after a successful installation.
-func (m *Model) SetChrootFunc(fn func() error) { m.chrootFn = fn }
-
 // InstallState reports idle/running/waiting/done/aborted (tests).
 func (m *Model) InstallState() string { return instStateNames[m.instState] }
 
@@ -213,7 +209,6 @@ func (m *Model) vpInitReset() {
 // requestStartInstall runs pre-flight collection (luks passphrase)
 // before launching. Called from the confirm overlay button.
 func (m *Model) requestStartInstall() {
-	m.runInstall = true
 	if m.usedEnc && os.Getenv(EncryptionKeyEnv) == "" {
 		m.collectLuksKey("", "")
 		return

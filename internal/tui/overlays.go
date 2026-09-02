@@ -123,8 +123,28 @@ func (m *Model) updatePickerKeys(msg tea.KeyMsg) (routed bool, cmd tea.Cmd) {
 	}
 }
 
+// handleViewportKeys applies scroll keys to the shared log viewport used
+// by the log/config/make.conf/packages overlays.
+func (m *Model) handleViewportKeys(msg tea.KeyMsg) {
+	switch msg.String() {
+	case "down", "j":
+		m.logVp.LineDown(1)
+	case "up", "k":
+		m.logVp.LineUp(1)
+	case "pgdown", "ctrl+f", " ":
+		m.logVp.HalfViewDown()
+	case "pgup", "ctrl+b":
+		m.logVp.HalfViewUp()
+	case "home", "g":
+		m.logVp.GotoTop()
+	case "end", "G":
+		m.logVp.GotoBottom()
+	}
+}
+
 func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay.kind {
+
 	case ovHelp:
 		m.closeOverlay()
 		return m, nil
@@ -133,18 +153,8 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "l", "q":
 			m.closeOverlay()
-		case "down", "j":
-			m.logVp.LineDown(1)
-		case "up", "k":
-			m.logVp.LineUp(1)
-		case "pgdown", "ctrl+f", " ":
-			m.logVp.HalfViewDown()
-		case "pgup", "ctrl+b":
-			m.logVp.HalfViewUp()
-		case "home", "g":
-			m.logVp.GotoTop()
-		case "end", "G":
-			m.logVp.GotoBottom()
+		default:
+			m.handleViewportKeys(msg)
 		}
 		return m, nil
 
@@ -152,18 +162,8 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "v", "q":
 			m.closeOverlay()
-		case "down", "j":
-			m.logVp.LineDown(1)
-		case "up", "k":
-			m.logVp.LineUp(1)
-		case "pgdown", "ctrl+f", " ":
-			m.logVp.HalfViewDown()
-		case "pgup", "ctrl+b":
-			m.logVp.HalfViewUp()
-		case "home", "g":
-			m.logVp.GotoTop()
-		case "end", "G":
-			m.logVp.GotoBottom()
+		default:
+			m.handleViewportKeys(msg)
 		}
 		return m, nil
 
@@ -171,18 +171,8 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "q":
 			m.closeOverlay()
-		case "down", "j":
-			m.logVp.LineDown(1)
-		case "up", "k":
-			m.logVp.LineUp(1)
-		case "pgdown", "ctrl+f", " ":
-			m.logVp.HalfViewDown()
-		case "pgup", "ctrl+b":
-			m.logVp.HalfViewUp()
-		case "home", "g":
-			m.logVp.GotoTop()
-		case "end", "G":
-			m.logVp.GotoBottom()
+		default:
+			m.handleViewportKeys(msg)
 		}
 		return m, nil
 
@@ -190,18 +180,8 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "q":
 			m.closeOverlay()
-		case "down", "j":
-			m.logVp.LineDown(1)
-		case "up", "k":
-			m.logVp.LineUp(1)
-		case "pgdown", "ctrl+f", " ":
-			m.logVp.HalfViewDown()
-		case "pgup", "ctrl+b":
-			m.logVp.HalfViewUp()
-		case "home", "g":
-			m.logVp.GotoTop()
-		case "end", "G":
-			m.logVp.GotoBottom()
+		default:
+			m.handleViewportKeys(msg)
 		}
 		return m, nil
 

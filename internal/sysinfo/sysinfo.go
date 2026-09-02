@@ -15,20 +15,6 @@ func HasEFI() bool {
 	return err == nil
 }
 
-// DefaultBootType returns "efi" or "bios" depending on system support.
-func DefaultBootType() string {
-	if HasEFI() {
-		return "efi"
-	}
-	return "bios"
-}
-
-// NProc returns the number of processors (nproc equivalent).
-func NProc() int {
-	n := runtime_numCPU()
-	return n
-}
-
 // Devices lists all entries below /dev/disk/by-id, sorted.
 func Devices() []string {
 	entries, err := os.ReadDir("/dev/disk/by-id")
@@ -41,11 +27,6 @@ func Devices() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// ShortenDevice strips the /dev/disk/by-id/ prefix if present.
-func ShortenDevice(dev string) string {
-	return strings.TrimPrefix(dev, "/dev/disk/by-id/")
 }
 
 // CanonicalizeDevice returns the matching /dev/disk/by-id path for dev,

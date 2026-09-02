@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -152,6 +151,3 @@ func summaryOf(f *field, c *config.Config) string {
 	}
 	return ""
 }
-
-// countLines counts display rows for a summary value.
-func countLines(s string) int { return strings.Count(s, "\n") + 1 }

@@ -12,9 +12,6 @@ func layoutForDisplay(c *config.Config) (*disklayout.Layout, error) {
 	return disklayout.BuildFromConfig(c, "")
 }
 
-// ShouldRunInstall reports whether the user confirmed an installation.
-func (m *Model) ShouldRunInstall() bool { return m.runInstall }
-
 // ActiveTab exposes the current tab index (used by tests).
 func (m *Model) ActiveTab() int { return m.active }
 

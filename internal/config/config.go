@@ -448,18 +448,6 @@ func ProfileUsesSystemd(id string) bool {
 	return strings.HasSuffix(id, "/systemd")
 }
 
-// Stage3VariantDesc returns the human-readable description of a stage3
-// variant, or "" for an unknown/empty id. It mirrors Description so the TUI
-// can show friendly names in place of the raw variant id.
-func Stage3VariantDesc(id string) string {
-	for _, v := range Stage3Variants {
-		if v.ID == id {
-			return v.Description
-		}
-	}
-	return ""
-}
-
 // ProfilePackages returns the curated package set for the currently
 // selected profile. It is empty when no (known) profile is selected.
 func (c *Config) ProfilePackages() []string {

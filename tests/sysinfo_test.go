@@ -8,15 +8,6 @@ import (
 	"gentooinstall/internal/sysinfo"
 )
 
-func TestShortenDevice(t *testing.T) {
-	if got := sysinfo.ShortenDevice("/dev/disk/by-id/ata-FOO"); got != "ata-FOO" {
-		t.Fatal(got)
-	}
-	if got := sysinfo.ShortenDevice("/dev/sda"); got != "/dev/sda" {
-		t.Fatal(got)
-	}
-}
-
 func TestCanonicalizePassthrough(t *testing.T) {
 	if got := sysinfo.CanonicalizeDevice("/dev/nonexistent-xyz"); got != "/dev/nonexistent-xyz" {
 		t.Fatal(got)
@@ -61,12 +52,6 @@ func TestFallbackKeymapsPresent(t *testing.T) {
 }
 
 func TestEFIAndBootType(t *testing.T) {
-	// On the test machine either result is fine; just ensure consistency.
-	bt := sysinfo.DefaultBootType()
-	if bt != "efi" && bt != "bios" {
-		t.Fatal(bt)
-	}
-	if (bt == "efi") != sysinfo.HasEFI() {
-		t.Fatal("boot type inconsistent with EFI detection")
-	}
+	// EFI detection must resolve to a boolean (either result is fine).
+	_ = sysinfo.HasEFI()
 }

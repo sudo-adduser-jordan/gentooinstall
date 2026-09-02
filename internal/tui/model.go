@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,6 +16,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"gentooinstall/internal/config"
+	"gentooinstall/internal/sysinfo"
 )
 
 // Minimum terminal size for the TUI; below it only the resize notice is
@@ -47,13 +47,12 @@ type Model struct {
 
 	width, height int
 	status        string
-	statusKind    int // stInfo, stOK, stErr
+	statusKind    int // stOK, stErr
 	savedFlash    bool
 
 	// overlay is any modal element stacked above the tab UI.
 	overlay     overlay
 	quitting    bool
-	runInstall  bool    // set on final confirm; app exits afterwards
 	deferredCmd tea.Cmd // cmd to return after overlay callbacks
 
 	// Install view state (see installview.go).
@@ -72,9 +71,7 @@ type Model struct {
 	fail         *InstallFailedMsg
 	btnCur       int
 	instFn       InstallFunc
-	chrootFn     func() error // entered after install completes
 	usedEnc      bool
-
 	// Overlay callbacks (moved off package-level maps).
 	pickFn  func(*Model, string)
 	textFn  *textState
@@ -118,14 +115,11 @@ const (
 )
 
 const (
-	stInfo = iota
-	stOK
+	stOK = iota + 1
 	stErr
 )
 
-func (m *Model) setStatusInfo(s string) { m.status, m.statusKind = s, stInfo }
-func (m *Model) setStatusOK(s string)   { m.status, m.statusKind = s, stOK }
-func (m *Model) setStatusErr(s string)  { m.status, m.statusKind = s, stErr }
+func (m *Model) setStatusErr(s string) { m.status, m.statusKind = s, stErr }
 
 type savedClearMsg struct{}
 
@@ -135,7 +129,7 @@ func clearSavedAfter(d time.Duration) tea.Cmd {
 
 // New builds the configurator model.
 func New(cfg *config.Config, cfgPath string) *Model {
-	m := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: efiAvailable()}
+	m := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI()}
 	m.tabs = buildTabs(m)
 	for range m.tabs {
 		m.cursors = append(m.cursors, 0)
@@ -964,15 +958,4 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
-}
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func efiAvailable() bool {
-	_, err := os.Stat("/sys/firmware/efi")
-	return err == nil
 }

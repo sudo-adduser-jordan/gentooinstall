@@ -312,12 +312,6 @@ func TestProfileHelpers(t *testing.T) {
 	if config.ProfileUsesSystemd("default/linux/amd64/23.0/desktop") {
 		t.Fatal("OpenRC profile must not be detected as systemd")
 	}
-	if got := config.Stage3VariantDesc("desktop-systemd"); got == "" {
-		t.Fatal("Stage3VariantDesc should return a description")
-	}
-	if got := config.Stage3VariantDesc("bogus"); got != "" {
-		t.Fatalf("Stage3VariantDesc unknown = %q", got)
-	}
 }
 
 func TestProfilePackages(t *testing.T) {

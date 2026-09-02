@@ -98,12 +98,6 @@ func (l *Layout) UUIDOf(id string) (string, bool) {
 	return u, ok
 }
 
-// Resolvable returns the resolve entry for an id.
-func (l *Layout) Resolvable(id string) (ResolveEntry, bool) {
-	e, ok := l.resolvable[id]
-	return e, ok
-}
-
 // ParentGPTOf returns the gpt table id a partition belongs to.
 func (l *Layout) ParentGPTOf(partID string) (string, bool) {
 	g, ok := l.partGPT[partID]

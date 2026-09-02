@@ -183,8 +183,6 @@ func GenerateInitramfs(c *Context, output string) error {
 	return nil
 }
 
-const efiBootmgrBase = "--verbose --create --label gentoo --loader \\vmlinuz.efi"
-
 // EfiBootmgrArgs builds the efibootmgr argument vector (as used by
 // InstallKernelEFI).
 func EfiBootmgrArgs(disk, part, cmdline string) []string {

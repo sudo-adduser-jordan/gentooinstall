@@ -36,19 +36,6 @@ func TestClassicSingleDisk(t *testing.T) {
 		t.Fatalf("root fs opts wrong: %q %q", l.RootFSType, l.RootMountOpts)
 	}
 
-	e, ok := l.Resolvable("gpt")
-	if !ok || e.Type != "ptuuid" || e.Arg == "" {
-		t.Fatalf("gpt resolvable: %+v ok=%v", e, ok)
-	}
-	e, _ = l.Resolvable("part_root")
-	if e.Type != "partuuid" {
-		t.Fatalf("part resolvable: %+v", e)
-	}
-	e, _ = l.Resolvable("part_luks_root")
-	if e.Type != "luks" || e.Arg != "root" {
-		t.Fatalf("luks resolvable: %+v", e)
-	}
-
 	u, ok := l.UUIDOf("part_luks_root")
 	if !ok || u == "" {
 		t.Fatalf("luks uuid missing")
@@ -252,10 +239,6 @@ func TestExistingPartitions(t *testing.T) {
 	}
 	if l.RootFSType != "" {
 		t.Fatalf("RootFSType must stay empty, got %q", l.RootFSType)
-	}
-	e, _ := l.Resolvable("part_root")
-	if e.Type != "device" || e.Arg != "/dev/sdX" {
-		t.Fatalf("resolvable: %+v", e)
 	}
 
 	// With a swap device present, all three are registered.

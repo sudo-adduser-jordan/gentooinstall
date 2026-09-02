@@ -6,24 +6,22 @@ import "github.com/charmbracelet/lipgloss"
 
 // Emoji used across the UI.
 const (
-	eClipboard = "📋"
-	eGear      = "🔧"
-	eGlobe     = "🌐"
-	eCrane     = "🔧"
-	ePackage   = "📦"
-	ePause     = "⏸"
-	eWarn      = "⚠️"
-	eParty     = "🎉"
-	eScroll    = "📜"
-	eFlask     = "🧪"
-	eDoor      = "🚪"
-	eSave      = "💾"
-	ePencil    = "✏️"
-	eInfo      = "💡"
-	eRocket    = "🚀"
-	eDisk      = "💾"
-	eLock      = "🔒"
-	eUnlock    = "🔓"
+	eGear    = "🔧"
+	eGlobe   = "🌐"
+	eCrane   = "🔧"
+	ePackage = "📦"
+	eWarn    = "⚠️"
+	eParty   = "🎉"
+	eScroll  = "📜"
+	eFlask   = "🧪"
+	eDoor    = "🚪"
+	eSave    = "💾"
+	ePencil  = "✏️"
+	eInfo    = "💡"
+	eRocket  = "🚀"
+	eDisk    = "💾"
+	eLock    = "🔒"
+	eUnlock  = "🔓"
 )
 
 // tabEmoji maps a tab name to its icon.
@@ -114,13 +112,10 @@ var (
 	overlayBoxStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(dim).Padding(0, 1)
 	dirtyStyle         = lipgloss.NewStyle().Foreground(warn).Bold(true)
 	treeGlyphStyle     = helpStyle
-	treeNameStyle      = valueStyle
 	treeRoleStyle      = lipgloss.NewStyle().Bold(true).Foreground(accent)
-	treeHeadStyle      = lipgloss.NewStyle().Bold(true).Foreground(white)
 	pageStyle          = lipgloss.NewStyle().Padding(0, 1)
 	hintKeyStyle       = lipgloss.NewStyle().Bold(true).Foreground(white)
 	spinnerStyle       = lipgloss.NewStyle().Bold(true).Foreground(accent)
-	luksStyle          = lipgloss.NewStyle().Bold(true).Foreground(white)
 	lockBoxStyle       = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(good).

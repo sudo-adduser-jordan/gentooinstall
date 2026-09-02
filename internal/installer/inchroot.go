@@ -3,7 +3,6 @@ package installer
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -549,6 +548,3 @@ func MainInstallGentooInChroot(c *Context) error {
 		RootMountpoint)
 	return nil
 }
-
-// Ensure /etc exists early for systems whose stage3 lacks it (defensive).
-var _ = filepath.Join

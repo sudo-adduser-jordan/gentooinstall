@@ -517,8 +517,9 @@ func BuildFromConfig(cfg *config.Config, uuidDir string) (*Layout, error) {
 			b.layout.SwapID = "part_swap_dev0"
 		}
 		b.layout.RootID = rootID
-		b.layout.RootFSType = "btrfs"
-		b.layout.RootMountOpts = "defaults,noatime,compress=zstd,subvol=/root"
+		if err := setRootFS("btrfs", false); err != nil {
+			return nil, err
+		}
 
 	case config.SchemeRaid0Luks, config.SchemeRaid1Luks:
 		bt := d.BootType

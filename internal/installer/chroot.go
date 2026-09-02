@@ -61,18 +61,6 @@ func MountByID(c *Context, id, mountpoint string) error {
 	return nil
 }
 
-// UmountLazy recursively lazy-unmounts a tree (umount -R -l).
-func UmountLazy(c *Context, dir string) error {
-	if !IsMountpoint(dir) {
-		return nil
-	}
-	c.R.logf("Unmounting %s", dir)
-	if err := c.R.Run("umount", "-R", "-l", dir); err != nil {
-		return fmt.Errorf("could not unmount %s: %w", dir, err)
-	}
-	return nil
-}
-
 var virtualFS = []struct {
 	mountpoint string
 	proc       []string // plain mount
