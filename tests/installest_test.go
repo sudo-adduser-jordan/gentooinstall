@@ -61,16 +61,26 @@ func TestEstimatePackageCount(t *testing.T) {
 		t.Fatalf("desktop count %d should exceed minimal %d", c, c0)
 	}
 
-	sel := config.Default(true)
-	sel.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome"
-	sel.Packages.Additional = []string{"a/b", "c/d"}
-	sel.Packages.CustomPackages = []string{"x/y"}
-	got := sel.EstimatePackageCount()
-	if got <= c0 {
-		t.Fatalf("selected packages should increase count, got %d", got)
+	// Each modifier is asserted as its own isolated delta so the test does not
+	// depend on incidental coupling between defaults (e.g. EnableSSHD).
+	profile := config.Default(true)
+	profile.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome"
+	profile.Packages.Additional = nil
+	profile.Packages.CustomPackages = nil
+	if diff := profile.EstimatePackageCount() - c0; diff != len(config.LookupProfile(profile.Gentoo.Profile).Packages) {
+		t.Fatalf("profile-only delta = %d, want %d", diff, len(config.LookupProfile(profile.Gentoo.Profile).Packages))
 	}
-	if diff := got - c0; diff != 6+2+1 { // profile + additional + custom
-		t.Fatalf("count delta = %d, want %d", diff, 9)
+
+	additional := config.Default(true)
+	additional.Packages.Additional = []string{"a/b", "c/d"}
+	if diff := additional.EstimatePackageCount() - c0; diff != 2 {
+		t.Fatalf("additional-only delta = %d, want 2", diff)
+	}
+
+	custom := config.Default(true)
+	custom.Packages.CustomPackages = []string{"x/y"}
+	if diff := custom.EstimatePackageCount() - c0; diff != 1 {
+		t.Fatalf("custom-only delta = %d, want 1", diff)
 	}
 }
 
