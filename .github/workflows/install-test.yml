@@ -84,7 +84,7 @@ jobs:
         run: sudo env COMPRESS=1 scripts/build-testkit.sh
 
       - name: Decompress testkit
-        run: gunzip -k dist/testkit.raw.gz
+        run: gunzip -kf dist/testkit.raw.gz
 
       - name: Run install e2e test
         run: |
