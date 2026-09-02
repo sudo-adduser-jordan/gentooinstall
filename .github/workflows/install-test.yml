@@ -39,6 +39,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  live-iso-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install live ISO build + boot dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            grub-pc-bin grub-efi-amd64-bin xorriso busybox-static mtools \
+            qemu-system-x86 ovmf
+          # Hosted Azure kernel isn't world-readable; grant read, then build.
+          sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
+
+      - name: Build live ISO
+        run: scripts/iso.sh
+
+      - name: Boot live ISO to TUI
+        run: scripts/boot-live-iso.sh --iso dist/gentooinstall-live-amd64.iso
+
   install:
     runs-on: ubuntu-latest
     timeout-minutes: 180

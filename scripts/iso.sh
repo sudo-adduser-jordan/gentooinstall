@@ -54,7 +54,7 @@ cat >"$WORK/iso/boot/grub/grub.cfg" <<'EOF'
 set timeout=0
 set default=0
 menuentry 'gentooinstall live' {
-    linux /boot/vmlinuz quiet
+    linux /boot/vmlinuz quiet console=ttyS0,115200n8
     initrd /boot/initrd.img
 }
 EOF

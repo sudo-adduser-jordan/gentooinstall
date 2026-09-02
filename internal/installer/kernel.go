@@ -56,11 +56,13 @@ func findNewestKernel(c *Context) (string, error) {
 	if len(kernels) == 0 {
 		return "", fmt.Errorf("could not find any kernel in /boot")
 	}
-	sort.Slice(kernels, func(i, j int) bool { return versionLess(kernels[i], kernels[j]) })
+	sort.Slice(kernels, func(i, j int) bool { return VersionLess(kernels[i], kernels[j]) })
 	return kernels[len(kernels)-1], nil
 }
 
-func versionLess(a, b string) bool {
+// VersionLess reports whether kernel title a sorts before b by version
+// (port of the find + sort -V | tail -1 logic).
+func VersionLess(a, b string) bool {
 	as, bs := splitVersion(a), splitVersion(b)
 	for i := 0; i < len(as) && i < len(bs); i++ {
 		ai, aok := atoiSafe(as[i])
@@ -183,7 +185,9 @@ func GenerateInitramfs(c *Context, output string) error {
 
 const efiBootmgrBase = "--verbose --create --label gentoo --loader \\vmlinuz.efi"
 
-func efibootmgrArgs(disk, part, cmdline string) []string {
+// EfiBootmgrArgs builds the efibootmgr argument vector (as used by
+// InstallKernelEFI).
+func EfiBootmgrArgs(disk, part, cmdline string) []string {
 	return []string{
 		"--verbose", "--create",
 		"--disk", disk, "--part", part,
@@ -233,7 +237,7 @@ func InstallKernelEFI(c *Context) error {
 		return err
 	}
 
-	var disks []raidMember
+	var disks []RaidMember
 
 	isMD := regexp.MustCompile(`^/dev/md[0-9]+$`).MatchString(efipartdev)
 	scanOut, _ := c.R.QuietRun("mdadm", "--detail", "--scan", efipartdev)
@@ -251,14 +255,14 @@ func InstallKernelEFI(c *Context) error {
 				dev := "/dev/" + m[strings.Index(m, "/dev/")+len("/dev/"):]
 				if !seen[dev] {
 					seen[dev] = true
-					disks = append(disks, raidMember{disk: dev})
+					disks = append(disks, RaidMember{disk: dev})
 				}
 			}
 		}
 		if len(disks) == 0 {
 			return fmt.Errorf("RAID setup detected, but no valid member disks found for %s", efipartdev)
 		}
-		c.R.logf("RAID detected. RAID members: %s", diskNames(disks))
+		c.R.logf("RAID detected. RAID members: %s", DiskNames(disks))
 	} else {
 		parent := ""
 		if real, err := filepath.EvalSymlinks(filepath.Join(sysEfiPart, "..")); err == nil {
@@ -274,27 +278,29 @@ func InstallKernelEFI(c *Context) error {
 				return err
 			}
 		}
-		disks = []raidMember{{disk: parent}}
+		disks = []RaidMember{{disk: parent}}
 	}
 
 	var lastDisk, lastPart string
 	for _, d := range disks {
 		lastDisk, lastPart = d.disk, efipartnum
 		c.R.logf("Adding EFI boot entry on %s", d.disk)
-		if err := c.R.Try("efibootmgr", efibootmgrArgs(d.disk, efipartnum, cmdline)...); err != nil {
+		if err := c.R.Try("efibootmgr", EfiBootmgrArgs(d.disk, efipartnum, cmdline)...); err != nil {
 			return err
 		}
 	}
 
 	script := "#!/bin/bash\n# This is the command that was used to create the efibootmgr entry when the\n" +
 		"# system was installed using gentoo-install.\n" +
-		"efibootmgr " + strings.Join(efibootmgrArgs(lastDisk, lastPart, cmdline), " ") + "\n"
+		"efibootmgr " + strings.Join(EfiBootmgrArgs(lastDisk, lastPart, cmdline), " ") + "\n"
 	return os.WriteFile("/boot/efi/efibootmgr_add_entry.sh", []byte(script), 0o755)
 }
 
-type raidMember struct{ disk string }
+// RaidMember is a physical disk of a RAID array used for an EFI boot entry.
+type RaidMember struct{ disk string }
 
-func diskNames(entries []raidMember) string {
+// DiskNames renders RAID member disk paths joined by spaces (for logs).
+func DiskNames(entries []RaidMember) string {
 	var names []string
 	for _, e := range entries {
 		names = append(names, e.disk)
