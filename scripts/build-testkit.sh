@@ -68,6 +68,7 @@ ROOTUUID="$(blkid -s UUID -o value "${LOOP}p2")"
 ESPUUID="$(blkid -s UUID -o value "${LOOP}p1")"
 
 mount "${LOOP}p2" "$WORK/root"
+mkdir -p "$WORK/root/boot/efi"
 mount "${LOOP}p1" "$WORK/root/boot/efi"
 
 debootstrap --arch=amd64 --variant=minbase "$SUITE" "$WORK/root" "$MIRROR"
