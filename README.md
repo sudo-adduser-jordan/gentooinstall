@@ -15,6 +15,41 @@ make test         # go vet ./... && go test ./...
 make fmt          # gofmt -l -w .
 ```
 
+## End-to-end tests (QEMU)
+
+`scripts/run-vm-test.sh` runs the real, destructive install path entirely
+inside QEMU — **no privileges needed at test time**, so it behaves identically
+on a laptop and on a GitHub Actions runner (no privileged containers involved;
+ubuntu-24.04 runners disable unprivileged user namespaces, so there is nothing
+to fall back to):
+
+```sh
+sudo make build-testkit   # builds the Debian "testkit" live image (root only)
+make vm-test              # fully unprivileged; uses KVM, falls back to TCG
+```
+
+How it works:
+
+1. **Boot 1** — the testkit (built by `scripts/build-testkit.sh`) boots under
+   OVMF/EFI firmware, fetches an inject payload over the user-mode network
+   (the binary, a config and an optional stage3 seed), and runs
+   `gentooinstall install` with `GENTOOINSTALL_ASSUME_YES=1` against a fresh
+   `/dev/vdb`. Every interactive prompt is answered with its intended default
+   and the pre-apply countdown is skipped.
+2. **Boot 2** — the installed disk is booted for real: via OVMF reusing the
+   same NVRAM file (so the `efibootmgr` entry persists) for EFI targets, or
+   plain SeaBIOS for BIOS targets. Reaching the multi-user target (a serial
+   `login:` prompt) is the pass criterion.
+
+The stage3 tarball can be seeded from the host with `--stage3 file.tar.xz`,
+renamed to match the mirror's current listing so the installer's `.verified`
+resume path is exercised instead of a live download. `.e2e-images/` (work
+dir, logs, disk snapshots) is gitignored.
+
+`.github/workflows/install-test.yml` runs the default (EFI/systemd) build on
+every push touching the installer, and `workflow_dispatch` can pick layout
+variants: `default`, `bios`, `luks-efi` and `btrfs-efi`.
+
 ## Usage
 
 ```sh

@@ -1,0 +1,115 @@
+name: Install e2e
+
+# End-to-end install test inside QEMU. Completely unprivileged at test time:
+# the only privileged step is the optional testkit image build (debootstrap +
+# grub-install), which is cached across runs. GitHub Actions runners never
+# use a container here because linux runners are VMs anyway, and containers
+# would lack capabilities the install genuinely needs.
+#
+# Push runs the default (EFI/systemd) build; workflow_dispatch can pick a
+# disk-layout variant (LUKS, BIOS/openrc, btrfs RAID0) from the shipped
+# templates in builds/.
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Layout variant to test
+        type: choice
+        required: false
+        default: default
+        options:
+          - default
+          - bios
+          - luks-efi
+          - btrfs-efi
+  push:
+    branches: [main]
+    paths:
+      - "internal/**"
+      - "cmd/**"
+      - "scripts/**"
+      - "builds/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/install-test.yml"
+
+concurrency:
+  group: install-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            qemu-system-x86 ovmf \
+            debootstrap gdisk dosfstools e2fsprogs util-linux
+
+      - name: Pick variant
+        id: variant
+        run: |
+          case "${{ inputs.variant || 'default' }}" in
+            default)   CONFIG="builds/default.toml"; EXTRA=() ;;
+            bios)      CONFIG="builds/bios.toml"; EXTRA=() ;;
+            luks-efi)  CONFIG="builds/default.toml"; EXTRA=(-o use_luks=true) ;;
+            btrfs-efi) CONFIG="builds/btrfs-efi.toml"; EXTRA=() ;;
+          esac
+          echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+          echo "extra=${EXTRA[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Build binary
+        run: make build
+
+      - name: Restore testkit image
+        id: testkit-cache
+        uses: actions/cache@v4
+        with:
+          path: dist/testkit.raw.gz
+          key: testkit-bookworm-${{ hashFiles('scripts/build-testkit.sh') }}
+
+      - name: Build testkit image (requires root)
+        if: steps.testkit-cache.outputs.cache-hit != 'true'
+        run: sudo env COMPRESS=1 scripts/build-testkit.sh
+
+      - name: Decompress testkit
+        run: gunzip -k dist/testkit.raw.gz
+
+      - name: Run install e2e test
+        run: |
+          scripts/run-vm-test.sh \
+            --testkit dist/testkit.raw \
+            --timeout-install 3600 \
+            --timeout-boot 300 \
+            "${EXTRA[@]}" \
+            "${{ steps.variant.outputs.config }}"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs-${{ steps.variant.outputs.config }}-${{ github.run_id }}
+          path: ".e2e-images/run-*/boot*.log"
+          if-no-files-found: ignore
+
+      - name: Upload installed disk on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-disk-${{ steps.variant.outputs.config }}-${{ github.run_id }}
+          path: |
+            .e2e-images/run-*/disk.raw
+            .e2e-images/run-*/disk2.raw
+          if-no-files-found: ignore
+          compression-level: 6

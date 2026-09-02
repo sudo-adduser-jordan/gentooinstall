@@ -1,7 +1,7 @@
 BINARY := gentooinstall
 BIN_DIR := ./bin
 
-.PHONY: build test vet fmt iso clean
+.PHONY: build test vet fmt iso clean build-testkit vm-test
 
 build: vet
 	mkdir -p $(BIN_DIR)
@@ -9,6 +9,16 @@ build: vet
 
 iso:
 	scripts/iso.sh
+
+# The testkit image build is privileged (debootstrap/grub); use make for a
+# one-liner, CI calls scripts/build-testkit.sh directly in its sudo step.
+build-testkit:
+	sudo scripts/build-testkit.sh
+
+# End-to-end install test inside QEMU. Fully unprivileged; uses KVM when
+# /dev/kvm is available and falls back to TCG otherwise.
+vm-test: build
+	scripts/run-vm-test.sh builds/default.toml
 
 test: vet
 	go test ./...

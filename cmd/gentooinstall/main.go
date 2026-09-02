@@ -349,6 +349,14 @@ func newRunner(interactive bool) *installer.Runner {
 	return r
 }
 
+// assumeYes reports whether automated (non-interactive) confirmation is
+// requested via GENTOOINSTALL_ASSUME_YES=1. Every yes/no prompt answers with
+// its intended default and the pre-apply countdown is skipped; used by the
+// headless QEMU test harness.
+func assumeYes() bool {
+	return os.Getenv("GENTOOINSTALL_ASSUME_YES") == "1"
+}
+
 func buildLayoutE(cfg *config.Config) (*disklayout.Layout, error) {
 	l, err := disklayout.BuildFromConfig(cfg, installer.UUIDStorageDir)
 	if err != nil {
@@ -381,8 +389,11 @@ func runInstall(cfgPath string) {
 
 	layout := buildLayout(cfg)
 	resolver := &disklayout.Resolver{Layout: layout}
+	nonInteractive := assumeYes()
+	r := newRunner(!nonInteractive)
+	r.NonInteractive = nonInteractive
 	c := &installer.Context{
-		R:            newRunner(true),
+		R:            r,
 		Cfg:          cfg,
 		Layout:       layout,
 		Resolver:     resolver,
@@ -450,14 +461,16 @@ func summarizeAndConfirm(c *installer.Context) {
 	}
 
 	ok, err := installer.AskYesNo(c.R,
-		"Do you really want to apply this disk configuration?", false)
+		"Do you really want to apply this disk configuration?", assumeYes())
 	if err != nil {
 		fatal("%v", err)
 	}
 	if !ok {
 		fatal("aborted")
 	}
-	countdown(c, "Applying in ", 5)
+	if !assumeYes() {
+		countdown(c, "Applying in ", 5)
+	}
 }
 
 func countdown(c *installer.Context, msg string, n int) {
