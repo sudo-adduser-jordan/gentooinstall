@@ -81,10 +81,12 @@ jobs:
 
       - name: Build testkit image (requires root)
         if: steps.testkit-cache.outputs.cache-hit != 'true'
-        run: sudo env COMPRESS=1 scripts/build-testkit.sh
+        run: |
+          mkdir -p dist
+          sudo env COMPRESS=1 scripts/build-testkit.sh
 
       - name: Decompress testkit
-        run: gunzip -kf dist/testkit.raw.gz
+        run: gunzip -k dist/testkit.raw.gz
 
       - name: Run install e2e test
         run: |

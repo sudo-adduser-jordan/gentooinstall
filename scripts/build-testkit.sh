@@ -175,5 +175,6 @@ echo "wrote $OUT (root=$ROOTUUID esp=$ESPUUID kernel=$KVER)"
 
 if [[ "${COMPRESS:-0}" == "1" ]]; then
   gzip -c "$OUT" > "$OUT.gz"
+  rm -f "$OUT"
   echo "compressed to $OUT.gz"
 fi
