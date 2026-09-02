@@ -96,22 +96,3 @@ jobs:
             --timeout-boot 300 \
             "${EXTRA[@]}" \
             "${{ steps.variant.outputs.config }}"
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-logs-${{ steps.variant.outputs.config }}-${{ github.run_id }}
-          path: ".e2e-images/run-*/boot*.log"
-          if-no-files-found: ignore
-
-      - name: Upload installed disk on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-disk-${{ steps.variant.outputs.config }}-${{ github.run_id }}
-          path: |
-            .e2e-images/run-*/disk.raw
-            .e2e-images/run-*/disk2.raw
-          if-no-files-found: ignore
-          compression-level: 6

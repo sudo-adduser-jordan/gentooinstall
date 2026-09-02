@@ -162,6 +162,11 @@ set timeout=1
 set default=0
 insmod part_gpt
 insmod ext2
+insmod serial
+serial --unit=0 --speed=115200
+terminal_input serial
+terminal_output serial
+search --no-floppy --fs-uuid --set=root __ROOTUUID__
 menuentry 'testkit' {
     linux /boot/vmlinuz-__KVER__ root=UUID=__ROOTUUID__ console=ttyS0,115200n8 net.ifnames=0
     initrd /boot/initrd.img-__KVER__

@@ -238,6 +238,9 @@ wait_marker() { # wait_marker LOGFILE MARKER TIMEOUT  (sets QEMU_PID)
     fi
     sleep 3
     elapsed=$((elapsed + 3))
+    if (( elapsed % 60 == 0 )); then
+      echo "elapsed ${elapsed}s waiting for '$marker' (log $(stat -c %s "$log" 2>/dev/null || echo 0) bytes)"
+    fi
   done
   echo "timeout after ${timeout}s waiting for '$marker'" >&2
   return 1
