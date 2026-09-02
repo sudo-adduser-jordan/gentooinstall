@@ -61,10 +61,8 @@ marker="/builds/default.toml"
 elapsed=0
 ok=0
 while [[ $elapsed -lt "$BOOT_TIMEOUT" ]]; do
-  if kill -0 "$QEMU_PID" 2>/dev/null; then
-    if grep -Fq "$marker" "$LOG" 2>/dev/null; then ok=1; break; fi
-  else
-    if grep -Fq "$marker" "$LOG" 2>/dev/null; then ok=1; break; fi
+  if grep -Fq "$marker" "$LOG" 2>/dev/null; then ok=1; break; fi
+  if ! kill -0 "$QEMU_PID" 2>/dev/null; then
     echo "qemu exited before the TUI rendered" >&2
     break
   fi

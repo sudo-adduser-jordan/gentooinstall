@@ -15,10 +15,10 @@ iso:
 build-testkit:
 	sudo scripts/build-testkit.sh
 
-# End-to-end install test inside QEMU. Fully unprivileged; uses KVM when
-# /dev/kvm is available and falls back to TCG otherwise.
+CONFIG ?= builds/default.toml
+
 vm-test: build
-	scripts/run-vm-test.sh builds/default.toml
+	scripts/run-vm-test.sh $(CONFIG)
 
 test: vet
 	go test ./...

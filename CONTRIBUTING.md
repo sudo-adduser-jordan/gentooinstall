@@ -50,9 +50,9 @@ go test ./tests/ -run Tui -v
 ```
 
 `./bin/gentooinstall gif` renders a recording of the simulated install demo into an
-animated GIF without a TTY or any disk access — see `internal/recorder/`
-and `tests/recorder_test.go`. Changing the demo steps or the captured
-layout is done there, not in the interactive flow.
+animated GIF without a TTY or any disk access. Changing the demo steps or the
+captured layout is done in the gif tape code (`cmd/gentooinstall/main.go`),
+not in the interactive flow.
 
 To *see* rendered frames while developing, drop a throwaway test in
 `tests/` that prints the view directly:

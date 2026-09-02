@@ -98,8 +98,6 @@ if [ ! -e /mnt/payload/payload.tgz ]; then
   tar xzf /mnt/payload/payload.tgz -C /mnt/payload
 fi
 sh /mnt/payload/run-install.sh > /dev/ttyS0 2>&1
-st=$?
-echo "GI_INSTALL exit=$st" > /dev/ttyS0
 echo "GI_TEST_DONE" > /dev/ttyS0
 systemctl poweroff --force
 exit 0

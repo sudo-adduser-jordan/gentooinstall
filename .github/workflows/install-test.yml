@@ -30,7 +30,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  install:
+  install-iso:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +46,6 @@ jobs:
           sudo apt-get install -y -qq \
             grub-pc-bin grub-efi-amd64-bin xorriso busybox-static mtools \
             qemu-system-x86 ovmf
-          # Hosted Azure kernel isn't world-readable; grant read, then build.
           sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
 
       - name: Build live ISO
@@ -55,9 +54,24 @@ jobs:
       - name: Boot live ISO to TUI
         run: scripts/boot-live-iso.sh --iso dist/gentooinstall-live-amd64.iso
 
-  install:
+  install-vm:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    strategy:
+      matrix:
+        include:
+          - variant: default
+            config: builds/default.toml
+            extra: ""
+          - variant: bios
+            config: builds/bios.toml
+            extra: ""
+          - variant: luks-efi
+            config: builds/default.toml
+            extra: "-o use_luks=true"
+          - variant: btrfs-efi
+            config: builds/btrfs-efi.toml
+            extra: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -72,18 +86,6 @@ jobs:
           sudo apt-get install -y -qq \
             qemu-system-x86 ovmf \
             debootstrap gdisk dosfstools e2fsprogs util-linux busybox-static
-
-      - name: Pick variant
-        id: variant
-        run: |
-          case "${{ inputs.variant || 'default' }}" in
-            default)   CONFIG="builds/default.toml"; EXTRA=() ;;
-            bios)      CONFIG="builds/bios.toml"; EXTRA=() ;;
-            luks-efi)  CONFIG="builds/default.toml"; EXTRA=(-o use_luks=true) ;;
-            btrfs-efi) CONFIG="builds/btrfs-efi.toml"; EXTRA=() ;;
-          esac
-          echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
-          echo "extra=${EXTRA[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         run: make build
@@ -104,9 +106,9 @@ jobs:
       - name: Decompress testkit
         run: gunzip -k dist/testkit.raw.gz
 
-      - name: Run install e2e test
+      - name: Run install e2e test (${{ matrix.variant }})
         run: |
           scripts/run-vm-test.sh \
             --testkit dist/testkit.raw \
-            "${EXTRA[@]}" \
-            "${{ steps.variant.outputs.config }}"
+            ${{ matrix.extra }} \
+            ${{ matrix.config }}

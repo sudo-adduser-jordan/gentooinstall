@@ -91,18 +91,13 @@ CONFPAY="$RUN/payload/gentoo.toml"
 cp "$CONFIG" "$CONFPAY"
 
 # Overrides are applied to the payload copy only; shipped templates stay clean.
-# The target disk(s) get fixed bus positions: /dev/vdb, /dev/vdc, ... while
-# the testkit itself occupies /dev/vda as the boot disk.
-sed -i -E 's/^([[:space:]]*device[[:space:]]*=[[:space:]]*).*/\1"\/dev\/vdb"/' "$CONFPAY"
+# The testkit boots from /dev/vda; target disks are /dev/vdb, /dev/vdc, ...
 MULTI=0
-if grep -qE '^[[:space:]]*devices[[:space:]]*=' "$CONFPAY"; then
-  sed -i -E 's/^([[:space:]]*devices[[:space:]]*=[[:space:]]*).*/\1["\/dev\/vdb", "\/dev\/vdc"]/' "$CONFPAY"
-  MULTI=1
-fi
 for o in "${OVERRIDES[@]}"; do
   k="${o%%=*}"; v="${o#*=}"
   if [[ "$k" == "devices" ]]; then
     sed -i -E "s/^([[:space:]]*devices[[:space:]]*=[[:space:]]*).*/\1${v}/" "$CONFPAY"
+    MULTI=1
     continue
   fi
   if [[ "$v" != /* && "$v" != true && "$v" != false && "$v" != "\""* ]]; then
@@ -111,22 +106,11 @@ for o in "${OVERRIDES[@]}"; do
   sed -i -E "s/^([[:space:]]*${k}[[:space:]]*=[[:space:]]*).*/\1${v}/" "$CONFPAY"
 done
 
-# Optional stage3 seed, renamed to the mirror's current listing name so the
+# Optional stage3 seed: copy to payload with its original name so the
 # installer's .verified resume path hits (per stage3.go ResolveStage3/DownloadStage3).
 if [[ -n "$STAGE3" ]]; then
-  mirror="$(toml_get "$CONFPAY" mirror)";  mirror="${mirror:-https://mirror.leaseweb.com/gentoo}"
-  arch="$(toml_get "$CONFPAY" arch)";      arch="${arch:-amd64}"
-  variant="$(toml_get "$CONFPAY" stage3_variant)"; variant="${variant:-systemd}"
-  base="stage3-${arch}-${variant}"
-  expected="$(curl -fsSL --max-time 25 "$mirror/releases/$arch/autobuilds/current-$base/" 2>/dev/null \
-    | grep -oE "$base-[0-9A-Z]*\.tar\.xz" | sort -u | tail -1 || true)"
-  if [[ -n "$expected" ]]; then
-    cp "$STAGE3" "$RUN/payload/$expected"
-    echo "seeding stage3 as $expected"
-  else
-    cp "$STAGE3" "$RUN/payload/$(basename "$STAGE3")"
-    echo "warning: could not resolve current stage3 name; seeding $(basename "$STAGE3")"
-  fi
+  cp "$STAGE3" "$RUN/payload/$(basename "$STAGE3")"
+  echo "seeding stage3 as $(basename "$STAGE3")"
 fi
 
 cat > "$RUN/payload/run-install.sh" <<'RUNSH'
