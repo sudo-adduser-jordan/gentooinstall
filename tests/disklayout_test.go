@@ -326,6 +326,30 @@ func TestBuildValidationErrors(t *testing.T) {
 	}
 }
 
+func TestClassicNoSwapExt4(t *testing.T) {
+	// Classic single disk, no LUKS, no btrfs, no swap: the minimal EFI setup.
+	c := classicCfg("/dev/sdX", false, false)
+	c.Disk.UseSwap = false
+	l, err := disklayout.BuildFromConfig(c, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := join(kinds(l))
+	want := "create_gpt,create_partition,create_partition,format,format"
+	if got != want {
+		t.Fatalf("got %s want %s", got, want)
+	}
+	if l.SwapID != "" {
+		t.Fatalf("swap must be unset, got %q", l.SwapID)
+	}
+	if l.RootFSType != "ext4" {
+		t.Fatalf("root fs: %q", l.RootFSType)
+	}
+	if l.EFIID == "" {
+		t.Fatalf("EFI role must be present: %+v", l)
+	}
+}
+
 func TestUuidToMdUUID(t *testing.T) {
 	u := "00000000-1111-2222-3333-444444444444"
 	if got := disklayout.UuidToMdUUID(u); got != "00000000:11112222:33334444:44444444" {

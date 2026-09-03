@@ -21,6 +21,23 @@ type Resolver struct {
 
 	// cached lsblk output (needed because lsblk misbehaves in chroot)
 	cachedLsblk string
+
+	// overrides maps layout ids to fixed device paths, short-circuiting
+	// ResolveDevice without probing the filesystem. Only used by tests to
+	// exercise the install engine (ApplyDiskActions) without real devices.
+	overrides map[string]string
+}
+
+// SetResolvedDevices seeds fixed device paths for the given layout ids so
+// ResolveDevice returns them verbatim (no blkid/lsblk/filesystem probing).
+// Intended for tests only; production code never sets this.
+func (r *Resolver) SetResolvedDevices(m map[string]string) {
+	if r.overrides == nil && len(m) > 0 {
+		r.overrides = map[string]string{}
+	}
+	for k, v := range m {
+		r.overrides[k] = v
+	}
 }
 
 func runOut(name string, args ...string) (string, error) {
@@ -203,6 +220,11 @@ func DeviceByMdadmUuid(uuid string) (string, error) {
 
 // ResolveDevice resolves the given id to a canonicalized device path.
 func (r *Resolver) ResolveDevice(id string) (string, error) {
+	if r.overrides != nil {
+		if dev, ok := r.overrides[id]; ok {
+			return dev, nil
+		}
+	}
 	entry, ok := r.Layout.resolvable[id]
 	if !ok {
 		return "", fmt.Errorf("cannot resolve id=%q to a block device (no table entry)", id)

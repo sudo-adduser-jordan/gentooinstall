@@ -21,12 +21,27 @@ const (
 	FailPrint
 )
 
+// CommandExecutor abstracts external command execution so tests can capture
+// the exact command sequences the installer would invoke without running
+// anything. The concrete *Runner implements it; tests replace it with a
+// recording stub. A nil Exec (the default) means commands really run.
+type CommandExecutor interface {
+	Run(name string, args ...string) error
+	QuietRun(name string, args ...string) (string, error)
+	RunWithStdin(stdin, name string, args ...string) error
+	Try(name string, args ...string) error
+}
+
 // Runner executes external commands with logging and optional
 // interactive failure handling.
 type Runner struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Stdin  io.Reader
+
+	// Exec, when non-nil, receives every command invocation instead of the
+	// real execution path. Used by tests to record/assert command sequences.
+	Exec CommandExecutor
 
 	// Log receives human readable progress lines.
 	Log func(format string, args ...any)
@@ -119,12 +134,18 @@ func (r *Runner) stdinOr(fallback io.Reader) io.Reader {
 
 // Run executes a command, streaming its output to the runner's writers.
 func (r *Runner) Run(name string, args ...string) error {
+	if r.Exec != nil {
+		return r.Exec.Run(name, args...)
+	}
 	r.logf("$ %s", CommandLine(name, args...))
 	return r.cmd(name, args, nil, true).Run()
 }
 
 // QuietRun captures output without streaming it.
 func (r *Runner) QuietRun(name string, args ...string) (string, error) {
+	if r.Exec != nil {
+		return r.Exec.QuietRun(name, args...)
+	}
 	r.logf("$ %s", CommandLine(name, args...))
 	var buf bytes.Buffer
 	cmd := r.cmd(name, args, nil, false)
@@ -136,12 +157,18 @@ func (r *Runner) QuietRun(name string, args ...string) (string, error) {
 
 // RunWithStdin feeds stdin to the command.
 func (r *Runner) RunWithStdin(stdin string, name string, args ...string) error {
+	if r.Exec != nil {
+		return r.Exec.RunWithStdin(stdin, name, args...)
+	}
 	r.logf("$ %s  (stdin)", CommandLine(name, args...))
 	return r.cmd(name, args, strings.NewReader(stdin), true).Run()
 }
 
 // Try runs a command with interactive failure handling (port of try()).
 func (r *Runner) Try(name string, args ...string) error {
+	if r.Exec != nil {
+		return r.Exec.Try(name, args...)
+	}
 	line := CommandLine(name, args...)
 	for {
 		r.logf("$ %s", line)

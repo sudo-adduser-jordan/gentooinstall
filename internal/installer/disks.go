@@ -248,10 +248,7 @@ func actCreateLuks(c *Context, a *disklayout.Action) error {
 
 // runWithKey runs cryptsetup feeding the encryption key on stdin.
 func runWithKey(c *Context, args []string) error {
-	cmdLine := CommandLine("cryptsetup", args...)
-	c.R.logf("$ %s  (stdin)", cmdLine)
-	cmd := c.R.cmd("cryptsetup", args, strings.NewReader(c.EncryptionKey), true)
-	return cmd.Run()
+	return c.R.RunWithStdin(c.EncryptionKey, "cryptsetup", args...)
 }
 
 func initBtrfs(c *Context, device, desc string) error {
