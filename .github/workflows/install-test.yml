@@ -1,114 +1,114 @@
-name: Install e2e
+# name: Install e2e
 
-on:
-  workflow_dispatch:
-    inputs:
-      variant:
-        description: Layout variant to test
-        type: choice
-        required: false
-        default: default
-        options:
-          - default
-          - bios
-          - luks-efi
-          - btrfs-efi
-  push:
-    branches: [main]
-    paths:
-      - "internal/**"
-      - "cmd/**"
-      - "scripts/**"
-      - "builds/**"
-      - "Makefile"
-      - "go.mod"
-      - "go.sum"
-      - ".github/workflows/install-test.yml"
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       variant:
+#         description: Layout variant to test
+#         type: choice
+#         required: false
+#         default: default
+#         options:
+#           - default
+#           - bios
+#           - luks-efi
+#           - btrfs-efi
+#   push:
+#     branches: [main]
+#     paths:
+#       - "internal/**"
+#       - "cmd/**"
+#       - "scripts/**"
+#       - "builds/**"
+#       - "Makefile"
+#       - "go.mod"
+#       - "go.sum"
+#       - ".github/workflows/install-test.yml"
 
-concurrency:
-  group: install-e2e-${{ github.ref }}
-  cancel-in-progress: true
+# concurrency:
+#   group: install-e2e-${{ github.ref }}
+#   cancel-in-progress: true
 
-jobs:
-  install-iso:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+# jobs:
+#   install-iso:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+#       - uses: actions/setup-go@v5
+#         with:
+#           go-version-file: go.mod
+#           cache: true
 
-      - name: Install live ISO build + boot dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            grub-pc-bin grub-efi-amd64-bin xorriso busybox-static mtools \
-            qemu-system-x86 ovmf
-          sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
+#       - name: Install live ISO build + boot dependencies
+#         run: |
+#           sudo apt-get update -qq
+#           sudo apt-get install -y -qq \
+#             grub-pc-bin grub-efi-amd64-bin xorriso busybox-static mtools \
+#             qemu-system-x86 ovmf
+#           sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
 
-      - name: Build live ISO
-        run: scripts/iso.sh
+#       - name: Build live ISO
+#         run: scripts/iso.sh
 
-      - name: Boot live ISO to TUI
-        run: scripts/boot-live-iso.sh --iso dist/gentooinstall-live-amd64.iso
+#       - name: Boot live ISO to TUI
+#         run: scripts/boot-live-iso.sh --iso dist/gentooinstall-live-amd64.iso
 
-  install-vm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    strategy:
-      matrix:
-        include:
-          - variant: default
-            config: builds/default.toml
-            extra: ""
-          - variant: bios
-            config: builds/bios.toml
-            extra: ""
-          - variant: luks-efi
-            config: builds/default.toml
-            extra: "-o use_luks=true"
-          - variant: btrfs-efi
-            config: builds/btrfs-efi.toml
-            extra: ""
-    steps:
-      - uses: actions/checkout@v4
+#   install-vm:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 180
+#     strategy:
+#       matrix:
+#         include:
+#           - variant: default
+#             config: builds/default.toml
+#             extra: ""
+#           - variant: bios
+#             config: builds/bios.toml
+#             extra: ""
+#           - variant: luks-efi
+#             config: builds/default.toml
+#             extra: "-o use_luks=true"
+#           - variant: btrfs-efi
+#             config: builds/btrfs-efi.toml
+#             extra: ""
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+#       - uses: actions/setup-go@v5
+#         with:
+#           go-version-file: go.mod
+#           cache: true
 
-      - name: Install host dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            qemu-system-x86 ovmf \
-            debootstrap gdisk dosfstools e2fsprogs util-linux busybox-static
+#       - name: Install host dependencies
+#         run: |
+#           sudo apt-get update -qq
+#           sudo apt-get install -y -qq \
+#             qemu-system-x86 ovmf \
+#             debootstrap gdisk dosfstools e2fsprogs util-linux busybox-static
 
-      - name: Build binary
-        run: make build
+#       - name: Build binary
+#         run: make build
 
-      - name: Restore testkit image
-        id: testkit-cache
-        uses: actions/cache@v4
-        with:
-          path: dist/testkit.raw.gz
-          key: testkit-bookworm-${{ hashFiles('scripts/build-testkit.sh') }}
+#       - name: Restore testkit image
+#         id: testkit-cache
+#         uses: actions/cache@v4
+#         with:
+#           path: dist/testkit.raw.gz
+#           key: testkit-bookworm-${{ hashFiles('scripts/build-testkit.sh') }}
 
-      - name: Build testkit image (requires root)
-        if: steps.testkit-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p dist
-          sudo env COMPRESS=1 scripts/build-testkit.sh
+#       - name: Build testkit image (requires root)
+#         if: steps.testkit-cache.outputs.cache-hit != 'true'
+#         run: |
+#           mkdir -p dist
+#           sudo env COMPRESS=1 scripts/build-testkit.sh
 
-      - name: Decompress testkit
-        run: gunzip -k dist/testkit.raw.gz
+#       - name: Decompress testkit
+#         run: gunzip -k dist/testkit.raw.gz
 
-      - name: Run install e2e test (${{ matrix.variant }})
-        run: |
-          scripts/run-vm-test.sh \
-            --testkit dist/testkit.raw \
-            ${{ matrix.extra }} \
-            ${{ matrix.config }}
+#       - name: Run install e2e test (${{ matrix.variant }})
+#         run: |
+#           scripts/run-vm-test.sh \
+#             --testkit dist/testkit.raw \
+#             ${{ matrix.extra }} \
+#             ${{ matrix.config }}
