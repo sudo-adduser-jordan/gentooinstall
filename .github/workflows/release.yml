@@ -25,14 +25,14 @@ jobs:
       - name: Build live ISO
         run: |
           sudo apt-get update
-          sudo apt-get install -y grub-pc-bin grub-efi-amd64-bin xorriso busybox-static mtools
+          sudo apt-get install -y grub-pc-bin grub-efi-amd64-bin xorriso busybox-static cpio mtools
           # Hosted Azure kernel isn't world-readable; grant read, then build.
           sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
           scripts/release.sh
-          # ISO builds to dist/ (goreleaser default); move it to live/ first so
-          # `goreleaser --clean` below never wipes it.
+          # ISO builds to bin/gentooinstall.iso (scripts/release.sh default); move it
+          # to live/ first so `goreleaser --clean` below never wipes it.
           mkdir -p live
-          mv dist/gentooinstall-live-amd64.iso live/gentooinstall-live-amd64.iso
+          mv bin/gentooinstall.iso live/gentooinstall-live-amd64.iso
 
       - name: Run goreleaser (release)
         if: startsWith(github.ref, 'refs/tags/')

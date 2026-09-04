@@ -56,7 +56,7 @@ Guidance for AI coding agents working in this repository.
 make build      # produces ./bin/gentooinstall
 make test       # go vet ./... && go test ./...
 make fmt        # gofmt -l -w .
-make iso        # builds the live ISO (scripts/release.sh -> ./output.iso)
+make iso        # builds the live ISO (scripts/release.sh -> ./bin/gentooinstall.iso)
 make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
 ```
 
@@ -78,7 +78,7 @@ make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
 
 ## Notes 
 qemu-system-x86_64 \
-    -cdrom output.iso \
+    -cdrom bin/gentooinstall.iso \
     -serial stdio \
     -display none
 

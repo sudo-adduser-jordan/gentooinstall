@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_SRC="./cmd/gentooinstall"
-ISO_OUTPUT="${1:-output.iso}"
+ISO_OUTPUT="${1:-bin/gentooinstall.iso}"
 BUILD_DIR="$PWD/iso_build"
 ROOTFS="$PWD/rootfs"
 trap 'rm -rf "$BUILD_DIR" "$ROOTFS" init' EXIT
@@ -21,7 +21,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o i
 chmod 0755 init
 
 echo "Building initramfs..."
-mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub"
+mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub" "$(dirname "$ISO_OUTPUT")"
 mv init "$ROOTFS/init"
 [[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console" 2>/dev/null || true
 (cd "$ROOTFS" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$BUILD_DIR/boot/initrd.img"
