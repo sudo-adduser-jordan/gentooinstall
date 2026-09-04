@@ -111,7 +111,7 @@ func bootISO(t *testing.T, iso string) string {
 	// t.Cleanup kills the process if the test is interrupted, so the VM never
 	// lingers. The flags below run with -no-reboot, and the watchdog kills the
 	// VM if it does not settle, so no `timeout` wrapper is needed.
-	cmd := exec.Command("qemu-system-x86_64",
+	args := []string{
 		"-cdrom", iso,
 		"-m", "512",
 		"-nodefaults",
@@ -119,7 +119,12 @@ func bootISO(t *testing.T, iso string) string {
 		"-serial", "stdio",
 		"-no-reboot",
 		"-display", "none",
-	)
+	}
+	if _, err := os.Stat("/dev/kvm"); err == nil {
+		args = append(args, "-enable-kvm")
+		t.Log("KVM acceleration enabled")
+	}
+	cmd := exec.Command("qemu-system-x86_64", args...)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

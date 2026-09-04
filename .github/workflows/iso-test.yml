@@ -1,0 +1,40 @@
+name: ISO Test
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "internal/**"
+      - "cmd/**"
+      - "tests/**"
+      - "scripts/release.sh"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/iso-test.yml"
+  pull_request:
+    paths:
+      - "internal/**"
+      - "cmd/**"
+      - "tests/**"
+      - "scripts/release.sh"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/iso-test.yml"
+
+jobs:
+  iso-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 grub-pc-bin grub-efi-amd64-bin xorriso cpio mtools
+          sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
+      - name: Run ISO boot test
+        run: make vm-test
