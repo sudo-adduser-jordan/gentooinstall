@@ -74,3 +74,10 @@ make iso        # produces dist/gentooinstall-live-amd64.iso
 - Run `make test` before declaring work complete.
 - Never commit secrets; this repo has none, keep it that way.
 - Commit messages: short imperative subject line, lowercase.
+
+## Notes 
+qemu-system-x86_64 \
+    -cdrom output.iso \
+    -serial stdio \
+    -display none
+

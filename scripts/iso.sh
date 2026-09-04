@@ -1,56 +1,49 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/dist/gentooinstall-live-amd64.iso"
-BINSRC="$ROOT/bin/gentooinstall"
-KERN="/boot/vmlinuz-$(uname -r)"
+APP_SRC="main.go"
+ISO_OUTPUT="${1:-output.iso}"
+BUILD_DIR="$PWD/iso_build"
+ROOTFS="$PWD/rootfs"
+trap 'rm -rf "$BUILD_DIR" "$ROOTFS" init' EXIT
 
-for CMD in grub-mkrescue cpio gzip busybox; do
-  command -v "$CMD" >/dev/null 2>&1 || { echo "required tool not found: $CMD" >&2; exit 1; }
+for cmd in go cpio gzip grub-mkrescue; do
+    command -v "$cmd" >/dev/null 2>&1 || { echo "Error: $cmd not found" >&2; exit 1; }
 done
 
-[[ -e "$KERN" ]] || { echo "no kernel found at $KERN" >&2; exit 1; }
+case "$(uname -m)" in
+    x86_64)  GOARCH=amd64 ;; aarch64) GOARCH=arm64 ;;
+    *)       echo "Unsupported arch" >&2; exit 1 ;;
+esac
 
-# Build the fresh binary the ISO must boot.
-make -C "$ROOT" build
+echo "Compiling init..."
+CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o init "$APP_SRC"
+chmod 0755 init
 
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/iso/boot/grub" "$WORK/root/sbin" "$WORK/root/bin"
+echo "Building initramfs..."
+mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub"
+mv init "$ROOTFS/init"
+[[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console"
+(cd "$ROOTFS" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$BUILD_DIR/boot/initrd.img"
 
-cp "$BINSRC" "$WORK/root/sbin/gentooinstall"
-ln -s /sbin/busybox "$WORK/root/bin/sh"
-cp "$(command -v busybox)" "$WORK/root/sbin/busybox"
+echo "Locating kernel..."
+KERNEL=""
+for d in /boot /boot/efi /lib/modules; do
+    [[ -d "$d" ]] || continue
+    KERNEL="$(find "$d" -maxdepth 1 -type f -name 'vmlinuz-*' -print 2>/dev/null | sort -V | tail -n 1)" && break
+done
+[[ -n "$KERNEL" ]] || { echo "Error: no kernel found" >&2; exit 1; }
+cp "$KERNEL" "$BUILD_DIR/boot/vmlinuz"
 
-cat >"$WORK/root/init" <<'EOF'
-#!/bin/sh
-export PATH=/sbin:/bin TERM=linux
-mount -t proc proc /proc
-mount -t sysfs sysfs /sys
-mount -t devtmpfs dev /dev || mount -t tmpfs tmpfs /dev
-mkdir -p /dev/pts /dev/shm /run /tmp
-mount -t devpts devpts /dev/pts
-mount -t tmpfs tmpfs /dev/shm
-hostname gentooinstall
-cd /
-exec /sbin/gentooinstall
-EOF
-chmod +x "$WORK/root/init"
-
-# Pack the initramfs: only the kernel, the shell and the one binary.
-( cd "$WORK/root" && find . -print0 | cpio --null -o --format=newc | gzip -9 ) \
-  >"$WORK/iso/boot/initrd.img"
-cp "$KERN" "$WORK/iso/boot/vmlinuz"
-
-cat >"$WORK/iso/boot/grub/grub.cfg" <<'EOF'
+cat > "$BUILD_DIR/boot/grub/grub.cfg" <<'EOF'
 set timeout=0
 set default=0
-menuentry 'gentooinstall live' {
-    linux /boot/vmlinuz quiet console=ttyS0,115200n8
+
+menuentry "Gentoo Install" {
+    linux /boot/vmlinuz quiet loglevel=4 rdinit=/init
     initrd /boot/initrd.img
 }
 EOF
 
-mkdir -p "$(dirname "$OUT")"
-grub-mkrescue -o "$OUT" "$WORK/iso" >/dev/null
-echo "wrote $OUT"
+grub-mkrescue -o "$ISO_OUTPUT" "$BUILD_DIR"
+echo "ISO ready: $ISO_OUTPUT"
