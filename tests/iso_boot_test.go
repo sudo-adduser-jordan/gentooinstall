@@ -21,6 +21,9 @@ import (
 // a kernel plus grub-mkrescue/xorriso), so it skips by default. Run it via
 // `make vm-test`.
 func TestISOBoots(t *testing.T) {
+	if os.Getenv("GENTOOINSTALL_E2E") == "" {
+		t.Skip("set GENTOOINSTALL_E2E=1 to run QEMU e2e test")
+	}
 	if testing.Short() {
 		t.Skip("skipping QEMU e2e in short mode")
 	}
@@ -111,7 +114,7 @@ func bootISO(t *testing.T, iso string) string {
 	// t.Cleanup kills the process if the test is interrupted, so the VM never
 	// lingers. The flags below run with -no-reboot, and the watchdog kills the
 	// VM if it does not settle, so no `timeout` wrapper is needed.
-	args := []string{
+	cmd := exec.Command("qemu-system-x86_64",
 		"-cdrom", iso,
 		"-m", "512",
 		"-nodefaults",
@@ -119,12 +122,7 @@ func bootISO(t *testing.T, iso string) string {
 		"-serial", "stdio",
 		"-no-reboot",
 		"-display", "none",
-	}
-	if _, err := os.Stat("/dev/kvm"); err == nil {
-		args = append(args, "-enable-kvm")
-		t.Log("KVM acceleration enabled")
-	}
-	cmd := exec.Command("qemu-system-x86_64", args...)
+	)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

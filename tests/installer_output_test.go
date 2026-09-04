@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 
@@ -70,7 +71,7 @@ func TestLineTeeTruncatesLongLines(t *testing.T) {
 }
 
 func TestAskYesNoNonInteractiveDefaults(t *testing.T) {
-	r := &installer.Runner{NonInteractive: true}
+	r := &installer.Runner{Stderr: io.Discard, NonInteractive: true}
 	ok, err := installer.AskYesNo(r, "Proceed?", true)
 	if err != nil || !ok {
 		t.Fatalf("default-true prompt returned %v/%v", ok, err)
@@ -107,7 +108,7 @@ func TestAskYesNoInteractive(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := &installer.Runner{Stdin: strings.NewReader(tc.input)}
+			r := &installer.Runner{Stderr: io.Discard, Stdin: strings.NewReader(tc.input)}
 			ok, err := installer.AskYesNo(r, "Proceed?", tc.def)
 			if tc.wantErr && err == nil {
 				t.Fatalf("expected error, got %v/%v", ok, err)
@@ -125,7 +126,7 @@ func TestAskYesNoInteractive(t *testing.T) {
 }
 
 func TestPromptLine(t *testing.T) {
-	r := &installer.Runner{Stdin: strings.NewReader("hello world\n")}
+	r := &installer.Runner{Stderr: io.Discard, Stdin: strings.NewReader("hello world\n")}
 	got, err := installer.PromptLine(r, "Name? ")
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +155,8 @@ func TestInteractiveOnFailureMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
 			onFail := installer.InteractiveOnFailure(&installer.Runner{
-				Stdin: strings.NewReader(tc.input),
+				Stderr: io.Discard,
+				Stdin:  strings.NewReader(tc.input),
 			})
 			if got := onFail("some cmd", nil); got != tc.want {
 				t.Fatalf("got %v, want %v", got, tc.want)
@@ -165,7 +167,8 @@ func TestInteractiveOnFailureMapping(t *testing.T) {
 
 func TestInteractiveOnFailureEofAborts(t *testing.T) {
 	onFail := installer.InteractiveOnFailure(&installer.Runner{
-		Stdin: strings.NewReader(""),
+		Stderr: io.Discard,
+		Stdin:  strings.NewReader(""),
 	})
 	if got := onFail("some cmd", nil); got != installer.FailAbort {
 		t.Fatalf("got %v, want FailAbort", got)
