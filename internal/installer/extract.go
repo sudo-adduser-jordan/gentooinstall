@@ -2,7 +2,6 @@ package installer
 
 import (
 	"fmt"
-	"os"
 )
 
 // MountRoot mounts the root filesystem at RootMountpoint. For zfs the
@@ -24,12 +23,12 @@ func ExtractStage3(c *Context, stage3 Stage3Info) error {
 	if err := MountRoot(c); err != nil {
 		return err
 	}
-	if err := MustExist(stage3.Path, "stage3 file"); err != nil {
+	if err := MustExist(c.path(stage3.Path), "stage3 file"); err != nil {
 		return err
 	}
 
 	c.R.log("Extracting stage3 tarball")
-	entries, err := os.ReadDir(RootMountpoint)
+	entries, err := c.readDir(RootMountpoint)
 	if err != nil {
 		return fmt.Errorf("could not read '%s': %w", RootMountpoint, err)
 	}

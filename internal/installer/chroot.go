@@ -29,9 +29,16 @@ func unescapeMount(s string) string {
 	return s
 }
 
+func (c *Context) isMountpoint(path string) bool {
+	if c.IsMountpoint != nil {
+		return c.IsMountpoint(path)
+	}
+	return IsMountpoint(path)
+}
+
 // MountEfiVars mounts efivarfs when not already present.
 func MountEfiVars(c *Context) error {
-	if IsMountpoint("/sys/firmware/efi/efivars") {
+	if c.isMountpoint("/sys/firmware/efi/efivars") {
 		return nil
 	}
 	c.R.log("Mounting efivars")
@@ -44,11 +51,11 @@ func MountEfiVars(c *Context) error {
 
 // MountByID mounts the device identified by id at mountpoint.
 func MountByID(c *Context, id, mountpoint string) error {
-	if IsMountpoint(mountpoint) {
+	if c.isMountpoint(mountpoint) {
 		return nil
 	}
 	c.R.logf("Mounting device with id=%s to '%s'", id, mountpoint)
-	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
+	if err := c.mkdirAll(mountpoint, 0o755); err != nil {
 		return fmt.Errorf("could not create mountpoint directory '%s': %w", mountpoint, err)
 	}
 	dev, err := resolveID(c, id)
@@ -160,7 +167,7 @@ func ChrootShell(c *Context, chrootDir string, args ...string) error {
 	script := ("source /etc/profile 2>/dev/null; " +
 		"export PS1='(chroot) \\u@\\h \\w \\$ '; " +
 		"export PS1=\"\\[\\033[0;31m\\]\\u\\[\\033[1;31m\\]@\\h \\[\\033[1;34m\\]\\w \\[\\033[m\\]\\$ \\[\\033[m\\]\"")
-	if err := os.WriteFile(initScript, []byte(script+"\n"), 0o644); err != nil {
+	if err := c.writeFile(initScript, []byte(script+"\n"), 0o644); err != nil {
 		return err
 	}
 	cmdArgs := []string{"--", chrootDir, "/bin/bash", "--init-file", initScript}

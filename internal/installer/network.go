@@ -2,7 +2,6 @@ package installer
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -45,10 +44,10 @@ func ConfigureNetworking(c *Context) error {
 		}
 
 		path := "/etc/systemd/network/20-wired.network"
-		if err := os.MkdirAll("/etc/systemd/network", 0o755); err != nil {
+		if err := c.mkdirAll("/etc/systemd/network", 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(path, []byte(network), 0o640); err != nil {
+		if err := c.writeFile(path, []byte(network), 0o640); err != nil {
 			return fmt.Errorf("could not write '%s': %w", path, err)
 		}
 		if out, err := c.R.QuietRun("chown", "root:systemd-network", path); err != nil {

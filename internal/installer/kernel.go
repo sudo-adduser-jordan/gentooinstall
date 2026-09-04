@@ -18,6 +18,9 @@ func BlkidUUIDForID(c *Context, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if c.BlkidUUID != nil {
+		return c.BlkidUUID(dev)
+	}
 	u, err := disklayout.GetBlkidField("UUID", dev)
 	if err != nil {
 		return "", fmt.Errorf("could not get UUID from blkid for device=%s: %w", dev, err)
@@ -39,10 +42,10 @@ func KernelCmdline(c *Context) (string, error) {
 	return strings.Join(parts, " "), nil
 }
 
-// findNewestKernel returns the basename of the newest kernel in /boot
+// FindNewestKernel returns the basename of the newest kernel in /boot
 // (find + sort -V | tail -1).
-func findNewestKernel(c *Context) (string, error) {
-	entries, err := os.ReadDir("/boot")
+func FindNewestKernel(c *Context) (string, error) {
+	entries, err := c.readDir("/boot")
 	if err != nil {
 		return "", fmt.Errorf("could not list /boot: %w", err)
 	}
@@ -114,7 +117,7 @@ func GenerateInitramfs(c *Context, output string) error {
 		modules = append(modules, "zfs")
 	}
 
-	link, err := os.Readlink("/usr/src/linux")
+	link, err := c.readlink("/usr/src/linux")
 	if err != nil {
 		return fmt.Errorf("could not figure out kernel version from /usr/src/linux symlink: %w", err)
 	}
@@ -135,14 +138,14 @@ func GenerateInitramfs(c *Context, output string) error {
 			return err
 		}
 		svc := "/usr/lib/dracut/modules.d/46sshd/sshd.service"
-		data, err := os.ReadFile(svc)
+		data, err := c.readFile(svc)
 		if err != nil {
 			return err
 		}
 		fixed := strings.ReplaceAll(string(data), "Type=notify", "Type=simple")
 		fixed = strings.Replace(fixed, "ExecStart=/usr/sbin/sshd -D",
 			"ExecStart=/usr/sbin/sshd -e -D", 1)
-		if err := os.WriteFile(svc, []byte(fixed), 0o644); err != nil {
+		if err := c.writeFile(svc, []byte(fixed), 0o644); err != nil {
 			return fmt.Errorf("could not replace sshd options in service file: %w", err)
 		}
 		dracutOpts = append(dracutOpts,
@@ -177,7 +180,7 @@ func GenerateInitramfs(c *Context, output string) error {
 	}
 	sb.WriteString("\t--force \\\n\t\"$output\"\n")
 	helper := filepath.Join(filepath.Dir(output), "generate_initramfs.sh")
-	if err := os.WriteFile(helper, []byte(sb.String()), 0o755); err != nil {
+	if err := c.writeFile(helper, []byte(sb.String()), 0o755); err != nil {
 		return err
 	}
 	return nil
@@ -202,7 +205,7 @@ func InstallKernelEFI(c *Context) error {
 		return err
 	}
 
-	kernelFile, err := findNewestKernel(c)
+	kernelFile, err := FindNewestKernel(c)
 	if err != nil {
 		return err
 	}
@@ -218,13 +221,13 @@ func InstallKernelEFI(c *Context) error {
 	if err != nil {
 		return err
 	}
-	if efipartdev, err = filepath.EvalSymlinks(efipartdev); err != nil {
+	if efipartdev, err = c.evalSymlinks(efipartdev); err != nil {
 		return fmt.Errorf("error in realpath '%s': %w", efipartdev, err)
 	}
 	sysEfiPart := "/sys/class/block/" + filepath.Base(efipartdev)
 
 	efipartnum := "1"
-	if data, err := os.ReadFile(filepath.Join(sysEfiPart, "partition")); err == nil {
+	if data, err := c.readFile(filepath.Join(sysEfiPart, "partition")); err == nil {
 		efipartnum = strings.TrimSpace(string(data))
 	} else {
 		c.R.logf("Assuming partition 1 for RAID-based EFI on device %s", efipartdev)
@@ -263,7 +266,7 @@ func InstallKernelEFI(c *Context) error {
 		c.R.logf("RAID detected. RAID members: %s", DiskNames(disks))
 	} else {
 		parent := ""
-		if real, err := filepath.EvalSymlinks(filepath.Join(sysEfiPart, "..")); err == nil {
+		if real, err := c.evalSymlinks(filepath.Join(sysEfiPart, "..")); err == nil {
 			parent = "/dev/" + filepath.Base(real)
 		}
 		if parent == "/dev/block" || parent == "" || !fileExists(parent) {
@@ -291,7 +294,7 @@ func InstallKernelEFI(c *Context) error {
 	script := "#!/bin/bash\n# This is the command that was used to create the efibootmgr entry when the\n" +
 		"# system was installed using gentoo-install.\n" +
 		"efibootmgr " + strings.Join(EfiBootmgrArgs(lastDisk, lastPart, cmdline), " ") + "\n"
-	return os.WriteFile("/boot/efi/efibootmgr_add_entry.sh", []byte(script), 0o755)
+	return c.writeFile("/boot/efi/efibootmgr_add_entry.sh", []byte(script), 0o755)
 }
 
 // RaidMember is a physical disk of a RAID array used for an EFI boot entry.
@@ -326,7 +329,7 @@ func InstallKernelBIOS(c *Context) error {
 	if err := c.R.Try("emerge", "--verbose", "sys-boot/syslinux"); err != nil {
 		return err
 	}
-	kernelFile, err := findNewestKernel(c)
+	kernelFile, err := FindNewestKernel(c)
 	if err != nil {
 		return err
 	}
@@ -342,7 +345,7 @@ func InstallKernelBIOS(c *Context) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll("/boot/bios/syslinux", 0o700); err != nil {
+	if err := c.mkdirAll("/boot/bios/syslinux", 0o700); err != nil {
 		return err
 	}
 	if err := c.R.Try("syslinux", "--directory", "syslinux", "--install", biosdev); err != nil {
@@ -354,7 +357,7 @@ func InstallKernelBIOS(c *Context) error {
 		return err
 	}
 	cfg := fmt.Sprintf(syslinuxCfgTemplate, cmdline)
-	if err := os.WriteFile("/boot/bios/syslinux/syslinux.cfg", []byte(cfg), 0o644); err != nil {
+	if err := c.writeFile("/boot/bios/syslinux/syslinux.cfg", []byte(cfg), 0o644); err != nil {
 		return fmt.Errorf("could not save generated syslinux.cfg: %w", err)
 	}
 
@@ -390,36 +393,25 @@ func InstallKernel(c *Context) error {
 	}
 
 	c.R.log("Installing linux-firmware")
-	f, err := os.OpenFile("/etc/portage/package.license",
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("could not write to /etc/portage/package.license: %w", err)
-	}
-	if _, err := f.WriteString(
-		"sys-kernel/linux-firmware linux-fw-redistributable no-source-code\n"); err != nil {
-		f.Close()
+	if err := c.appendFile("/etc/portage/package.license",
+		"sys-kernel/linux-firmware linux-fw-redistributable no-source-code"); err != nil {
 		return err
 	}
-	f.Close()
 	return c.R.Try("emerge", "--verbose", "linux-firmware")
 }
 
+// addFstabEntry appends one formatted fstab row.
 func addFstabEntry(c *Context, fs, mountpoint, typ, opts, dumpPass string) error {
-	f, err := os.OpenFile("/etc/fstab", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("could not append entry to fstab: %w", err)
-	}
-	defer f.Close()
-	_, err = fmt.Fprintf(f, "%-46s  %-24s  %-6s  %-96s %s\n",
+	row := fmt.Sprintf("%-46s  %-24s  %-6s  %-96s %s",
 		fs, mountpoint, typ, opts, dumpPass)
-	return err
+	return c.appendFile("/etc/fstab", row)
 }
 
 // GenerateFstab writes /etc/fstab from the layout roles
 // (port of generate_fstab).
 func GenerateFstab(c *Context) error {
 	c.R.log("Generating fstab")
-	if err := os.WriteFile("/etc/fstab", []byte(assets.Fstab), 0o644); err != nil {
+	if err := c.writeFile("/etc/fstab", []byte(assets.Fstab), 0o644); err != nil {
 		return fmt.Errorf("could not overwrite /etc/fstab: %w", err)
 	}
 

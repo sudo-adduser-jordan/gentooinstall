@@ -41,7 +41,7 @@ func wipefs(c *Context, devices ...string) error {
 }
 
 func partprobe(c *Context, device string) {
-	if HasProgram("partprobe") {
+	if c.R.HasProgram("partprobe") {
 		_ = c.R.Run("partprobe", device)
 	}
 }
@@ -50,6 +50,12 @@ func partprobe(c *Context, device string) {
 // The device is re-resolved on every attempt: partprobe events can lag
 // slightly, and blkid reports "not found yet" (exit status 2) meanwhile.
 func waitPartition(c *Context, newID string) error {
+	// When a command executor is installed (capture/testing mode) no device
+	// node can exist, so there is nothing to wait for; skip the retry loop
+	// and its sleeps so capture tests are fast and deterministic.
+	if c.R.Exec != nil {
+		return nil
+	}
 	for i := 1; i <= 10; i++ {
 		dev, err := resolveID(c, newID)
 		if err == nil {
@@ -227,13 +233,13 @@ func actCreateLuks(c *Context, a *disklayout.Action) error {
 		return fmt.Errorf("could not create luks on %s: %w", desc, err)
 	}
 
-	if err := os.MkdirAll(LuksHeaderBackupDir, 0o755); err != nil {
+	if err := c.mkdirAll(LuksHeaderBackupDir, 0o755); err != nil {
 		return fmt.Errorf("could not create luks header backup dir '%s': %w",
 			LuksHeaderBackupDir, err)
 	}
 	headerFile := filepath.Join(LuksHeaderBackupDir,
 		fmt.Sprintf("luks-header-%s-%s.img", a.NewID, strings.ToLower(uuid)))
-	_ = os.Remove(headerFile)
+	_ = c.removeAll(headerFile)
 	if err := c.R.Try("cryptsetup", "luksHeaderBackup", device,
 		"--header-backup-file", headerFile); err != nil {
 		return fmt.Errorf("could not backup luks header on %s: %w", desc, err)
@@ -252,7 +258,7 @@ func runWithKey(c *Context, args []string) error {
 }
 
 func initBtrfs(c *Context, device, desc string) error {
-	if err := os.MkdirAll("/btrfs", 0o755); err != nil {
+	if err := c.mkdirAll("/btrfs", 0o755); err != nil {
 		return fmt.Errorf("could not create /btrfs directory: %w", err)
 	}
 	if err := c.R.Try("mount", device, "/btrfs"); err != nil {

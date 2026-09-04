@@ -107,7 +107,11 @@ func DownloadStage3(c *Context) (Stage3Info, error) {
 	basename := info.Basename
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
 		c.Cfg.Gentoo.Mirror, c.Cfg.Gentoo.Arch, c.Cfg.Stage3BaseNameFinal())
-	verifiedMarker := info.Path + ".verified"
+
+	// File operations below resolve against the context root; the logical
+	// TmpDir paths are kept for c.Stage3File and the gpg working directory.
+	dst := c.path(info.Path)
+	verifiedMarker := dst + ".verified"
 
 	if _, err := os.Stat(verifiedMarker); err == nil {
 		c.R.logf("%s tarball already downloaded and verified", basename)
@@ -117,16 +121,16 @@ func DownloadStage3(c *Context) (Stage3Info, error) {
 
 	c.R.logf("Downloading %s tarball", basename)
 	tarballURL := strings.TrimSuffix(releasesURL, "/") + "/" + basename
-	if err := httpDownload(c.R, tarballURL, info.Path); err != nil {
+	if err := httpDownload(c.R, tarballURL, dst); err != nil {
 		return info, fmt.Errorf("could not download %s: %w", basename, err)
 	}
-	digestsPath := info.Path + ".DIGESTS"
+	digestsPath := dst + ".DIGESTS"
 	if err := httpDownload(c.R, tarballURL+".DIGESTS", digestsPath); err != nil {
 		return info, fmt.Errorf("could not download DIGESTS: %w", err)
 	}
 
 	c.R.log("Importing gentoo gpg key")
-	keyPath := filepath.Join(TmpDir, "gentoo-keys.gpg")
+	keyPath := c.path(filepath.Join(TmpDir, "gentoo-keys.gpg"))
 	if err := httpDownload(c.R, gentooReleaseKeyURL, keyPath); err != nil {
 		return info, fmt.Errorf("could not retrieve gentoo gpg key: %w", err)
 	}
@@ -148,7 +152,7 @@ func DownloadStage3(c *Context) (Stage3Info, error) {
 	if err != nil {
 		return info, err
 	}
-	got, err := SHA512File(info.Path)
+	got, err := SHA512File(dst)
 	if err != nil {
 		return info, err
 	}
@@ -156,7 +160,7 @@ func DownloadStage3(c *Context) (Stage3Info, error) {
 		return info, fmt.Errorf("checksum mismatch!\n want %s\n got  %s", want, got)
 	}
 
-	if err := os.WriteFile(verifiedMarker, nil, 0o644); err != nil {
+	if err := c.writeFile(info.Path+".verified", nil, 0o644); err != nil {
 		return info, err
 	}
 	c.Stage3File = info.Path

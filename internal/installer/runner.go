@@ -58,6 +58,11 @@ type Runner struct {
 	// the terminal. Used when the installer is driven by the TUI or
 	// re-executed inside the chroot.
 	NonInteractive bool
+
+	// LookPath, when non-nil, is used by HasProgram instead of the
+	// package-level exec.LookPath lookup. Tests set it to control which
+	// external tools are reported as available without touching PATH.
+	LookPath func(name string) bool
 }
 
 // NonInteractiveEnv marks a gentooinstall process as non-interactive; it is set
@@ -232,4 +237,14 @@ func (r *Runner) SpawnShell() error {
 func HasProgram(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+// HasProgram reports whether a program is available, using LookPath when
+// set (so tests can control host-dependent availability) and otherwise
+// falling back to the package-level HasProgram.
+func (r *Runner) HasProgram(name string) bool {
+	if r.LookPath != nil {
+		return r.LookPath(name)
+	}
+	return HasProgram(name)
 }

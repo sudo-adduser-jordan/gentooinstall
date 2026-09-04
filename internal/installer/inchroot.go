@@ -25,26 +25,14 @@ func SetupChrootEnv(c *Context) {
 		fmt.Sprintf("--jobs=%d --load-average=%d", nproc+1, nproc))
 }
 
-func appendFile(c *Context, path, line string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("could not write to %s: %w", path, err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(line + "\n"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func replaceLine(path, matchPrefix, replacement string) error {
-	data, err := os.ReadFile(path)
+func (c *Context) replaceLine(path, matchPrefix, replacement string) error {
+	data, err := c.readFile(path)
 	if err != nil {
 		return err
 	}
 	re := regexp.MustCompile(`(?m)^.*` + regexp.QuoteMeta(matchPrefix) + `.*$`)
 	out := re.ReplaceAllString(string(data), replacement)
-	return os.WriteFile(path, []byte(out), 0o644)
+	return c.writeFile(path, []byte(out), 0o644)
 }
 
 // ConfigureBaseSystem sets hostname/timezone/keymap/locale for both init
@@ -57,13 +45,13 @@ func ConfigureBaseSystem(c *Context) error {
 		if err := c.R.Try("emerge", "--verbose", "sys-apps/musl-locales"); err != nil {
 			return err
 		}
-		if err := appendFile(c, "/etc/env.d/00local",
+		if err := c.appendFile("/etc/env.d/00local",
 			`MUSL_LOCPATH="/usr/share/i18n/locales/musl"`); err != nil {
 			return err
 		}
 	} else {
 		c.R.log("Generating locales")
-		if err := os.WriteFile("/etc/locale.gen",
+		if err := c.writeFile("/etc/locale.gen",
 			[]byte(strings.Join(s.Locales, "\n")+"\n"), 0o644); err != nil {
 			return fmt.Errorf("could not write /etc/locale.gen: %w", err)
 		}
@@ -78,21 +66,21 @@ func ConfigureBaseSystem(c *Context) error {
 			return err
 		}
 		c.R.log("Selecting hostname")
-		if err := os.WriteFile("/etc/hostname", []byte(s.Hostname+"\n"), 0o644); err != nil {
+		if err := c.writeFile("/etc/hostname", []byte(s.Hostname+"\n"), 0o644); err != nil {
 			return fmt.Errorf("could not write /etc/hostname: %w", err)
 		}
 		c.R.log("Selecting keymap")
-		if err := os.WriteFile("/etc/vconsole.conf",
+		if err := c.writeFile("/etc/vconsole.conf",
 			[]byte("KEYMAP="+s.Keymap+"\n"), 0o644); err != nil {
 			return fmt.Errorf("could not write /etc/vconsole.conf: %w", err)
 		}
 		c.R.log("Selecting locale")
-		if err := os.WriteFile("/etc/locale.conf",
+		if err := c.writeFile("/etc/locale.conf",
 			[]byte("LANG="+s.Locale+"\n"), 0o644); err != nil {
 			return fmt.Errorf("could not write /etc/locale.conf: %w", err)
 		}
 		c.R.log("Selecting timezone")
-		if err := os.MkdirAll("/etc", 0o755); err != nil {
+		if err := c.mkdirAll("/etc", 0o755); err != nil {
 			return err
 		}
 		if out, err := c.R.QuietRun("ln", "-sfn",
@@ -101,7 +89,7 @@ func ConfigureBaseSystem(c *Context) error {
 		}
 	} else {
 		c.R.log("Selecting hostname")
-		if err := replaceLine("/etc/conf.d/hostname", "hostname=",
+		if err := c.replaceLine("/etc/conf.d/hostname", "hostname=",
 			fmt.Sprintf("hostname=%q", s.Hostname)); err != nil {
 			return fmt.Errorf("could not sed replace in /etc/conf.d/hostname: %w", err)
 		}
@@ -111,16 +99,16 @@ func ConfigureBaseSystem(c *Context) error {
 				return err
 			}
 			c.R.log("Selecting timezone")
-			if err := appendFile(c, "/etc/env.d/00local",
+			if err := c.appendFile("/etc/env.d/00local",
 				fmt.Sprintf("TZ=%q", s.Timezone)); err != nil {
 				return err
 			}
 		} else {
 			c.R.log("Selecting timezone")
-			if err := os.WriteFile("/etc/timezone", []byte(s.Timezone+"\n"), 0o644); err != nil {
+			if err := c.writeFile("/etc/timezone", []byte(s.Timezone+"\n"), 0o644); err != nil {
 				return fmt.Errorf("could not write /etc/timezone: %w", err)
 			}
-			if err := os.Chmod("/etc/timezone", 0o644); err != nil {
+			if err := c.chmod("/etc/timezone", 0o644); err != nil {
 				return fmt.Errorf("could not set correct permissions for /etc/timezone: %w", err)
 			}
 			if err := c.R.Try("emerge", "-v", "--config", "sys-libs/timezone-data"); err != nil {
@@ -129,7 +117,7 @@ func ConfigureBaseSystem(c *Context) error {
 		}
 
 		c.R.log("Selecting keymap")
-		if err := replaceLine("/etc/conf.d/keymaps", "keymap=",
+		if err := c.replaceLine("/etc/conf.d/keymaps", "keymap=",
 			fmt.Sprintf("keymap=%q", s.Keymap)); err != nil {
 			return fmt.Errorf("could not sed replace in /etc/conf.d/keymaps: %w", err)
 		}
@@ -155,16 +143,12 @@ func ConfigurePortage(c *Context) error {
 		"/etc/portage/package.use":      true,
 		"/etc/portage/package.keywords": true,
 	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := c.mkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("could not create %s: %w", dir, err)
 		}
 	}
 	touch := func(path string) error {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
-		}
-		return f.Close()
+		return c.touchFile(path)
 	}
 	if err := touch("/etc/portage/package.use/zz-autounmask"); err != nil {
 		return err
@@ -180,12 +164,12 @@ func ConfigurePortage(c *Context) error {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if err := appendFile(c, "/etc/portage/package.use/user", line); err != nil {
+		if err := c.appendFile("/etc/portage/package.use/user", line); err != nil {
 			return fmt.Errorf("could not write /etc/portage/package.use/user: %w", err)
 		}
 	}
 
-	if err := appendFile(c, "/etc/portage/make.conf",
+	if err := c.appendFile("/etc/portage/make.conf",
 		fmt.Sprintf("MAKEOPTS=\"-j%d\"", c.NProc)); err != nil {
 		return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
 	}
@@ -208,7 +192,7 @@ func ConfigurePortage(c *Context) error {
 	}
 
 	if c.Cfg.Packages.EnableBinpkg {
-		if err := appendFile(c, "/etc/portage/make.conf",
+		if err := c.appendFile("/etc/portage/make.conf",
 			`FEATURES="getbinpkg binpkg-request-signature"`); err != nil {
 			return err
 		}
@@ -224,7 +208,7 @@ func ConfigurePortage(c *Context) error {
 		return err
 	}
 
-	if err := os.Chmod("/etc/portage/make.conf", 0o644); err != nil {
+	if err := c.chmod("/etc/portage/make.conf", 0o644); err != nil {
 		return fmt.Errorf("could not chmod 644 /etc/portage/make.conf: %w", err)
 	}
 	return nil
@@ -244,14 +228,14 @@ func appendMakeConfUser(c *Context) error {
 		}
 		line := strings.ReplaceAll(o.Line, "${JOBS}", jobs)
 		line = strings.ReplaceAll(line, "${ARCH}", arch)
-		if err := appendFile(c, path, line); err != nil {
+		if err := c.appendFile(path, line); err != nil {
 			return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
 		}
 	}
 
 	extra := strings.TrimSpace(c.Cfg.MakeConf.Extra)
 	if extra != "" {
-		if err := appendFile(c, path, extra); err != nil {
+		if err := c.appendFile(path, extra); err != nil {
 			return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
 		}
 	}
@@ -264,7 +248,7 @@ func ConfigureGitSync(c *Context) error {
 		return nil
 	}
 	g := &c.Cfg.Gentoo
-	if err := os.MkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
+	if err := c.mkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
 		return err
 	}
 	depth := 1
@@ -284,10 +268,10 @@ sync-git-verify-commit-signature = yes
 sync-openpgp-key-path = /usr/share/openpgp-keys/gentoo-release.asc
 `, g.PortageGitMirror, depth)
 	path := "/etc/portage/repos.conf/gentoo.conf"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := c.writeFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("could not write '%s': %w", path, err)
 	}
-	if err := os.RemoveAll("/var/db/repos/gentoo"); err != nil {
+	if err := c.removeAll("/var/db/repos/gentoo"); err != nil {
 		return fmt.Errorf("could not delete obsolete rsync gentoo repository: %w", err)
 	}
 	return c.R.Try("emerge", "--sync")
@@ -309,7 +293,7 @@ func EnableRepositories(c *Context) error {
 	}
 
 	c.R.log("Enabling selected repositories")
-	if err := os.MkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
+	if err := c.mkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
 		return err
 	}
 	args := append([]string{"repository", "enable"}, sel...)
@@ -387,17 +371,17 @@ func MainInstallGentooInChroot(c *Context) error {
 	}
 
 	c.R.log("Enabling dracut USE flag on sys-kernel/installkernel")
-	if err := os.MkdirAll("/etc/portage/package.use", 0o755); err != nil {
+	if err := c.mkdirAll("/etc/portage/package.use", 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile("/etc/portage/package.use/installkernel",
+	if err := c.writeFile("/etc/portage/package.use/installkernel",
 		[]byte("sys-kernel/installkernel dracut\n"), 0o644); err != nil {
 		return fmt.Errorf("could not write /etc/portage/package.use/installkernel: %w", err)
 	}
 
 	if c.Cfg.Packages.KernelType == "source" && c.Cfg.Packages.KernelDeblob {
 		c.R.log("Enabling deblob USE flag on sys-kernel/gentoo-kernel")
-		if err := os.WriteFile("/etc/portage/package.use/gentoo-kernel",
+		if err := c.writeFile("/etc/portage/package.use/gentoo-kernel",
 			[]byte("sys-kernel/gentoo-kernel deblob\n"), 0o644); err != nil {
 			return fmt.Errorf("could not write /etc/portage/package.use/gentoo-kernel: %w", err)
 		}
@@ -424,7 +408,7 @@ func MainInstallGentooInChroot(c *Context) error {
 		}
 		if c.Cfg.UsesSystemd() {
 			c.R.log("Enabling cryptsetup USE flag on sys-apps/systemd")
-			if err := os.WriteFile("/etc/portage/package.use/systemd",
+			if err := c.writeFile("/etc/portage/package.use/systemd",
 				[]byte("sys-apps/systemd cryptsetup\n"), 0o644); err != nil {
 				return fmt.Errorf("could not write /etc/portage/package.use/systemd: %w", err)
 			}
@@ -533,7 +517,7 @@ func MainInstallGentooInChroot(c *Context) error {
 
 	if c.Cfg.Gentoo.UsePortageTesting {
 		c.R.logf("Adding ~%s to ACCEPT_KEYWORDS", c.Cfg.Gentoo.Arch)
-		if err := appendFile(c, "/etc/portage/make.conf",
+		if err := c.appendFile("/etc/portage/make.conf",
 			fmt.Sprintf("ACCEPT_KEYWORDS=\"~%s\"", c.Cfg.Gentoo.Arch)); err != nil {
 			return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
 		}

@@ -33,6 +33,29 @@ type Context struct {
 	EncryptionKey string
 	InChroot      bool
 
+	// BlkidUUID, when non-nil, resolves a device path to its filesystem UUID
+	// (used by KernelCmdline, GenerateFstab and the kernel installers).
+	// Production code leaves it nil so BlkidUUIDForID falls back to
+	// disklayout.GetBlkidField; tests inject a stub to avoid invoking blkid.
+	BlkidUUID func(dev string) (string, error)
+
+	// EvalSymlinks canonicalizes a block device path. Production leaves it
+	// nil so filepath.EvalSymlinks is used; tests inject a stub because the
+	// scratch devices they operate on are not real symlinks in /dev.
+	EvalSymlinks func(p string) (string, error)
+
+	// IsMountpoint reports whether a path is currently mounted. Production
+	// leaves it nil so /proc/mounts is consulted; tests inject a stub to
+	// keep the recorded command sequence independent of the host.
+	IsMountpoint func(path string) bool
+
+	// Root, when non-empty, is prefixed onto every static absolute path the
+	// installer writes or reads, so tests can run against a scratch
+	// directory without touching the real filesystem. Production builds
+	// leave it empty and keep the current behavior. Paths passed in as
+	// parameters (mountpoints, chroot dirs, tar paths) are never prefixed.
+	Root string
+
 	Stage3File string
 	NProc      int
 }
