@@ -10,15 +10,7 @@ build: vet
 iso:
 	scripts/iso.sh
 
-# The testkit image build is privileged (debootstrap/grub); use make for a
-# one-liner, CI calls scripts/build-testkit.sh directly in its sudo step.
-build-testkit:
-	sudo scripts/build-testkit.sh
-
 CONFIG ?= builds/default.toml
-
-vm-test: build
-	scripts/run-vm-test.sh $(CONFIG)
 
 test: vet
 	go test ./...
