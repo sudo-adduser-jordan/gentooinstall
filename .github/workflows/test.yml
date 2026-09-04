@@ -1,8 +1,5 @@
 name: Test
 
-# Runs the hermetic unit test suite (config, disklayout, sysinfo, TUI, ...)
-# in a plain, unprivileged environment. The destructive block-device install
-# path is not exercised here.
 on:
   workflow_dispatch: {}
   push:
