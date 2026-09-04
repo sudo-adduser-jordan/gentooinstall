@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_SRC="main.go"
+APP_SRC="./cmd/gentooinstall"
 ISO_OUTPUT="${1:-output.iso}"
 BUILD_DIR="$PWD/iso_build"
 ROOTFS="$PWD/rootfs"
