@@ -142,6 +142,13 @@ func main() {
 		fatal("%v", err)
 	}
 
+	// When run as PID 1 the binary is the live-ISO init (rdinit=/init). Emit
+	// a deterministic startup banner so the boot is observable on a headless
+	// serial console (e.g. the QEMU e2e test) before the TUI opens.
+	if os.Getpid() == 1 {
+		fmt.Printf("gentooinstall init: PID 1, version %s\n", version)
+	}
+
 	switch mode {
 	case "":
 		runTUI(cfgAbs)

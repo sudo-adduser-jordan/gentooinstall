@@ -23,7 +23,7 @@ chmod 0755 init
 echo "Building initramfs..."
 mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub"
 mv init "$ROOTFS/init"
-[[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console"
+[[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console" 2>/dev/null || true
 (cd "$ROOTFS" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$BUILD_DIR/boot/initrd.img"
 
 echo "Locating kernel..."
@@ -40,7 +40,7 @@ set timeout=0
 set default=0
 
 menuentry "Gentoo Install" {
-    linux /boot/vmlinuz quiet loglevel=4 rdinit=/init
+    linux /boot/vmlinuz quiet console=ttyS0 loglevel=4 rdinit=/init
     initrd /boot/initrd.img
 }
 EOF

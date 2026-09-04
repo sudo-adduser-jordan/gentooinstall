@@ -8,12 +8,15 @@ build: vet
 	go build -trimpath -ldflags "-s -w" -o $(BIN_DIR)/$(BINARY) ./cmd/gentooinstall
 
 iso:
-	scripts/iso.sh
+	scripts/release.sh
 
 CONFIG ?= builds/default.toml
 
 test: vet
 	go test ./...
+
+vm-test: vet
+	go test -count=1 -v -run 'TestISOBoots' ./tests/
 
 vet:
 	go vet ./...

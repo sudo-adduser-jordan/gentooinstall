@@ -45,7 +45,7 @@ checksum:
   name_template: 'checksums.txt'
 
 release:
-  # Attach the live ISO (built by scripts/iso.sh into live/ before goreleaser
+  # Attach the live ISO (built by scripts/release.sh into live/ before goreleaser
   # runs) to the release so goreleaser uploads it atomically with the release
   # creation, rather than a separate, fragile `gh release upload` step.
   extra_files:

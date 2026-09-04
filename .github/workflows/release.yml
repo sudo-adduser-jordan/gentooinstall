@@ -28,7 +28,7 @@ jobs:
           sudo apt-get install -y grub-pc-bin grub-efi-amd64-bin xorriso busybox-static mtools
           # Hosted Azure kernel isn't world-readable; grant read, then build.
           sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
-          scripts/iso.sh
+          scripts/release.sh
           # ISO builds to dist/ (goreleaser default); move it to live/ first so
           # `goreleaser --clean` below never wipes it.
           mkdir -p live

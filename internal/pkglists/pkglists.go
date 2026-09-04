@@ -1,7 +1,3 @@
-// Package pkglists provides complete, statically embedded per-repo package
-// lists for the "Additional packages" picker. The lists are downloaded into
-// data/repos/*.packages by scripts/repo.sh and embedded at build
-// time, so gentooinstall always has a full catalog to search without network access.
 package pkglists
 
 import (

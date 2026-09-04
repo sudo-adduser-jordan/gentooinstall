@@ -15,7 +15,7 @@ Guidance for AI coding agents working in this repository.
 │   ├── disklayout/       # declarative disk actions, presets, id->device resolver
 │   ├── installer/        # install engine (partitioning, stage3, chroot, ...)
 │   └── tui/              # Bubble Tea TUI (numbered tabs, pVPN-style)
-├── scripts/              # iso.sh (live ISO), repo.sh (package lists)
+├── scripts/              # release.sh (live ISO), packages.sh (package lists)
 ├── tests/                # ALL Go tests (external package)
 ├── .goreleaser.yml       # releases: source archive + static binaries
 ├── .github/workflows/    # CI (release.yml attaches the live ISO)
@@ -56,7 +56,8 @@ Guidance for AI coding agents working in this repository.
 make build      # produces ./bin/gentooinstall
 make test       # go vet ./... && go test ./...
 make fmt        # gofmt -l -w .
-make iso        # produces dist/gentooinstall-live-amd64.iso
+make iso        # builds the live ISO (scripts/release.sh -> ./output.iso)
+make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
 ```
 
 ## Reference material when porting

@@ -142,7 +142,7 @@ Releases ship a minimal bootable live ISO that boots straight into the
 gentooinstall TUI (statically linked, running as PID 1). Build it yourself with:
 
 ```sh
-scripts/iso.sh
+scripts/release.sh
 ```
 
 The ISO contains only the built binary plus a minimal initramfs/kernel —

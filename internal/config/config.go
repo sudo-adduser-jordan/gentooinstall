@@ -372,7 +372,7 @@ type Repo struct {
 	Desc string
 	// IndexURL is the base URL of the repo's synced tree. Its complete
 	// package list is its "metadata/pkg_desc_index" file, downloaded into
-	// data/repos/<name>.packages by scripts/repo.sh and embedded
+	// data/repos/<name>.packages by scripts/packages.sh and embedded
 	// at build time (see internal/pkglists). It is not used at runtime.
 	IndexURL string
 }
