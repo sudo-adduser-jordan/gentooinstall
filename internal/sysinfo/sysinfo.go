@@ -15,8 +15,41 @@ func HasEFI() bool {
 	return err == nil
 }
 
-// Devices lists all entries below /dev/disk/by-id, sorted.
+// Devices lists the discoverable block devices, sorted. /dev/disk/by-id
+// entries (udev) are preferred when present; they are supplemented with raw
+// /dev/<name> paths enumerated from /sys/block so disks are still found
+// without udev (the devtmpfs-only live ISO) and when a disk has no by-id
+// link (virtio without a serial, for example).
 func Devices() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(p string, real string) {
+		if p == "" || seen[real] {
+			return
+		}
+		seen[real] = true
+		out = append(out, p)
+	}
+	for _, p := range byIDDevices() {
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			real = p
+		}
+		add(p, real)
+	}
+	for _, p := range sysBlockDevices() {
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			real = p
+		}
+		add(p, real)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// byIDDevices lists every entry below /dev/disk/by-id.
+func byIDDevices() []string {
 	entries, err := os.ReadDir("/dev/disk/by-id")
 	if err != nil {
 		return nil
@@ -25,8 +58,44 @@ func Devices() []string {
 	for _, e := range entries {
 		out = append(out, filepath.Join("/dev/disk/by-id", e.Name()))
 	}
-	sort.Strings(out)
 	return out
+}
+
+// sysBlockDevices enumerates whole disks from /sys/block, returning their
+// /dev/<name> paths when the device node exists. Virtual block devices (loop,
+// ram, CD-ROM and zram) are skipped so partitioning only targets real disks.
+func sysBlockDevices() []string {
+	entries, err := os.ReadDir("/sys/block")
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if pseudoBlockDevice(name) {
+			continue
+		}
+		dev := filepath.Join("/dev", name)
+		info, err := os.Stat(dev)
+		if err != nil || !isBlockDevice(info) {
+			continue
+		}
+		out = append(out, dev)
+	}
+	return out
+}
+
+func pseudoBlockDevice(name string) bool {
+	for _, prefix := range []string{"loop", "ram", "sr", "zram"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isBlockDevice(info os.FileInfo) bool {
+	return info.Mode()&os.ModeDevice != 0 && info.Mode()&os.ModeCharDevice == 0
 }
 
 // CanonicalizeDevice returns the matching /dev/disk/by-id path for dev,
