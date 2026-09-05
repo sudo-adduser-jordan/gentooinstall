@@ -20,8 +20,10 @@ const (
 	eInfo    = "💡"
 	eRocket  = "🚀"
 	eDisk    = "💾"
-	eLock    = "🔒"
-	eUnlock  = "🔓"
+	// DISABLED: LUKS lock badge glyphs. Re-enable with the luksIndicator
+	// module in model.go.
+	//	eLock   = "🔒"
+	//	eUnlock = "🔓"
 )
 
 // tabEmoji maps a tab name to its icon.
@@ -116,16 +118,18 @@ var (
 	pageStyle          = lipgloss.NewStyle().Padding(0, 1)
 	hintKeyStyle       = lipgloss.NewStyle().Bold(true).Foreground(white)
 	spinnerStyle       = lipgloss.NewStyle().Bold(true).Foreground(accent)
-	lockBoxStyle       = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(good).
-				Foreground(white).
-				Bold(true).
-				Padding(0, 1)
-	lockBoxDimStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(dim).
-			Foreground(white).
-			Bold(true).
-			Padding(0, 1)
+	// DISABLED: LUKS lock badge boxes. Re-enable with the luksIndicator
+	// module in model.go.
+	//	lockBoxStyle = lipgloss.NewStyle().
+	//			Border(lipgloss.RoundedBorder()).
+	//			BorderForeground(good).
+	//			Foreground(white).
+	//			Bold(true).
+	//			Padding(0, 1)
+	//	lockBoxDimStyle = lipgloss.NewStyle().
+	//			Border(lipgloss.RoundedBorder()).
+	//			BorderForeground(dim).
+	//			Foreground(white).
+	//			Bold(true).
+	//			Padding(0, 1)
 )

@@ -493,33 +493,35 @@ func (m *Model) View() string {
 	pathBox := m.pathLine()
 	left := lipgloss.JoinVertical(lipgloss.Top, logo, "", m.renderHints())
 
-	// Pin the LUKS badge to the top-right corner of the window (just
-	// inside the frame border). The right pane content slot is the inner
-	// window width minus the left pane (+ its right padding), the divider
-	// and the right pane's leading padding.
-	icon := m.luksIndicator()
-	paneW := m.width - 8 - (lipgloss.Width(left) + 1) - 1 - 1
-	if w := lipgloss.Width(tabs) + lipgloss.Width(icon); w <= paneW {
-		gap := paneW - lipgloss.Width(tabs) - lipgloss.Width(icon)
-		tabs = lipgloss.JoinHorizontal(lipgloss.Top, tabs,
-			lipgloss.NewStyle().Width(gap).Align(lipgloss.Right).Render(icon))
-	} else {
-		budget := maxInt(0, paneW-lipgloss.Width(icon))
-		trcd := truncateBlock(tabs, budget)
-		// Lipgloss's per-rune width accounting can overshoot budget near
-		// emoji with variation selectors; keep clipping until it truly fits.
-		for i := 0; i < 8 && trcd != "" && lipgloss.Width(trcd) > budget; i++ {
-			lines := strings.Split(trcd, "\n")
-			for j := range lines {
-				r := []rune(lines[j])
-				if len(r) > 0 {
-					lines[j] = string(r[:len(r)-1])
-				}
-			}
-			trcd = strings.Join(lines, "\n")
-		}
-		tabs = lipgloss.JoinHorizontal(lipgloss.Top, trcd, icon)
-	}
+	// DISABLED: LUKS lock badge. To re-enable, uncomment this block.
+	//
+	//	// Pin the LUKS badge to the top-right corner of the window (just
+	//	// inside the frame border). The right pane content slot is the inner
+	//	// window width minus the left pane (+ its right padding), the divider
+	//	// and the right pane's leading padding.
+	//	icon := m.luksIndicator()
+	//	paneW := m.width - 8 - (lipgloss.Width(left) + 1) - 1 - 1
+	//	if w := lipgloss.Width(tabs) + lipgloss.Width(icon); w <= paneW {
+	//		gap := paneW - lipgloss.Width(tabs) - lipgloss.Width(icon)
+	//		tabs = lipgloss.JoinHorizontal(lipgloss.Top, tabs,
+	//			lipgloss.NewStyle().Width(gap).Align(lipgloss.Right).Render(icon))
+	//	} else {
+	//		budget := maxInt(0, paneW-lipgloss.Width(icon))
+	//		trcd := truncateBlock(tabs, budget)
+	//		// Lipgloss's per-rune width accounting can overshoot budget near
+	//		// emoji with variation selectors; keep clipping until it truly fits.
+	//		for i := 0; i < 8 && trcd != "" && lipgloss.Width(trcd) > budget; i++ {
+	//			lines := strings.Split(trcd, "\n")
+	//			for j := range lines {
+	//				r := []rune(lines[j])
+	//				if len(r) > 0 {
+	//					lines[j] = string(r[:len(r)-1])
+	//				}
+	//			}
+	//			trcd = strings.Join(lines, "\n")
+	//		}
+	//		tabs = lipgloss.JoinHorizontal(lipgloss.Top, trcd, icon)
+	//	}
 
 	// Render the status message to the right of the path box.
 	pathLine := pathBox
@@ -736,14 +738,16 @@ func (m *Model) labelWidth() int {
 	return minInt(maxInt(w, 22)+2, maxInt(24, m.bodyWidth()/2))
 }
 
-// luksIndicator reports the disk encryption state as a lock badge: locked
-// when LUKS is enabled, unlocked otherwise.
-func (m *Model) luksIndicator() string {
-	if m.cfg.Disk.UseLuks {
-		return lockBoxStyle.Render(eLock)
-	}
-	return lockBoxDimStyle.Render(eUnlock)
-}
+// DISABLED: LUKS lock badge. To re-enable, uncomment this function.
+//
+//	// luksIndicator reports the disk encryption state as a lock badge: locked
+//	// when LUKS is enabled, unlocked otherwise.
+//	func (m *Model) luksIndicator() string {
+//		if m.cfg.Disk.UseLuks {
+//			return lockBoxStyle.Render(eLock)
+//		}
+//		return lockBoxDimStyle.Render(eUnlock)
+//	}
 
 // pathLine renders the config file path inside a bordered box whose color
 // reflects the current state: red on validation errors or an error status
