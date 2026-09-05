@@ -89,7 +89,7 @@ func TestResolveStage3(t *testing.T) {
 	if info.Basename != "stage3-amd64-systemd-20240121T123456Z.tar.xz" {
 		t.Fatalf("ResolveStage3 = %q (want name from latest-*.txt)", info.Basename)
 	}
-	if info.Path != "/tmp/gentoo-install/"+info.Basename {
+	if info.Path != "/tmp/gentoo-install/root/.gentoo-stage3/"+info.Basename {
 		t.Fatalf("ResolveStage3 path = %q", info.Path)
 	}
 }
@@ -190,11 +190,14 @@ type stage3Mirror struct {
 	// failTarball rejects the next failTarballN requests for the tarball
 	// (before serving them) with an HTTP error, so retries kick in.
 	failTarballN int
+	// latestSize is the published byte size written into the latest-*.txt
+	// listing; the download space pre-check compares it with free space.
+	latestSize int64
 }
 
 func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
 	t.Helper()
-	m := &stage3Mirror{payload: payload, hits: map[string]int{}}
+	m := &stage3Mirror{payload: payload, hits: map[string]int{}, latestSize: 123456}
 	sum := sha512.Sum512(payload)
 	m.hash = hex.EncodeToString(sum[:])
 	basename := "stage3-amd64-systemd-20240121T123456Z.tar.xz"
@@ -218,7 +221,9 @@ func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
 			w.Write(m.payload)
 			m.mu.Unlock()
 		case strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt"):
-			fmt.Fprintf(w, "# Latest\n%s 123456\n", basename)
+			m.mu.Lock()
+			fmt.Fprintf(w, "# Latest\n%s %d\n", basename, m.latestSize)
+			m.mu.Unlock()
 		case strings.HasSuffix(r.URL.Path, "/"):
 			fmt.Fprintf(w, `"<a href="%s">`, basename)
 		case strings.Contains(r.URL.Path, "releng") || strings.Contains(r.URL.Path, "openpgpkey"):
@@ -285,7 +290,7 @@ func TestDownloadStage3(t *testing.T) {
 	}
 	assertCmdContains(t, s, []string{
 		"gpg --quiet --import " + filepath.Join(c.Root, "/tmp/gentoo-install/gentoo-keys.gpg"),
-		"gpg --quiet --verify " + filepath.Join(c.Root, "/tmp/gentoo-install/"+info.Basename+".DIGESTS"),
+		"gpg --quiet --verify " + filepath.Join(c.Root, info.Path+".DIGESTS"),
 	})
 }
 
@@ -297,8 +302,8 @@ func TestDownloadStage3ResumesFromVerifiedMarker(t *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.Mirror = mirror.ts.URL
 	c, _ := testContext(t, cfg, nil)
-	mkScratchDir(t, c, "/tmp/gentoo-install")
-	path := "/tmp/gentoo-install/stage3-amd64-systemd-20240121T123456Z.tar.xz"
+	mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
+	path := "/tmp/gentoo-install/root/.gentoo-stage3/stage3-amd64-systemd-20240121T123456Z.tar.xz"
 	writeScratch(t, c, path+".verified", "")
 
 	info, err := installer.DownloadStage3(c)
@@ -369,8 +374,39 @@ func TestDownloadStage3RetriesTransientFailures(t *testing.T) {
 	}
 	assertCmdContains(t, s, []string{
 		"gpg --quiet --import " + filepath.Join(c.Root, "/tmp/gentoo-install/gentoo-keys.gpg"),
-		"gpg --quiet --verify " + filepath.Join(c.Root, "/tmp/gentoo-install/"+info.Basename+".DIGESTS"),
+		"gpg --quiet --verify " + filepath.Join(c.Root, info.Path+".DIGESTS"),
 	})
+}
+
+func TestDownloadStage3FailsFastOnNoSpace(t *testing.T) {
+	payload := []byte("the tarball bytes")
+	mirror := newStage3Mirror(t, payload)
+	defer mirror.ts.Close()
+	// Lie about the published size: the target root filesystem in the test
+	// has nowhere near this much free space, so the pre-download check must
+	// fail fast without touching the tarball.
+	mirror.mu.Lock()
+	mirror.latestSize = 1 << 49
+	mirror.mu.Unlock()
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = mirror.ts.URL
+	c, _ := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install")
+
+	_, err := installer.DownloadStage3(c)
+	if err == nil {
+		t.Fatal("expected insufficient-space error")
+	}
+	if !strings.Contains(err.Error(), "not enough free space") {
+		t.Fatalf("expected space error, got %v", err)
+	}
+	if got := mirror.countTarball("stage3-amd64-systemd-20240121T123456Z.tar.xz"); got != 0 {
+		t.Fatalf("tarball fetched %d times; a space failure must not download", got)
+	}
+	if got := mirror.count("DIGESTS"); got != 0 {
+		t.Fatalf("DIGESTS fetched %d times; a space failure must not download", got)
+	}
 }
 
 func TestClearRoot(t *testing.T) {
@@ -381,6 +417,8 @@ func TestClearRoot(t *testing.T) {
 	writeScratch(t, c, "/tmp/gentoo-install/root/etc/os-release", "id=gentoo\n")
 	writeScratch(t, c, "/tmp/gentoo-install/root/partial", "x")
 	mkScratchDir(t, c, "/tmp/gentoo-install/root/lost+found")
+	mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
+	writeScratch(t, c, "/tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz", "tarball")
 
 	if err := installer.ClearRoot(c); err != nil {
 		t.Fatal(err)
@@ -393,6 +431,9 @@ func TestClearRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(c.Root, "/tmp/gentoo-install/root/lost+found")); err != nil {
 		t.Fatalf("lost+found must survive ClearRoot: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz")); err != nil {
+		t.Fatalf("staged tarball must survive ClearRoot so a re-extract can reuse it: %v", err)
 	}
 }
 
@@ -411,28 +452,32 @@ func TestExtractStage3(t *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
 	c, s := testContext(t, cfg, nil)
-	mkScratchDir(t, c, "/tmp/gentoo-install")
-	tarPath := "/tmp/gentoo-install/stage3.tar.xz"
+	mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
+	tarPath := "/tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz"
 	writeScratch(t, c, tarPath, "tarball")
 
 	info := installer.Stage3Info{Basename: "stage3.tar.xz", Path: tarPath}
 	if err := installer.ExtractStage3(c, info); err != nil {
 		t.Fatal(err)
 	}
-	// Root device mounted into the (empty) root mountpoint, then extracted.
+	// Root device mounted into the (empty) root mountpoint, staged tarball
+	// extracted, then the scratch dir cleaned up.
 	assertCmds(t, s,
 		"mount /dev/fake-part_root /tmp/gentoo-install/root",
-		"tar -xpf /tmp/gentoo-install/stage3.tar.xz --xattrs --numeric-owner",
+		"tar -xpf /tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz --xattrs --numeric-owner",
 	)
+	if _, err := os.Stat(filepath.Join(c.Root, "/tmp/gentoo-install/root/.gentoo-stage3")); !os.IsNotExist(err) {
+		t.Fatalf("stage3 scratch dir must be removed after a successful extract (err=%v)", err)
+	}
 }
 
 func TestExtractStage3SkipsLostFound(t *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
 	c, s := testContext(t, cfg, nil)
-	mkScratchDir(t, c, "/tmp/gentoo-install")
 	mkScratchDir(t, c, "/tmp/gentoo-install/root/lost+found")
-	tarPath := "/tmp/gentoo-install/stage3.tar.xz"
+	mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
+	tarPath := "/tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz"
 	writeScratch(t, c, tarPath, "tarball")
 
 	info := installer.Stage3Info{Basename: "stage3.tar.xz", Path: tarPath}
@@ -440,7 +485,7 @@ func TestExtractStage3SkipsLostFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCmdContains(t, s, []string{
-		"tar -xpf /tmp/gentoo-install/stage3.tar.xz --xattrs --numeric-owner",
+		"tar -xpf /tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz --xattrs --numeric-owner",
 	})
 }
 
@@ -448,9 +493,9 @@ func TestExtractStage3NonEmptyRoot(t *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
 	c, _ := testContext(t, cfg, nil)
-	mkScratchDir(t, c, "/tmp/gentoo-install")
+	mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
 	mkScratchDir(t, c, "/tmp/gentoo-install/root/etc")
-	tarPath := "/tmp/gentoo-install/stage3.tar.xz"
+	tarPath := "/tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz"
 	writeScratch(t, c, tarPath, "tarball")
 
 	info := installer.Stage3Info{Basename: "stage3.tar.xz", Path: tarPath}

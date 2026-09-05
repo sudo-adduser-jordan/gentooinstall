@@ -16,6 +16,11 @@ const (
 	RepoBind            = TmpDir + "/bind"
 	UUIDStorageDir      = TmpDir + "/uuids"
 	LuksHeaderBackupDir = TmpDir + "/luks-headers"
+	// Stage3ScratchDir is where the verified stage3 tarball is staged, inside
+	// the mounted target root filesystem. TmpDir sits on the live system's
+	// RAM-backed initramfs, which cannot hold a ~400MB tarball on low-memory
+	// hosts; the target disk can.
+	Stage3ScratchDir = RootMountpoint + "/.gentoo-stage3"
 )
 
 // Context carries all state through the install phases.

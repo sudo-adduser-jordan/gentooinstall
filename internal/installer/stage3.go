@@ -11,29 +11,46 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const gentooReleaseKeyURL = "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng"
 
 // stage3DownloadAttempts is how many times DownloadStage3 tries to resolve
 // and fetch the tarball (plus its DIGESTS and the gpg key) before giving up.
-// Transient network faults, mirror hiccups and checksum slips are retried
-// with a short backoff so a flaky connection does not fail the whole install.
+// Network faults, mirror hiccups and checksum slips are retried with a short
+// backoff so a flaky connection does not fail the whole install; permanent
+// failures (no space on the target root filesystem) fail fast instead.
 const stage3DownloadAttempts = 3
 
 // stage3RetryBackoff is the pause between download attempts.
 const stage3RetryBackoff = time.Second
 
+// stage3SpaceSlack is the headroom kept on the target root filesystem beyond
+// the tarball itself, covering the DIGESTS file and the extraction working
+// set. A low-memory live system stages the tarball on disk, so the download
+// must not get within a hair's breadth of filling the partition.
+const stage3SpaceSlack = 64 * 1024 * 1024 // 64 MiB
+
 // errNotPublished is returned when a mirror answers 404, so callers can
 // distinguish "this listing does not exist" from a network or server fault.
 var errNotPublished = errors.New("not published")
 
+// errInsufficientSpace is returned when the target root filesystem cannot
+// fit the stage3 tarball. It is not transient, so DownloadStage3 surfaces it
+// immediately instead of re-fetching the tarball pointlessly.
+var errInsufficientSpace = errors.New("not enough free space on the target root filesystem")
+
 // Stage3Info describes the resolved stage3 tarball.
 type Stage3Info struct {
 	Basename string // e.g. stage3-amd64-systemd-20240121T123456Z.tar.xz
-	Path     string // absolute path in TmpDir
+	Path     string // absolute path under Stage3ScratchDir (on the target root disk)
+	Size     int64  // published byte size, 0 when unknown
 }
 
 func httpDownload(r *Runner, url, dest string) error {
@@ -52,6 +69,7 @@ func httpDownload(r *Runner, url, dest string) error {
 	defer f.Close()
 	n, err := io.Copy(f, resp.Body)
 	if err != nil {
+		_ = os.Remove(dest) // free the space consumed by the partial file
 		return err
 	}
 	r.logf("downloaded %s (%d bytes)", filepath.Base(dest), n)
@@ -80,19 +98,20 @@ func httpGetBody(r *Runner, url string) (string, error) {
 // resolveFromLatest reads the authoritative "latest-<basename>.txt" listing
 // that Gentoo publishes in every current-* directory (e.g.
 // "stage3-amd64-systemd-20260830T151604Z.tar.xz 290005580"). It returns the
-// current tarball name. A mirror that does not publish the file (404) yields
-// ("", nil) so the caller can scan the HTML index instead; network or server
-// errors are returned as-is so the failure is not silently masked.
-func resolveFromLatest(c *Context, releasesURL, basename string) (string, error) {
+// current tarball name and its published byte size (0 when the listing omits
+// it). A mirror that does not publish the file (404) yields ("", 0, nil) so
+// the caller can scan the HTML index instead; network or server errors are
+// returned as-is so the failure is not silently masked.
+func resolveFromLatest(c *Context, releasesURL, basename string) (string, int64, error) {
 	latestURL := strings.TrimSuffix(releasesURL, "/") + "/latest-" + basename + ".txt"
 	c.R.logf("Fetching current tarball name from %s", latestURL)
 	body, err := httpGetBody(c.R, latestURL)
 	if errors.Is(err, errNotPublished) {
 		c.R.logf("%s does not publish a latest-%s.txt listing; scanning the index", latestURL, basename)
-		return "", nil
+		return "", 0, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("could not fetch current tarball name from %s: %w", latestURL, err)
+		return "", 0, fmt.Errorf("could not fetch current tarball name from %s: %w", latestURL, err)
 	}
 	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimRight(line, "\r")
@@ -103,18 +122,24 @@ func resolveFromLatest(c *Context, releasesURL, basename string) (string, error)
 		if len(fields) < 1 || !strings.HasSuffix(fields[0], ".tar.xz") {
 			continue
 		}
-		return fields[0], nil
+		var size int64
+		if len(fields) > 1 {
+			if n, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+				size = n
+			}
+		}
+		return fields[0], size, nil
 	}
-	return "", fmt.Errorf("no tarball name found in %s", latestURL)
+	return "", 0, fmt.Errorf("no tarball name found in %s", latestURL)
 }
 
 // resolveFromIndex scans the HTML index for tarball names and returns the
 // newest one (parity with the bash listing parse, but preferring the newest
 // build rather than the oldest).
-func resolveFromIndex(c *Context, releasesURL, basename string) (string, error) {
+func resolveFromIndex(c *Context, releasesURL, basename string) (string, int64, error) {
 	body, err := httpGetBody(c.R, releasesURL)
 	if err != nil {
-		return "", fmt.Errorf("could not retrieve list of tarballs from %s: %w", releasesURL, err)
+		return "", 0, fmt.Errorf("could not retrieve list of tarballs from %s: %w", releasesURL, err)
 	}
 
 	// Decode URL-encoded strings (parity with the python unquote step).
@@ -132,10 +157,10 @@ func resolveFromIndex(c *Context, releasesURL, basename string) (string, error) 
 		names = append(names, n)
 	}
 	if len(names) == 0 {
-		return "", fmt.Errorf("could not parse list of tarballs for %s at %s", basename, releasesURL)
+		return "", 0, fmt.Errorf("could not parse list of tarballs for %s at %s", basename, releasesURL)
 	}
 	sort.Strings(names)
-	return names[len(names)-1], nil
+	return names[len(names)-1], 0, nil
 }
 
 // ResolveStage3 determines the current tarball filename from the mirror
@@ -151,20 +176,22 @@ func ResolveStage3(c *Context) (Stage3Info, error) {
 
 	var (
 		name string
+		size int64
 		err  error
 	)
 	c.R.logf("Fetching list of current tarballs from %s", releasesURL)
-	if name, err = resolveFromLatest(c, releasesURL, basename); err != nil {
+	if name, size, err = resolveFromLatest(c, releasesURL, basename); err != nil {
 		return Stage3Info{}, err
 	}
 	if name == "" {
-		if name, err = resolveFromIndex(c, releasesURL, basename); err != nil {
+		if name, size, err = resolveFromIndex(c, releasesURL, basename); err != nil {
 			return Stage3Info{}, err
 		}
 	}
 	return Stage3Info{
 		Basename: name,
-		Path:     filepath.Join(TmpDir, name),
+		Path:     filepath.Join(Stage3ScratchDir, name),
+		Size:     size,
 	}, nil
 }
 
@@ -173,10 +200,15 @@ func ResolveStage3(c *Context) (Stage3Info, error) {
 // whole resolve+fetch+verify pipeline is retried a few times with a short
 // backoff so transient network or mirror failures do not abort the install;
 // each attempt re-resolves the tarball name and re-fetches everything.
+// Permanent failures (no space on the target root filesystem) are returned
+// immediately so they surface in the failure panel instead of hammering.
 func DownloadStage3(c *Context) (Stage3Info, error) {
 	info, err := downloadStage3Once(c)
 	if err == nil {
 		return info, nil
+	}
+	if !isTransientFailure(err) {
+		return info, err
 	}
 	for attempt := 1; attempt < stage3DownloadAttempts; attempt++ {
 		c.R.logf("Stage3 download failed (%v); retrying (%d/%d)", err,
@@ -185,8 +217,48 @@ func DownloadStage3(c *Context) (Stage3Info, error) {
 		if info, err = downloadStage3Once(c); err == nil {
 			return info, nil
 		}
+		if !isTransientFailure(err) {
+			break
+		}
 	}
 	return info, err
+}
+
+// isTransientFailure reports whether err is worth auto-retrying. Space
+// exhaustion on the target root filesystem is permanent until the user
+// changes the disk layout, so it must fail fast instead.
+func isTransientFailure(err error) bool {
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, errInsufficientSpace) {
+		return false
+	}
+	return true
+}
+
+// checkStage3Space verifies the goal staged in the target root filesystem
+// fits before the download starts, replacing the opaque ENOSPC a full disk
+// would otherwise surface mid-transfer. The check is best-effort: when the
+// free space cannot be measured (filesystem not yet mounted, exotic fs), the
+// download proceeds and any real ENOSPC is caught by isTransientFailure.
+func checkStage3Space(c *Context, needed int64) error {
+	free, err := freeSpaceBytes(c.path(Stage3ScratchDir))
+	if err != nil {
+		return nil
+	}
+	if free < needed+stage3SpaceSlack {
+		return fmt.Errorf("%w: need at least %d bytes, only %d free",
+			errInsufficientSpace, needed+stage3SpaceSlack, free)
+	}
+	return nil
+}
+
+// freeSpaceBytes returns the free bytes a non-root write could use on the
+// filesystem containing dir.
+func freeSpaceBytes(dir string) (int64, error) {
+	var st unix.Statfs_t
+	if err := unix.Statfs(dir, &st); err != nil {
+		return 0, err
+	}
+	return int64(st.Bavail) * int64(st.Bsize), nil
 }
 
 // downloadStage3Once performs a single resolve + download + verify pass.
@@ -199,8 +271,20 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
 		c.Cfg.Gentoo.Mirror, c.Cfg.Gentoo.Arch, c.Cfg.Stage3BaseNameFinal())
 
+	// The tarball is staged inside the mounted target root filesystem: for
+	// the live ISO, TmpDir is RAM-backed and cannot hold a ~400MB tarball on
+	// low-memory hosts.
+	if err := c.mkdirAll(Stage3ScratchDir, 0o755); err != nil {
+		return info, fmt.Errorf("could not create stage3 scratch dir: %w", err)
+	}
+	if info.Size > 0 {
+		if err := checkStage3Space(c, info.Size); err != nil {
+			return info, err
+		}
+	}
+
 	// File operations below resolve against the context root; the logical
-	// TmpDir paths are kept for c.Stage3File and the gpg working directory.
+	// Stage3ScratchDir paths are kept for c.Stage3File.
 	dst := c.path(info.Path)
 	verifiedMarker := dst + ".verified"
 

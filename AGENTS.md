@@ -101,12 +101,16 @@ qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2 \
   -netdev user,id=net0 \
-  -device e1000,netdev=net0 -m 512
+  -device e1000,netdev=net0 -m 1024
 
-qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 512
+qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
 ```
 
 Notes:
+- The stage3 tarball is staged on the **target root filesystem**, not the
+  RAM-backed `/tmp` of the live ISO, so the install itself works on machines
+  with as little as 512MB. Give the full-install QEMU run at least 1G
+  (`-m 1024`) so the in-chroot work (portage sync, kernel build) has room.
 - `make iso` (scripts/release.sh) needs network to dl-cdn.alpinelinux.org to
   bootstrap the live rootfs, and host cpio/gzip/grub-mkrescue/xorriso/modprobe.
 - The NIC must be one the live initramfs actually bundles: the ISO ships module

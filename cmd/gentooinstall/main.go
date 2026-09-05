@@ -834,6 +834,12 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 	}{
 		{"Applying disk configuration", false,
 			func() error { return installer.ApplyDiskActions(c) }},
+		// The root filesystem must be mounted before the stage3 download so
+		// the tarball can be staged on the (disk-backed) target disk instead
+		// of the RAM-backed /tmp, which is too small for a ~400MB tarball on
+		// low-memory live systems. MountByID is idempotent per mountpoint.
+		{"Mounting root filesystem", false,
+			func() error { return installer.MountRoot(c) }},
 		{"Downloading stage3", false,
 			func() error {
 				_, err := installer.DownloadStage3(c)
