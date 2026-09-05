@@ -59,17 +59,38 @@ func httpGetBody(r *Runner, url string) (string, error) {
 	return string(body), nil
 }
 
-// ResolveStage3 determines the current tarball filename from the mirror
-// listing (port of download_stage3's listing parsing).
-func ResolveStage3(c *Context) (Stage3Info, error) {
-	basename := c.Cfg.Stage3BaseNameFinal()
-	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
-		c.Cfg.Gentoo.Mirror, c.Cfg.Gentoo.Arch, basename)
+// resolveFromLatest reads the authoritative "latest-<basename>.txt" listing
+// that Gentoo publishes in every current-* directory (e.g.
+// "stage3-amd64-systemd-20260830T151604Z.tar.xz 290005580"). It returns the
+// current tarball name, or empty if the file is unavailable/unparseable.
+func resolveFromLatest(c *Context, releasesURL, basename string) string {
+	latestURL := strings.TrimSuffix(releasesURL, "/") + "/latest-" + basename + ".txt"
+	c.R.logf("Fetching current tarball name from %s", latestURL)
+	body, err := httpGetBody(c.R, latestURL)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 1 || !strings.HasSuffix(fields[0], ".tar.xz") {
+			continue
+		}
+		return fields[0]
+	}
+	return ""
+}
 
-	c.R.logf("Fetching list of current tarballs from %s", releasesURL)
+// resolveFromIndex scans the HTML index for tarball names and returns the
+// newest one (parity with the bash listing parse, but preferring the newest
+// build rather than the oldest).
+func resolveFromIndex(c *Context, releasesURL, basename string) (string, error) {
 	body, err := httpGetBody(c.R, releasesURL)
 	if err != nil {
-		return Stage3Info{}, fmt.Errorf("could not retrieve list of tarballs: %w", err)
+		return "", fmt.Errorf("could not retrieve list of tarballs: %w", err)
 	}
 
 	// Decode URL-encoded strings (parity with the python unquote step).
@@ -86,11 +107,32 @@ func ResolveStage3(c *Context) (Stage3Info, error) {
 	for n := range set {
 		names = append(names, n)
 	}
-	sort.Strings(names)
 	if len(names) == 0 {
-		return Stage3Info{}, fmt.Errorf("could not parse list of tarballs for %s", basename)
+		return "", fmt.Errorf("could not parse list of tarballs for %s", basename)
 	}
-	name := names[0]
+	sort.Strings(names)
+	return names[len(names)-1], nil
+}
+
+// ResolveStage3 determines the current tarball filename from the mirror
+// listing (port of download_stage3's listing parsing). It prefers the
+// authoritative "latest-<basename>.txt" file Gentoo publishes, falling back
+// to scanning the HTML index when the .txt is unavailable.
+func ResolveStage3(c *Context) (Stage3Info, error) {
+	basename := c.Cfg.Stage3BaseNameFinal()
+	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
+		c.Cfg.Gentoo.Mirror, c.Cfg.Gentoo.Arch, basename)
+
+	var (
+		name string
+		err  error
+	)
+	c.R.logf("Fetching list of current tarballs from %s", releasesURL)
+	if n := resolveFromLatest(c, releasesURL, basename); n != "" {
+		name = n
+	} else if name, err = resolveFromIndex(c, releasesURL, basename); err != nil {
+		return Stage3Info{}, err
+	}
 	return Stage3Info{
 		Basename: name,
 		Path:     filepath.Join(TmpDir, name),

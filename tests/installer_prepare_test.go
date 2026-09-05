@@ -58,11 +58,18 @@ func TestResolveStage3(t *testing.T) {
 	var hits int
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
-		w.Write([]byte(
-			`<a href="stage3-amd64-systemd-20240121T123456Z.tar.xz">` +
-				`<a href="stage3-amd64-systemd-20240121T120000Z.tar.xz">` +
-				`<a href="stage3%20with%25es%2Finside">` +
-				`<a href="other-artifact">`))
+		switch {
+		case strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt"):
+			fmt.Fprint(w, "# Latest as of now\nstage3-amd64-systemd-20240121T123456Z.tar.xz 123456\n")
+		case strings.HasSuffix(r.URL.Path, "/"):
+			fmt.Fprint(w,
+				`<a href="stage3-amd64-systemd-20240121T120000Z.tar.xz">`+
+					`<a href="stage3-amd64-systemd-20240121T123456Z.tar.xz">`+
+					`<a href="stage3%20with%25es%2Finside">`+
+					`<a href="other-artifact">`)
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	defer ts.Close()
 
@@ -77,16 +84,57 @@ func TestResolveStage3(t *testing.T) {
 	if hits != 1 {
 		t.Fatalf("expected 1 listing request, got %d", hits)
 	}
-	if info.Basename != "stage3-amd64-systemd-20240121T120000Z.tar.xz" {
-		t.Fatalf("ResolveStage3 = %q (oldest name wins after sort)", info.Basename)
+	// The authoritative latest-*.txt names the newest tarball, even though
+	// the index also lists an older one.
+	if info.Basename != "stage3-amd64-systemd-20240121T123456Z.tar.xz" {
+		t.Fatalf("ResolveStage3 = %q (want name from latest-*.txt)", info.Basename)
 	}
 	if info.Path != "/tmp/gentoo-install/"+info.Basename {
 		t.Fatalf("ResolveStage3 path = %q", info.Path)
 	}
 }
 
+func TestResolveStage3FallsBackToIndex(t *testing.T) {
+	var hits int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		switch {
+		case strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt"):
+			http.NotFound(w, r)
+		case strings.HasSuffix(r.URL.Path, "/"):
+			fmt.Fprint(w,
+				`<a href="stage3-amd64-systemd-20240121T120000Z.tar.xz">`+
+					`<a href="stage3-amd64-systemd-20240121T123456Z.tar.xz">`+
+					`<a href="other-artifact">`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = ts.URL
+	c, _ := testContext(t, cfg, nil)
+
+	info, err := installer.ResolveStage3(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits != 2 {
+		t.Fatalf("expected 2 requests (.txt then index), got %d", hits)
+	}
+	// Fallback picks the newest tarball from the index.
+	if info.Basename != "stage3-amd64-systemd-20240121T123456Z.tar.xz" {
+		t.Fatalf("ResolveStage3 fallback = %q", info.Basename)
+	}
+}
+
 func TestResolveStage3NoMatch(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt") {
+			http.NotFound(w, r)
+			return
+		}
 		fmt.Fprint(w, "<a href=\"bogus-file\">")
 	}))
 	defer ts.Close()
@@ -129,6 +177,8 @@ func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
 			m.mu.Lock()
 			w.Write(m.payload)
 			m.mu.Unlock()
+		case strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt"):
+			fmt.Fprintf(w, "# Latest\n%s 123456\n", basename)
 		case strings.HasSuffix(r.URL.Path, "/"):
 			fmt.Fprintf(w, `"<a href="%s">`, basename)
 		case strings.Contains(r.URL.Path, "releng") || strings.Contains(r.URL.Path, "openpgpkey"):

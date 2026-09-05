@@ -97,5 +97,7 @@ qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,
 
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2
 
+qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 512
+
 ```
 
