@@ -4,7 +4,9 @@ package tests
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gentooinstall/internal/config"
@@ -102,19 +104,49 @@ func TestLoadOrDefault(t *testing.T) {
 }
 
 func TestResolveSavePath(t *testing.T) {
-	if got, want := config.ResolveSavePath("builds/default.toml"), "builds/custom.toml"; got != want {
-		t.Fatalf("ResolveSavePath(default) = %q, want %q", got, want)
+	cases := map[string]string{
+		"builds/default.toml":             "builds/custom.toml",
+		"builds/custom.toml":              "builds/custom.toml",
+		"builds/openrc.toml":              "builds/custom.toml",
+		"builds/musl.toml":                "builds/custom.toml",
+		"builds/desktop-systemd.toml":     "builds/custom.toml",
+		"/root/builds/default.toml":       "/root/builds/custom.toml",
+		"/root/builds/btrfs-efi.toml":     "/root/builds/custom.toml",
+		"/etc/gentooinstall/default.toml": "/etc/gentooinstall/custom.toml",
 	}
-	if got, want := config.ResolveSavePath("builds/custom.toml"), "builds/custom.toml"; got != want {
-		t.Fatalf("ResolveSavePath(custom) = %q, want %q", got, want)
+	for in, want := range cases {
+		if got := config.ResolveSavePath(in); got != want {
+			t.Fatalf("ResolveSavePath(%q) = %q, want %q", in, got, want)
+		}
 	}
-	p := "/etc/gentooinstall/default.toml"
-	if got, want := config.ResolveSavePath(p), "/etc/gentooinstall/custom.toml"; got != want {
-		t.Fatalf("ResolveSavePath(absolute default) = %q, want %q", got, want)
+	// Paths outside a builds/ directory pass through unchanged, custom.toml
+	// included, so user-owned files are never rewritten or moved.
+	for _, keep := range []string{
+		"/tmp/something.toml",
+		"/etc/gentooinstall/openrc.toml",
+		"/etc/gentooinstall/custom.toml",
+	} {
+		if got := config.ResolveSavePath(keep); got != keep {
+			t.Fatalf("ResolveSavePath(%q) = %q, want unchanged", keep, got)
+		}
 	}
-	other := "/tmp/something.toml"
-	if got := config.ResolveSavePath(other); got != other {
-		t.Fatalf("ResolveSavePath(other) = %q, want %q", got, other)
+}
+
+func TestSaveReportsUnwritableParent(t *testing.T) {
+	dir := t.TempDir()
+	// A regular file in the way of the parent path forces MkdirAll to fail
+	// regardless of the running user, and the error must name the directory.
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := config.Default(true)
+	err := c.Save(filepath.Join(blocker, "sub", "custom.toml"))
+	if err == nil {
+		t.Fatal("Save must fail when the parent directory cannot be created")
+	}
+	if !strings.Contains(err.Error(), blocker) {
+		t.Fatalf("Save error should name the directory, got %v", err)
 	}
 }
 

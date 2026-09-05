@@ -3,6 +3,7 @@ package installer
 import (
 	"crypto/sha512"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,10 @@ import (
 )
 
 const gentooReleaseKeyURL = "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng"
+
+// errNotPublished is returned when a mirror answers 404, so callers can
+// distinguish "this listing does not exist" from a network or server fault.
+var errNotPublished = errors.New("not published")
 
 // Stage3Info describes the resolved stage3 tarball.
 type Stage3Info struct {
@@ -50,6 +55,9 @@ func httpGetBody(r *Runner, url string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return "", fmt.Errorf("%s: %w", url, errNotPublished)
+		}
 		return "", fmt.Errorf("http %s while fetching %s", resp.Status, url)
 	}
 	body, err := io.ReadAll(resp.Body)
@@ -62,13 +70,19 @@ func httpGetBody(r *Runner, url string) (string, error) {
 // resolveFromLatest reads the authoritative "latest-<basename>.txt" listing
 // that Gentoo publishes in every current-* directory (e.g.
 // "stage3-amd64-systemd-20260830T151604Z.tar.xz 290005580"). It returns the
-// current tarball name, or empty if the file is unavailable/unparseable.
-func resolveFromLatest(c *Context, releasesURL, basename string) string {
+// current tarball name. A mirror that does not publish the file (404) yields
+// ("", nil) so the caller can scan the HTML index instead; network or server
+// errors are returned as-is so the failure is not silently masked.
+func resolveFromLatest(c *Context, releasesURL, basename string) (string, error) {
 	latestURL := strings.TrimSuffix(releasesURL, "/") + "/latest-" + basename + ".txt"
 	c.R.logf("Fetching current tarball name from %s", latestURL)
 	body, err := httpGetBody(c.R, latestURL)
+	if errors.Is(err, errNotPublished) {
+		c.R.logf("%s does not publish a latest-%s.txt listing; scanning the index", latestURL, basename)
+		return "", nil
+	}
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("could not fetch current tarball name from %s: %w", latestURL, err)
 	}
 	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimRight(line, "\r")
@@ -79,9 +93,9 @@ func resolveFromLatest(c *Context, releasesURL, basename string) string {
 		if len(fields) < 1 || !strings.HasSuffix(fields[0], ".tar.xz") {
 			continue
 		}
-		return fields[0]
+		return fields[0], nil
 	}
-	return ""
+	return "", fmt.Errorf("no tarball name found in %s", latestURL)
 }
 
 // resolveFromIndex scans the HTML index for tarball names and returns the
@@ -90,7 +104,7 @@ func resolveFromLatest(c *Context, releasesURL, basename string) string {
 func resolveFromIndex(c *Context, releasesURL, basename string) (string, error) {
 	body, err := httpGetBody(c.R, releasesURL)
 	if err != nil {
-		return "", fmt.Errorf("could not retrieve list of tarballs: %w", err)
+		return "", fmt.Errorf("could not retrieve list of tarballs from %s: %w", releasesURL, err)
 	}
 
 	// Decode URL-encoded strings (parity with the python unquote step).
@@ -108,7 +122,7 @@ func resolveFromIndex(c *Context, releasesURL, basename string) (string, error) 
 		names = append(names, n)
 	}
 	if len(names) == 0 {
-		return "", fmt.Errorf("could not parse list of tarballs for %s", basename)
+		return "", fmt.Errorf("could not parse list of tarballs for %s at %s", basename, releasesURL)
 	}
 	sort.Strings(names)
 	return names[len(names)-1], nil
@@ -117,7 +131,9 @@ func resolveFromIndex(c *Context, releasesURL, basename string) (string, error) 
 // ResolveStage3 determines the current tarball filename from the mirror
 // listing (port of download_stage3's listing parsing). It prefers the
 // authoritative "latest-<basename>.txt" file Gentoo publishes, falling back
-// to scanning the HTML index when the .txt is unavailable.
+// to scanning the HTML index only when the .txt is absent (HTTP 404);
+// network or server errors on the preferred listing fail the resolution so
+// the real cause is not hidden.
 func ResolveStage3(c *Context) (Stage3Info, error) {
 	basename := c.Cfg.Stage3BaseNameFinal()
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
@@ -128,10 +144,13 @@ func ResolveStage3(c *Context) (Stage3Info, error) {
 		err  error
 	)
 	c.R.logf("Fetching list of current tarballs from %s", releasesURL)
-	if n := resolveFromLatest(c, releasesURL, basename); n != "" {
-		name = n
-	} else if name, err = resolveFromIndex(c, releasesURL, basename); err != nil {
+	if name, err = resolveFromLatest(c, releasesURL, basename); err != nil {
 		return Stage3Info{}, err
+	}
+	if name == "" {
+		if name, err = resolveFromIndex(c, releasesURL, basename); err != nil {
+			return Stage3Info{}, err
+		}
 	}
 	return Stage3Info{
 		Basename: name,

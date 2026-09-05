@@ -37,12 +37,26 @@ func requireRoot() {
 	}
 }
 
+// defaultConfigPath returns the configuration file used when none is given.
+// It prefers builds/custom.toml next to the process (the repo checkout, the
+// live ISO ramfs, or the release archive, where builds/*.toml always ships)
+// and falls back to the builds/default.toml template until the first save.
+// A bare binary without a builds/ directory (e.g. go install) can neither
+// find nor create one under <cwd>, so it falls back to the per-user config
+// file ($XDG_CONFIG_HOME/gentooinstall/custom.toml), created on first save.
 func defaultConfigPath() string {
-	custom := filepath.Join(cwd(), "builds", config.CustomConfigName)
-	if _, err := os.Stat(custom); err == nil {
-		return custom
+	buildDir := filepath.Join(cwd(), "builds")
+	if _, err := os.Stat(buildDir); err == nil {
+		custom := filepath.Join(buildDir, config.CustomConfigName)
+		if _, err := os.Stat(custom); err == nil {
+			return custom
+		}
+		return filepath.Join(buildDir, config.DefaultConfigName)
 	}
-	return filepath.Join(cwd(), "builds", config.DefaultConfigName)
+	if dir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(dir, "gentooinstall", config.CustomConfigName)
+	}
+	return filepath.Join(cwd(), ".config", "gentooinstall", config.CustomConfigName)
 }
 
 func cwd() string {
@@ -56,8 +70,9 @@ func cwd() string {
 const usage = `gentooinstall — gentoo installer (Go/Charm edition)
 
 Usage:
-  gentooinstall                    Open the interactive configurator (builds/custom.toml,
-                                   or builds/default.toml until the first save).
+  gentooinstall                    Open the interactive configurator (builds/custom.toml, or
+                                   builds/default.toml until the first save; without a builds/
+                                   directory it uses $XDG_CONFIG_HOME/gentooinstall/custom.toml).
   gentooinstall [config.toml]      Open the interactive configurator for the given file.
   gentooinstall install [CONFIG]   Run the installation as configured, streaming raw
                                    output to the terminal (no TUI). CONFIG defaults to
@@ -72,7 +87,8 @@ Usage:
 
 Options:
   -c, --config PATH   Configuration file (default builds/custom.toml if present,
-                      else builds/default.toml)
+                      else builds/default.toml, else the per-user config file
+                      $XDG_CONFIG_HOME/gentooinstall/custom.toml)
   -v, --version       Print version
 
 Pre-made build configurations live in builds/ (default, openrc, musl,

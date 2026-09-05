@@ -52,9 +52,13 @@ func (c *Config) String() string {
 
 // Save writes the config as TOML, creating missing parent directories (e.g.
 // when saving to /builds/custom.toml on the live ISO whose initramfs ships no
-// builds/ dir). A failing mkdir is ignored; WriteFile reports the real error.
+// builds/ dir). A directory that cannot be created is the real failure and is
+// reported as such, naming the parent directory instead of letting WriteFile
+// surface a cryptic error for the file itself.
 func (c *Config) Save(path string) error {
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config directory %s: %w", filepath.Dir(path), err)
+	}
 	return os.WriteFile(path, []byte(c.String()), 0o644)
 }
 
@@ -65,12 +69,16 @@ const (
 	CustomConfigName  = "custom.toml"
 )
 
-// ResolveSavePath returns the path a save should be written to. Saving onto
-// the shipped default template is redirected to the sibling custom.toml so
-// the template is never overwritten; any other path is returned unchanged.
+// ResolveSavePath returns the path a save should be written to. Saving onto a
+// shipped template is redirected to the sibling custom.toml so the read-only
+// templates are never overwritten: this applies to default.toml anywhere, and
+// to every template living inside a builds/ directory (openrc.toml, musl.toml,
+// desktop-systemd.toml, ...). Any other path (e.g. a user file already named
+// custom.toml) is returned unchanged.
 func ResolveSavePath(path string) string {
-	if filepath.Base(path) != DefaultConfigName {
-		return path
+	dir := filepath.Dir(path)
+	if filepath.Base(path) == DefaultConfigName || filepath.Base(dir) == "builds" {
+		return filepath.Join(dir, CustomConfigName)
 	}
-	return filepath.Join(filepath.Dir(path), CustomConfigName)
+	return path
 }

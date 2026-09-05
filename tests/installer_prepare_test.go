@@ -148,6 +148,37 @@ func TestResolveStage3NoMatch(t *testing.T) {
 	}
 }
 
+func TestResolveStage3SurfacesLatestErrors(t *testing.T) {
+	// A server error (not a 404) on the authoritative latest-*.txt listing
+	// must fail with the real cause instead of silently falling back to the
+	// index the way an absent listing (404) legitimately does.
+	var hits int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt") {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = ts.URL
+	c, _ := testContext(t, cfg, nil)
+
+	_, err := installer.ResolveStage3(c)
+	if err == nil {
+		t.Fatal("expected error for failing latest listing")
+	}
+	if !strings.Contains(err.Error(), "latest-stage3-amd64-systemd.txt") {
+		t.Fatalf("error should name the listing URL: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected no index fallback after a real error, got %d requests", hits)
+	}
+}
+
 // stage3Mirror serves the tarball, its DIGESTS file and the release gpg key,
 // recording request counts.
 type stage3Mirror struct {
