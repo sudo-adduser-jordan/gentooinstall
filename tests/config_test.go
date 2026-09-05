@@ -74,6 +74,22 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSaveCreatesParentDirs(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "nested", "dir", "custom.toml")
+	c := config.Default(true)
+	c.System.Hostname = "livehost"
+	if err := c.Save(p); err != nil {
+		t.Fatalf("Save into missing dirs failed: %v", err)
+	}
+	re, err := config.Load(p)
+	if err != nil {
+		t.Fatalf("Load after save failed: %v", err)
+	}
+	if re.System.Hostname != "livehost" {
+		t.Fatalf("round trip mismatch: %+v", re.System)
+	}
+}
+
 func TestLoadOrDefault(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "missing.toml")
 	c, existed, err := config.LoadOrDefault(p, true)

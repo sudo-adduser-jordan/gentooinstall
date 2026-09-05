@@ -50,8 +50,11 @@ func (c *Config) String() string {
 	return buf.String()
 }
 
-// Save writes the config as TOML.
+// Save writes the config as TOML, creating missing parent directories (e.g.
+// when saving to /builds/custom.toml on the live ISO whose initramfs ships no
+// builds/ dir). A failing mkdir is ignored; WriteFile reports the real error.
 func (c *Config) Save(path string) error {
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	return os.WriteFile(path, []byte(c.String()), 0o644)
 }
 

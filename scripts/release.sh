@@ -49,7 +49,10 @@ fi
 MODDIR="/lib/modules/$KERNEL_VER"
 
 echo "Building initramfs..."
-mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub" "$(dirname "$ISO_OUTPUT")"
+mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$ROOTFS/builds" "$BUILD_DIR/boot/grub" "$(dirname "$ISO_OUTPUT")"
+# Ship the config templates so the live ISO mirrors the repo layout: saving
+# the default redirects to /builds/custom.toml (writable ramfs).
+cp builds/*.toml "$ROOTFS/builds/"
 mv init "$ROOTFS/init"
 [[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console" 2>/dev/null || true
 cp "$KERNEL" "$BUILD_DIR/boot/vmlinuz"
