@@ -12,9 +12,19 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 const gentooReleaseKeyURL = "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng"
+
+// stage3DownloadAttempts is how many times DownloadStage3 tries to resolve
+// and fetch the tarball (plus its DIGESTS and the gpg key) before giving up.
+// Transient network faults, mirror hiccups and checksum slips are retried
+// with a short backoff so a flaky connection does not fail the whole install.
+const stage3DownloadAttempts = 3
+
+// stage3RetryBackoff is the pause between download attempts.
+const stage3RetryBackoff = time.Second
 
 // errNotPublished is returned when a mirror answers 404, so callers can
 // distinguish "this listing does not exist" from a network or server fault.
@@ -159,8 +169,28 @@ func ResolveStage3(c *Context) (Stage3Info, error) {
 }
 
 // DownloadStage3 downloads and cryptographically verifies the stage3
-// tarball, resuming via a .verified marker (port of download_stage3).
+// tarball, resuming via a .verified marker (port of download_stage3). The
+// whole resolve+fetch+verify pipeline is retried a few times with a short
+// backoff so transient network or mirror failures do not abort the install;
+// each attempt re-resolves the tarball name and re-fetches everything.
 func DownloadStage3(c *Context) (Stage3Info, error) {
+	info, err := downloadStage3Once(c)
+	if err == nil {
+		return info, nil
+	}
+	for attempt := 1; attempt < stage3DownloadAttempts; attempt++ {
+		c.R.logf("Stage3 download failed (%v); retrying (%d/%d)", err,
+			attempt+1, stage3DownloadAttempts)
+		time.Sleep(stage3RetryBackoff)
+		if info, err = downloadStage3Once(c); err == nil {
+			return info, nil
+		}
+	}
+	return info, err
+}
+
+// downloadStage3Once performs a single resolve + download + verify pass.
+func downloadStage3Once(c *Context) (Stage3Info, error) {
 	info, err := ResolveStage3(c)
 	if err != nil {
 		return info, err

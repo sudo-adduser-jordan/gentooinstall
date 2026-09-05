@@ -17,6 +17,26 @@ func MountRoot(c *Context) error {
 	return MountByID(c, c.Layout.RootID, RootMountpoint)
 }
 
+// ClearRoot removes everything under the root mountpoint except
+// lost+found, so a re-attempted extract starts from a clean filesystem
+// even after a partially completed previous extraction.
+func ClearRoot(c *Context) error {
+	entries, err := c.readDir(RootMountpoint)
+	if err != nil {
+		return fmt.Errorf("could not read '%s': %w", RootMountpoint, err)
+	}
+	for _, e := range entries {
+		if e.Name() == "lost+found" {
+			continue
+		}
+		if err := c.removeAll(RootMountpoint + "/" + e.Name()); err != nil {
+			return fmt.Errorf("could not clear '%s/%s': %w",
+				RootMountpoint, e.Name(), err)
+		}
+	}
+	return nil
+}
+
 // ExtractStage3 unpacks the verified tarball into the root mountpoint
 // (port of extract_stage3).
 func ExtractStage3(c *Context, stage3 Stage3Info) error {

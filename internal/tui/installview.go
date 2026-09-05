@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"regexp"
@@ -28,6 +29,12 @@ const (
 // InstallFunc performs the entire installation, streaming progress via
 // EmitInstallLine and finishing with EmitInstallDone.
 type InstallFunc func() error
+
+// ErrEditAndReturn is returned by an InstallFunc when the user chose to
+// pause the installation and return to the config tabs. The install view
+// resets to idle so a fresh installation can be started again later
+// without leaving the program.
+var ErrEditAndReturn = errors.New("installation paused by user")
 
 // Messages driving the install view.
 type InstallStartMsg struct{}
@@ -267,6 +274,20 @@ func (m *Model) updateInstallMsg(msg tea.Msg) {
 		m.instState = instWaiting
 		m.appendInstLine("[!] Command failed: " + msg.Cmdline + ": " + msg.Err)
 	case InstallDoneMsg:
+		if errors.Is(msg.Err, ErrEditAndReturn) {
+			// The user chose to return to the tabs; reset so a fresh
+			// installation can be started from the Install tab.
+			m.installing = false
+			m.instState = instIdle
+			m.instDemo = false
+			m.fail = nil
+			m.instSteps = nil
+			m.curStep = ""
+			m.curCmd = ""
+			m.appendInstLine("[+] Installation paused. Returned to the tabs; " +
+				"edit the config and restart from the Install tab.")
+			return
+		}
 		if msg.Err != nil {
 			m.instState = instAborted
 			m.appendInstLine("[!] Installation aborted: " + msg.Err.Error())
@@ -358,13 +379,16 @@ func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// leaveInstallView returns to the tabs; a finished demo resets to idle so
-// a real installation can still be started afterwards.
+// leaveInstallView returns to the tabs. A finished or failed installation is
+// reset to idle so a fresh installation can be started again without exiting
+// the program; only a run still waiting on the user's decision keeps its
+// state so it can be resumed with i.
 func (m *Model) leaveInstallView() {
 	m.installing = false
-	if m.instDemo && (m.instState == instDone || m.instState == instAborted) {
+	if m.instState == instDone || m.instState == instAborted {
 		m.instState = instIdle
 		m.instDemo = false
+		m.instSteps = nil
 		m.curStep = ""
 		m.curCmd = ""
 	}

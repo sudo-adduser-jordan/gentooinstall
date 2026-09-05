@@ -187,6 +187,9 @@ type stage3Mirror struct {
 	hits    map[string]int
 	payload []byte
 	hash    string
+	// failTarball rejects the next failTarballN requests for the tarball
+	// (before serving them) with an HTTP error, so retries kick in.
+	failTarballN int
 }
 
 func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
@@ -206,6 +209,12 @@ func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
 			fmt.Fprint(w, digests)
 		case strings.HasSuffix(r.URL.Path, basename):
 			m.mu.Lock()
+			if m.failTarballN > 0 {
+				m.failTarballN--
+				m.mu.Unlock()
+				http.Error(w, "transient failure", http.StatusInternalServerError)
+				return
+			}
 			w.Write(m.payload)
 			m.mu.Unlock()
 		case strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt"):
@@ -230,6 +239,21 @@ func (m *stage3Mirror) count(sub string) int {
 		}
 	}
 	return 0
+}
+
+// countTarball returns the number of requests for exactly the tarball path
+// (the .DIGESTS sibling ends in basename+".DIGESTS", so a substring match
+// against basename would count it too).
+func (m *stage3Mirror) countTarball(basename string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for p, hits := range m.hits {
+		if strings.HasSuffix(p, basename) && !strings.HasSuffix(p, basename+".DIGESTS") {
+			n += hits
+		}
+	}
+	return n
 }
 
 func TestDownloadStage3(t *testing.T) {
@@ -313,6 +337,73 @@ func TestDownloadStage3ChecksumMismatch(t *testing.T) {
 
 	if _, err := installer.DownloadStage3(c); err == nil {
 		t.Fatal("expected checksum mismatch error")
+	}
+}
+
+func TestDownloadStage3RetriesTransientFailures(t *testing.T) {
+	payload := []byte("the tarball bytes")
+	mirror := newStage3Mirror(t, payload)
+	defer mirror.ts.Close()
+	mirror.mu.Lock()
+	mirror.failTarballN = 2 // first two tarball fetches fail with a 500
+	mirror.mu.Unlock()
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = mirror.ts.URL
+	c, s := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install")
+
+	info, err := installer.DownloadStage3(c)
+	if err != nil {
+		t.Fatalf("DownloadStage3 should survive transient failures: %v", err)
+	}
+	if info.Basename != "stage3-amd64-systemd-20240121T123456Z.tar.xz" {
+		t.Fatalf("basename = %q", info.Basename)
+	}
+	if got := mirror.countTarball(info.Basename); got < 3 {
+		t.Fatalf("tarball fetched %d times, want 3 (2 failures + success)", got)
+	}
+	stored := readScratch(t, c, info.Path)
+	if stored != string(payload) {
+		t.Fatalf("stored tarball = %q, want payload", stored)
+	}
+	assertCmdContains(t, s, []string{
+		"gpg --quiet --import " + filepath.Join(c.Root, "/tmp/gentoo-install/gentoo-keys.gpg"),
+		"gpg --quiet --verify " + filepath.Join(c.Root, "/tmp/gentoo-install/"+info.Basename+".DIGESTS"),
+	})
+}
+
+func TestClearRoot(t *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Disk.UseSwap = false
+	c, _ := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install/root")
+	writeScratch(t, c, "/tmp/gentoo-install/root/etc/os-release", "id=gentoo\n")
+	writeScratch(t, c, "/tmp/gentoo-install/root/partial", "x")
+	mkScratchDir(t, c, "/tmp/gentoo-install/root/lost+found")
+
+	if err := installer.ClearRoot(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/tmp/gentoo-install/root/etc")); !os.IsNotExist(err) {
+		t.Fatalf("etc must be cleared after ClearRoot (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/tmp/gentoo-install/root/partial")); !os.IsNotExist(err) {
+		t.Fatalf("partial must be cleared after ClearRoot (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/tmp/gentoo-install/root/lost+found")); err != nil {
+		t.Fatalf("lost+found must survive ClearRoot: %v", err)
+	}
+}
+
+func TestClearRootEmpty(t *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Disk.UseSwap = false
+	c, _ := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install/root")
+
+	if err := installer.ClearRoot(c); err != nil {
+		t.Fatal(err)
 	}
 }
 

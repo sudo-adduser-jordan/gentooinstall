@@ -693,12 +693,33 @@ type tuiInstaller struct {
 	path   string
 	r      *installer.Runner
 	decide chan tui.InstallDecision
+
+	// decided records that the user has already answered a prompt for the
+	// current step. It prevents a command-level abort (the user chose
+	// "Abort" on the runner's OnFailure prompt) from also triggering a
+	// second, redundant phase-level prompt for the same failure.
+	decided bool
 }
 
 // awaitDecision reports a failure to the install window and blocks
 // until the user answers. Choosing Editor saves the (validated) config
-// and keeps waiting so edits apply to subsequent steps.
+// and keeps waiting, so edits apply to subsequent steps that the
+// install routine re-runs after returning here.
 func (t *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecision {
+	return t.awaitDecisionCore(cmdline, err, false)
+}
+
+// awaitPhaseDecision reports a phase-level failure and blocks until the
+// user answers. Unlike awaitDecision, choosing Editor saves the config
+// and returns DecideEditor so the installation can be restarted from the
+// configurator rather than looping on the same phase.
+func (t *tuiInstaller) awaitPhaseDecision(cmdline string, err error) tui.InstallDecision {
+	return t.awaitDecisionCore(cmdline, err, true)
+}
+
+// awaitDecisionCore implements the shared decision loop.
+func (t *tuiInstaller) awaitDecisionCore(cmdline string, err error, editorReturns bool) tui.InstallDecision {
+	t.decided = true
 	for {
 		tui.EmitInstallFailed(tui.InstallFailedMsg{
 			Cmdline: cmdline,
@@ -707,9 +728,7 @@ func (t *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecis
 			Shell:   func() *exec.Cmd { return t.r.ShellCmd() },
 		})
 		switch d := <-t.decide; d {
-		case tui.DecideRetry:
-			return d
-		case tui.DecideAbort:
+		case tui.DecideRetry, tui.DecideAbort:
 			return d
 		case tui.DecideEditor:
 			if errs := t.cfg.Validate(); len(errs) > 0 {
@@ -721,6 +740,9 @@ func (t *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecis
 				continue
 			}
 			tui.EmitInstallLine("[+] Configuration saved; retry when ready.")
+			if editorReturns {
+				return d
+			}
 		default:
 			return tui.DecideAbort
 		}
@@ -742,6 +764,7 @@ func (t *tuiInstaller) newRunner() *installer.Runner {
 	r.NonInteractive = true
 	r.OnFailure = func(cmdline string, err error) installer.FailAction {
 		if t.awaitDecision(cmdline, err) == tui.DecideRetry {
+			t.decided = false // the phase may still complete; keep retry options open
 			return installer.FailRetry
 		}
 		return installer.FailAbort
@@ -799,37 +822,92 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		time.Sleep(time.Second)
 	}
 
-	t.logf("Applying disk configuration")
-	if err := installer.ApplyDiskActions(c); err != nil {
-		return err
+	// The remaining host-side steps run as decidable phases: any failure
+	// pauses the install and lets the user Retry the phase, open the
+	// emergency shell, return to the config tabs (DecideEditor) or abort.
+	// Retries only re-run the failed phase; it must remain safe to repeat
+	// without re-partitioning already-handled disks.
+	phases := []struct {
+		name      string
+		cleanRoot bool // clear the root mountpoint before a retry
+		fn        func() error
+	}{
+		{"Applying disk configuration", false,
+			func() error { return installer.ApplyDiskActions(c) }},
+		{"Downloading stage3", false,
+			func() error {
+				_, err := installer.DownloadStage3(c)
+				return err
+			}},
+		{"Extracting stage3", true,
+			func() error {
+				return installer.ExtractStage3(c,
+					installer.Stage3Info{Path: c.Stage3File})
+			}},
+		{"Mounting efivars", false,
+			func() error { return installer.MountEfiVars(c) }},
+		{"Preparing chroot environment", false,
+			func() error { return installer.PrepareChrootEnv(c, installer.RootMountpoint) }},
 	}
-	t.logf("Disk configuration was applied successfully")
-
-	stage3, err := installer.DownloadStage3(c)
-	if err != nil {
-		return err
-	}
-	if err := installer.ExtractStage3(c, stage3); err != nil {
-		return err
-	}
-
-	if c.IsEFI() {
-		if err := installer.MountEfiVars(c); err != nil {
+	for _, ph := range phases {
+		if ph.name == "Mounting efivars" && !c.IsEFI() {
+			continue
+		}
+		if err := t.runPhase(c, ph.name, ph.cleanRoot, ph.fn); err != nil {
+			if errors.Is(err, tui.ErrEditAndReturn) {
+				return tui.ErrEditAndReturn
+			}
 			return err
 		}
-	}
-
-	if err := installer.PrepareChrootEnv(c, installer.RootMountpoint); err != nil {
-		return err
 	}
 	for {
 		err := installer.EnterChroot(c, installer.RootMountpoint)
 		if err == nil {
 			return nil
 		}
-		if t.awaitDecision("gentooinstall --in-chroot (chroot phase)", err) == tui.DecideAbort {
+		switch t.awaitPhaseDecision("gentooinstall --in-chroot (chroot phase)", err) {
+		case tui.DecideRetry:
+			tui.EmitInstallLine("Re-entering chroot phase…")
+		case tui.DecideAbort:
 			return fmt.Errorf("aborted after chroot phase failure: %w", err)
+		default:
+			return tui.ErrEditAndReturn
 		}
-		t.logf("Re-entering chroot phase…")
+	}
+}
+
+// runPhase runs one installation phase, pausing on failure so the user can
+// decide how to proceed. A nil return means the phase succeeded; returning
+// tui.ErrEditAndReturn means the user chose to edit the config and the
+// install should hand control back to the configurator.
+func (t *tuiInstaller) runPhase(c *installer.Context, name string, cleanRoot bool, fn func() error) error {
+	t.decided = false
+	t.logf(name)
+	for {
+		err := fn()
+		if err == nil {
+			t.decided = false
+			return nil
+		}
+		if t.decided {
+			// The failure was already answered at the command level; do not
+			// prompt a second time for the same underlying error.
+			t.decided = false
+			return fmt.Errorf("%s failed: %w", name, err)
+		}
+		switch t.awaitPhaseDecision(name, err) {
+		case tui.DecideRetry:
+			t.decided = false // the retried phase may fail again; re-prompt then
+			if cleanRoot {
+				if ce := installer.ClearRoot(c); ce != nil {
+					return fmt.Errorf("%s: could not clean root: %w", name, ce)
+				}
+			}
+			tui.EmitInstallLine("Retrying " + name + " …")
+		case tui.DecideAbort:
+			return fmt.Errorf("%s failed: %w", name, err)
+		default:
+			return tui.ErrEditAndReturn
+		}
 	}
 }

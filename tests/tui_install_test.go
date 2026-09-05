@@ -55,11 +55,14 @@ func TestTuiInstallStreamsAndFinishes(t *testing.T) {
 	if model.InstallState() != "done" {
 		t.Fatalf("state = %s, want done", model.InstallState())
 	}
-	// e returns to the tabs.
+	// e returns to the tabs and resets so a fresh install can begin again.
 	mm, _ = model.Update(keyRunes('e'))
 	model = mm.(*tui.Model)
 	if model.InstallActive() {
 		t.Fatal("e must leave the install view")
+	}
+	if model.InstallState() != "idle" {
+		t.Fatalf("state = %s, want idle after leaving a finished install", model.InstallState())
 	}
 }
 
@@ -171,6 +174,35 @@ func TestTuiInstallConfirmation(t *testing.T) {
 	if !model.InstallActive() || model.InstallState() != "running" {
 		t.Fatalf("confirming Start must launch the install: active=%v state=%s",
 			model.InstallActive(), model.InstallState())
+	}
+}
+
+func TestTuiInstallPauseResetsToIdle(t *testing.T) {
+	m, _ := newInstallModel(t)
+	mm, _ := m.Update(tui.InstallStartMsg{})
+	model := mm.(*tui.Model)
+
+	// The install routine returns ErrEditAndReturn when the user chose to
+	// return to the config tabs; the install view must reset to idle so a
+	// fresh installation can be started again without exiting the program.
+	mm, _ = model.Update(tui.InstallDoneMsg{Err: tui.ErrEditAndReturn})
+	model = mm.(*tui.Model)
+	if model.InstallActive() {
+		t.Fatal("pausing must leave the install view")
+	}
+	if model.InstallState() != "idle" {
+		t.Fatalf("state = %s, want idle", model.InstallState())
+	}
+
+	// i on the Install tab now opens the fresh-start confirmation instead of
+	// re-showing the paused run.
+	mm, _ = model.Update(keyRunes('6'))
+	model = mm.(*tui.Model)
+	mm, _ = model.Update(keyRunes('i'))
+	model = mm.(*tui.Model)
+	view := model.View()
+	if !strings.Contains(view, "Start installation") {
+		t.Fatalf("i should open a fresh installation confirmation, got:\n%s", view)
 	}
 }
 
