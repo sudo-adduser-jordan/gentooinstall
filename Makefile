@@ -16,7 +16,7 @@ test: vet
 	go test ./...
 
 vm-test: vet
-	GENTOOINSTALL_E2E=1 go test -count=1 -v -run 'TestISOBoots' ./tests/
+	GENTOOINSTALL_E2E=1 go test -count=1 -v -run 'TestISOBoots|TestISOBootNetwork' ./tests/
 
 vet:
 	go vet ./...

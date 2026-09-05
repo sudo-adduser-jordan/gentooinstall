@@ -82,10 +82,26 @@ func isMounted(target string) bool {
 // logf writes a line to the console and best-effort mirrors it to the first
 // serial port, so headless serial boots (and the QEMU e2e) observe live-init
 // progress even though /dev/console resolves to the framebuffer (tty0) when
-// grub.cfg lists console=tty0 last.
+// grub.cfg lists console=tty0 last. It is intended for the synchronous boot
+// sequence that completes before setupFBTty rebinds stdio to the framebuffer
+// tty the TUI renders on; use logSerial for anything that may fire later.
 func logf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stdout, msg)
+	writeSerial(msg)
+}
+
+// logSerial writes a line to the first serial port only (never stdio), for
+// log output produced after the live boot has handed the terminal to the TUI
+// (e.g. the background DHCP bring-up): writing to stdout there would smear
+// across the framebuffer tty that /dev/tty1 now owns.
+func logSerial(format string, args ...any) {
+	writeSerial(fmt.Sprintf(format, args...))
+}
+
+// writeSerial best-effort mirrors msg to /dev/ttyS0 so headless serial consoles
+// (and the QEMU e2e) observe live-init progress.
+func writeSerial(msg string) {
 	if f, err := os.OpenFile("/dev/ttyS0", os.O_WRONLY, 0); err == nil {
 		_, _ = f.WriteString(msg + "\n")
 		_ = f.Close()
@@ -184,14 +200,13 @@ func tryDHCP() {
 				dhcpDone = true
 				dhcpSucceed = true
 				dhcpMu.Unlock()
+				logDHCPUp(iface)
 				return
 			}
+			logSerial("live: dhcp %s: %v", iface, last)
 		}
-		if last == nil {
-			dhcpMu.Lock()
-			dhcpDone = true
-			dhcpSucceed = true
-			dhcpMu.Unlock()
+		if len(ifaces) == 0 {
+			logSerial("live: dhcp: no network interfaces to configure")
 			return
 		}
 		time.Sleep(2 * time.Second)
@@ -201,8 +216,34 @@ func tryDHCP() {
 	dhcpMu.Unlock()
 }
 
+// logDHCPUp reports a successful DHCP bring-up on the serial console so headless
+// e2e tests can assert the network (and /etc/resolv.conf) came up, mirroring
+// what the tarball/mirror fetches depend on. Serial-only: this runs in the
+// background after the TUI owns the terminal.
+func logDHCPUp(iface string) {
+	logSerial("live: dhcp %s: up", iface)
+	if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
+		conf := strings.TrimSpace(string(data))
+		if conf != "" {
+			logSerial("live: resolv.conf:\n%s", conf)
+		} else {
+			logSerial("live: resolv.conf: (empty)")
+		}
+	} else {
+		logSerial("live: resolv.conf: %v", err)
+	}
+}
+
 func dhcpUp(iface string) error {
-	cmd := exec.Command("udhcpc", "-i", iface, "-n", "-q", "-s", "/etc/udhcpc/default.script")
+	// Bring the interface up first; busybox udhcpc relies on the interface
+	// being admin-up to send DHCPDISCOVER. QEMU user-net's internal DHCP server
+	// answers on 10.0.2.2 and hands out 10.0.2.15.
+	_ = exec.Command("ip", "link", "set", iface, "up").Run()
+	// Bound the attempts (-t/ -T) so a missing server gives up in a few seconds
+	// instead of letting udhcpc idle for minutes; -n exits if no lease is
+	// obtained rather than looping forever.
+	cmd := exec.Command("udhcpc", "-i", iface, "-n", "-q", "-t", "3", "-T", "2",
+		"-s", "/etc/udhcpc/default.script")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("udhcpc %s: %w: %s", iface, err, strings.TrimSpace(string(out)))

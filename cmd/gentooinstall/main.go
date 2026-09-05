@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -175,6 +176,11 @@ func main() {
 		if err := live.Init(); err != nil {
 			fmt.Fprintf(os.Stderr, "live init: %v\n", err)
 		}
+		// Probe the default mirror in the background and mirror the result to
+		// the serial console so headless e2e tests can assert that DNS + outbound
+		// HTTPS + CA certs all work inside the ISO (the things the tarball fetch
+		// depends on). This never blocks the TUI from opening.
+		go probeMirrorSerial()
 		setupFBTty()
 	}
 
@@ -233,6 +239,43 @@ func mirrorSerialBanner(msg string) {
 		_, _ = f.WriteString(msg)
 		_ = f.Close()
 	}
+}
+
+// probeMirrorSerial resolves the default Gentoo mirror over the live network
+// and mirrors the outcome to the serial console (`live: mirror <host>: ok` /
+// `fail: <note>`). It only takes effect when running as the live-ISO init.
+// It waits briefly for the concurrent DHCP bring-up to populate /etc/resolv.conf
+// so the probe exercises real DNS + outbound HTTPS + CA certs end-to-end.
+func probeMirrorSerial() {
+	if os.Getpid() != 1 {
+		return
+	}
+	mirror := config.Default(false).Gentoo.Mirror
+	for i := 0; i < 6; i++ {
+		if live.NetworkReady() {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	host := sysinfo.MirrorHost(mirror)
+	st := sysinfo.MirrorProbe(ctx, mirror)
+	// Serial-only: this runs in a goroutine after the TUI owns the terminal, so
+	// a stdout write here would smear across the TUI's framebuffer tty.
+	mirrorSerialBanner(fmt.Sprintf("live: mirror %s: %s\n", host, noteToSerial(st)))
+}
+
+// noteToSerial maps a probe status to the serial-friendly ok/fail summary used
+// by the headless mirror self-check.
+func noteToSerial(st sysinfo.MirrorStatus) string {
+	if st.OK {
+		return "ok"
+	}
+	if st.Note == "" {
+		return "fail: unreachable"
+	}
+	return "fail: " + st.Note
 }
 
 // runGIF records the simulated install demo as an animated GIF by driving

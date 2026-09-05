@@ -56,8 +56,12 @@ Guidance for AI coding agents working in this repository.
 make build      # produces ./bin/gentooinstall
 make test       # go vet ./... && go test ./...
 make fmt        # gofmt -l -w .
-make iso        # builds the live ISO (scripts/release.sh -> ./bin/gentooinstall.iso)
-make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
+make iso        # builds the live ISO (scripts/release.sh -> ./bin/gentooinstall.iso;
+                # needs network to dl-cdn.alpinelinux.org and host cpio/gzip/
+                # grub-mkrescue/xorriso/modprobe)
+make vm-test    # QEMU e2e: TestISOBoots + TestISOBootNetwork. Needs qemu-system,
+                # qemu-img, grub-mkrescue/xorriso, a build-host kernel and
+                # outbound access to the Gentoo mirror.
 ```
 
 ## Reference material when porting
@@ -79,31 +83,37 @@ make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
 ## Notes
 Interactive boot (keyboard + monitor, opens the TUI in the window):
 
-
 ```sh
+make iso
 qemu-system-x86_64 -cdrom bin/gentooinstall.iso
-
 ```
 
 Full install loop: create a drive image, boot the ISO with it attached to
 install onto, then boot the installed OS from the drive (both with keyboard +
-monitor):
-
+monitor). Without a NIC (and the DHCP/DNS it brings up) the tarball/mirror
+fetches fail, so always attach a user-mode NIC:
 
 ```sh
+make iso
 qemu-img create -f qcow2 bin/gentoo-disk.img 20G
-
-qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,format=qcow2
-
-qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2
-
-qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 512
 
 qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2 \
   -netdev user,id=net0 \
-  -device virtio-net-pci,netdev=net0 -m 512
+  -device e1000,netdev=net0 -m 512
 
+qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 512
 ```
+
+Notes:
+- `make iso` (scripts/release.sh) needs network to dl-cdn.alpinelinux.org to
+  bootstrap the live rootfs, and host cpio/gzip/grub-mkrescue/xorriso/modprobe.
+- The NIC must be one the live initramfs actually bundles: the ISO ships module
+  files for the build-host kernel, and `e1000` is reliably present. QEMU's
+  user-mode DHCP serves 10.0.2.2/3 and the live init writes /etc/resolv.conf.
+- `virtio-net-pci` works only if the build-host kernel ships a standalone
+  `virtio_net.ko`; distro kernels often build it in, so prefer `e1000`.
+  `make vm-test`'s TestISOBootNetwork boot-tests exactly this e1000 + DHCP +
+  DNS + mirror-reachability path on the serial console.
 
