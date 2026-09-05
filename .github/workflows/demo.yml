@@ -32,8 +32,8 @@ jobs:
           go install github.com/charmbracelet/vhs@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Install ffmpeg and ttyd
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg ttyd
+      - name: Install ffmpeg, ttyd and emoji font
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg ttyd fonts-noto-color-emoji
 
       - name: Record demo.gif
         env:
