@@ -99,5 +99,12 @@ qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2
 
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 512
 
+qemu-system-x86_64 \
+  -cdrom bin/gentooinstall.iso \
+  -drive file=bin/gentoo-disk.img,format=qcow2 \
+  -netdev user,id=net0 \
+  -device virtio-net-pci,netdev=net0 -m 512
+
+
 ```
 

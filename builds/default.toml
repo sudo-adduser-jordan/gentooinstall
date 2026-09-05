@@ -5,9 +5,9 @@
     scheme = "classic_single_disk"
     boot_type = "efi"
     device = "/dev/sdX"
-    use_swap = true
+    use_swap = false
     swap_size = "8GiB"
-    use_luks = true
+    use_luks = false
     root_fs = "ext4"
     zfs_pool_type = "standard"
     zfs_compression = "zstd"
