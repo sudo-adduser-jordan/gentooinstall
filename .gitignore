@@ -1,3 +1,5 @@
 bin
 dist
 builds/custom.toml
+rootfs
+iso_build

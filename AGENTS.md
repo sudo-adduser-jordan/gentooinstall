@@ -105,6 +105,5 @@ qemu-system-x86_64 \
   -netdev user,id=net0 \
   -device virtio-net-pci,netdev=net0 -m 512
 
-
 ```
 
