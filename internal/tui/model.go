@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"gentooinstall/internal/config"
+	"gentooinstall/internal/live"
 	"gentooinstall/internal/sysinfo"
 )
 
@@ -49,6 +51,11 @@ type Model struct {
 	status        string
 	statusKind    int // stOK, stErr
 	savedFlash    bool
+
+	// Mirror reachability indicator (bordered box left of the config path).
+	mirrorState int    // mirrorUnknown, mirrorChecking, mirrorOK, mirrorDown
+	mirrorNote  string // short diagnostic shown when down
+	mirrorHost  string // cached scheme://host of the selected mirror
 
 	// overlay is any modal element stacked above the tab UI.
 	overlay     overlay
@@ -102,6 +109,18 @@ type overlay struct {
 	note string // optional hint line for text overlays
 }
 
+// Mirror indicator states.
+const (
+	mirrorUnknown = iota
+	mirrorChecking
+	mirrorOK
+	mirrorDown
+)
+
+// mirrorPollInterval is how often the indicator re-probes the selected mirror
+// so it recovers automatically once the live ISO's background DHCP comes up.
+const mirrorPollInterval = 10 * time.Second
+
 const (
 	ovNone = iota
 	ovHelp
@@ -127,9 +146,46 @@ func clearSavedAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return savedClearMsg{} })
 }
 
+// MirrorProbeMsg carries the result of an asynchronous mirror reachability
+// probe back into the model.
+type MirrorProbeMsg struct {
+	OK   bool
+	Note string
+}
+
+// mirrorProbeCmd probes the currently selected Gentoo mirror in the
+// background and returns the result as a MirrorProbeMsg.
+func (m *Model) mirrorProbeCmd() tea.Cmd {
+	mirror := m.cfg.Gentoo.Mirror
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		st := sysinfo.MirrorProbe(ctx, mirror)
+		return MirrorProbeMsg{OK: st.OK, Note: st.Note}
+	}
+}
+
+// mirrorTickCmd schedules the next periodic mirror probe so the indicator
+// recovers once the live ISO network (DHCP) comes up.
+func (m *Model) mirrorTickCmd() tea.Cmd {
+	return tea.Tick(mirrorPollInterval, func(time.Time) tea.Msg { return mirrorTickMsg{} })
+}
+
+type mirrorTickMsg struct{}
+
+// probeMirror marks the mirror as "checking" (unless it is already ok) and
+// kicks off a probe plus the periodic re-check.
+func (m *Model) probeMirror() tea.Cmd {
+	if m.mirrorState != mirrorOK {
+		m.mirrorState = mirrorChecking
+	}
+	return tea.Batch(m.mirrorProbeCmd(), m.mirrorTickCmd())
+}
+
 // New builds the configurator model.
 func New(cfg *config.Config, cfgPath string) *Model {
-	m := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI()}
+	m := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI(),
+		mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror)}
 	m.tabs = buildTabs(m)
 	for range m.tabs {
 		m.cursors = append(m.cursors, 0)
@@ -142,10 +198,21 @@ func New(cfg *config.Config, cfgPath string) *Model {
 	return m
 }
 
+// mirrorHostName returns the host portion of the mirror URL for display,
+// falling back to "mirror" when the URL cannot be parsed.
+func mirrorHostName(mirror string) string {
+	if h := sysinfo.MirrorHost(mirror); h != "" {
+		return h
+	}
+	return "mirror"
+}
+
 func (m *Model) markDirty() { m.dirty = true }
 
 // Init implements tea.Model.
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd {
+	return m.probeMirror()
+}
 
 // visibleRows returns indexes of visible fields for a tab.
 func (m *Model) visibleRows(tab int) []int {
@@ -213,6 +280,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case savedClearMsg:
 		m.savedFlash = false
+
+	case MirrorProbeMsg:
+		if msg.OK {
+			m.mirrorState = mirrorOK
+			m.mirrorNote = ""
+		} else {
+			m.mirrorState = mirrorDown
+			m.mirrorNote = msg.Note
+			if m.mirrorNote == "" {
+				m.mirrorNote = "unreachable"
+			}
+			if !live.NetworkReady() {
+				m.mirrorNote = "no network — DHCP still configuring"
+			}
+		}
+		m.mirrorHost = mirrorHostName(m.cfg.Gentoo.Mirror)
+		return m, nil
+
+	case mirrorTickMsg:
+		// The ticker is strictly self-renewing (one tick arms exactly one
+		// successor tick and one probe), so periodic re-probes run at a
+		// steady cadence — including while the mirror is unreachable — and
+		// the indicator recovers automatically once DHCP comes up.
+		if m.mirrorState != mirrorOK {
+			m.mirrorState = mirrorChecking
+		}
+		return m, tea.Batch(m.mirrorProbeCmd(), m.mirrorTickCmd())
 
 	case tea.KeyMsg:
 		if m.overlay.kind != ovNone {
@@ -330,12 +424,17 @@ func (m *Model) activateRow() (tea.Model, tea.Cmd) {
 		m.markDirty()
 		m.status = ""
 	case kText, kMultiText:
-		m.openText("Edit "+f.label, f.getText(m.cfg), f.multi,
-			func(mm *Model, v string) {
-				f.setText(mm.cfg, v)
-				mm.dirty = true
-				mm.status = ""
-			})
+		onDone := func(mm *Model, v string) {
+			f.setText(mm.cfg, v)
+			mm.dirty = true
+			mm.status = ""
+			if f.watchMirror {
+				mm.mirrorState = mirrorChecking
+				mm.mirrorHost = ""
+				mm.deferredCmd = tea.Batch(mm.mirrorProbeCmd(), mm.mirrorTickCmd())
+			}
+		}
+		m.openText("Edit "+f.label, f.getText(m.cfg), f.multi, onDone)
 	case kChoice:
 		if f.onPick != nil {
 			f.onPick(m, f, "") // custom pickers manage themselves
@@ -490,7 +589,7 @@ func (m *Model) View() string {
 
 	logo := renderLogo()
 	tabs := m.renderTabBar()
-	pathBox := m.pathLine()
+	pathBox := lipgloss.JoinHorizontal(lipgloss.Top, m.mirrorLine(), " ", m.pathLine())
 	left := lipgloss.JoinVertical(lipgloss.Top, logo, "", m.renderHints())
 
 	// Render the status message to the right of the path box.
@@ -684,6 +783,31 @@ func (m *Model) labelWidth() int {
 		}
 	}
 	return minInt(maxInt(w, 22)+2, maxInt(24, m.bodyWidth()/2))
+}
+
+// mirrorLine renders the mirror reachability indicator as a bordered box
+// shown to the left of the config file path. It shows "Mirror <host>" with a
+// spinner while probing, a green ✓ when reachable, and a red ✗ with a short
+// diagnostic when not (the live ISO shows "no network" while DHCP is still
+// coming up).
+func (m *Model) mirrorLine() string {
+	host := m.mirrorHost
+	if host == "" {
+		host = mirrorHostName(m.cfg.Gentoo.Mirror)
+	}
+	label := eGlobe + " Mirror " + truncateRunes(host, 28)
+	switch m.mirrorState {
+	case mirrorChecking, mirrorUnknown:
+		return mirrorBoxWarnStyle.Render(spinnerStyle.Render("…") + " " + label + " checking…")
+	case mirrorOK:
+		return mirrorBoxValidStyle.Render(label + " " + okStyle.Render("✓"))
+	default: // mirrorDown
+		note := m.mirrorNote
+		if note == "" {
+			note = "unreachable"
+		}
+		return mirrorBoxInvalidStyle.Render(label + " " + errorStyle.Render("✗") + " " + truncateRunes(note, 24))
+	}
 }
 
 // pathLine renders the config file path inside a bordered box whose color

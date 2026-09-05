@@ -484,10 +484,14 @@ func buildTabs(m *Model) []tabDef {
 			f.vis = func(cc *config.Config) bool { return cc.Gentoo.PortageSyncType == "git" }
 			return f
 		}(),
-		text("Gentoo mirror",
-			"Initial gentoo mirror used during installation (full path incl. subdirectories).",
-			func(cc *config.Config) string { return cc.Gentoo.Mirror },
-			func(cc *config.Config, v string) { cc.Gentoo.Mirror = v }),
+		func() *field {
+			f := text("Gentoo mirror",
+				"Initial gentoo mirror used during installation (full path incl. subdirectories).",
+				func(cc *config.Config) string { return cc.Gentoo.Mirror },
+				func(cc *config.Config, v string) { cc.Gentoo.Mirror = v })
+			f.watchMirror = true
+			return f
+		}(),
 		choice("Gentoo arch",
 			func() []option { return listToOpts(config.Archs) },
 			func(cc *config.Config) string { return cc.Gentoo.Arch },

@@ -12,6 +12,14 @@ import (
 	"strings"
 )
 
+// NetworkReady reports whether the live-init network bring-up has finished and
+// succeeded. On the live ISO the first DHCP attempt is done before the TUI
+// opens, but subsequent retries happen in the background; the mirror
+// indicator uses this so the user sees "DHCP still configuring" instead of a
+// raw HTTP fetch error. Outside the live init (non-PID-1), this always
+// returns true, since the host network is already up.
+var NetworkReady = func() bool { return true }
+
 // NeedModules is the curated set of storage drivers the live init loads so
 // disks appear under /dev even without udev/hotplug in the live rootfs. The
 // modules themselves are bundled into the initramfs by scripts/release.sh

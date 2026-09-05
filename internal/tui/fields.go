@@ -32,6 +32,10 @@ type field struct {
 	getStrings  func(*config.Config) []string
 	setStrings  func(*config.Config, []string)
 	multiChoice bool
+
+	// watchMirror marks the "Gentoo mirror" text row so editing it re-probes
+	// the mirror reachability indicator.
+	watchMirror bool
 }
 
 type fieldKind int

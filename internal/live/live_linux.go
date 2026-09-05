@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -154,6 +155,24 @@ func moduleLoaded(name string) bool {
 // tryDHCP brings up the first physical interface with udhcpc, retrying a few
 // times because the network driver may still be probing. It runs in the
 // background so it never delays the TUI.
+// dhcpDone is set once each interface attempt has finished (succeeded or
+// given up), so callers can tell whether the network may still be coming up.
+var (
+	dhcpMu      sync.Mutex
+	dhcpDone    bool
+	dhcpSucceed bool
+)
+
+func init() {
+	// The default NetworkReady (externally visible) reports whether the live
+	// DHCP bring-up has succeeded; it is consulted by the mirror indicator.
+	NetworkReady = func() bool {
+		dhcpMu.Lock()
+		defer dhcpMu.Unlock()
+		return dhcpSucceed
+	}
+}
+
 func tryDHCP() {
 	for attempt := 1; attempt <= 3; attempt++ {
 		ifaces := Interfaces()
@@ -161,14 +180,25 @@ func tryDHCP() {
 		for _, iface := range ifaces {
 			last = dhcpUp(iface)
 			if last == nil {
+				dhcpMu.Lock()
+				dhcpDone = true
+				dhcpSucceed = true
+				dhcpMu.Unlock()
 				return
 			}
 		}
 		if last == nil {
+			dhcpMu.Lock()
+			dhcpDone = true
+			dhcpSucceed = true
+			dhcpMu.Unlock()
 			return
 		}
 		time.Sleep(2 * time.Second)
 	}
+	dhcpMu.Lock()
+	dhcpDone = true
+	dhcpMu.Unlock()
 }
 
 func dhcpUp(iface string) error {
