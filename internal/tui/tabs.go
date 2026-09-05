@@ -13,10 +13,24 @@ import (
 
 const customDeviceMarker = "<enter custom path>"
 
+// BlockDevices lists the block devices offered by the disk picker. It is
+// overridable so tests can exercise the no-devices fallback.
+var BlockDevices = sysinfo.Devices
+
+// qemuFallbackDevices are offered when no block device could be discovered,
+// so a QEMU VM whose disk driver did not load can still target a device.
+var qemuFallbackDevices = []option{
+	{Value: "/dev/sda", Desc: "QEMU default (IDE/SATA)"},
+	{Value: "/dev/vda", Desc: "QEMU virtio-blk"},
+}
+
 func deviceOptions() []option {
 	opts := []option{}
-	for _, d := range sysinfo.Devices() {
+	for _, d := range BlockDevices() {
 		opts = append(opts, option{Value: d, Desc: ""})
+	}
+	if len(opts) == 0 {
+		opts = append(opts, qemuFallbackDevices...)
 	}
 	return append(opts, option{Value: customDeviceMarker, Desc: "type a path manually"})
 }

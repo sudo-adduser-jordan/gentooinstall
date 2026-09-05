@@ -19,6 +19,7 @@ import (
 	"gentooinstall/internal/config"
 	"gentooinstall/internal/disklayout"
 	"gentooinstall/internal/installer"
+	"gentooinstall/internal/live"
 	"gentooinstall/internal/sysinfo"
 	"gentooinstall/internal/tui"
 )
@@ -152,6 +153,12 @@ func main() {
 		msg := fmt.Sprintf("gentooinstall init: PID 1, version %s\n", version)
 		fmt.Print(msg)
 		mirrorSerialBanner(msg)
+		// Bootstrap the live environment (mount proc/sys/dev, load the bundled
+		// storage drivers so disks appear, bring up DHCP). Best-effort: any
+		// failure is logged but never keeps the TUI from starting.
+		if err := live.Init(); err != nil {
+			fmt.Fprintf(os.Stderr, "live init: %v\n", err)
+		}
 		setupFBTty()
 	}
 

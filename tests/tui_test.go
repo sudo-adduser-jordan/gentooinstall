@@ -321,3 +321,38 @@ func TestTuiMakeConfViewer(t *testing.T) {
 		t.Fatal("viewer must not modify config")
 	}
 }
+
+func TestTuiQEMUDeviceFallback(t *testing.T) {
+	// Force the "no block devices discovered" case so the picker has to
+	// fall back to the QEMU default paths.
+	orig := tui.BlockDevices
+	tui.BlockDevices = func() []string { return nil }
+	t.Cleanup(func() { tui.BlockDevices = orig })
+
+	cfg := config.Default(true) // classic scheme; shows the "└ Device" row
+	m := tui.New(cfg, "/tmp/test-gentoo.toml")
+	model := m
+
+	// Disk tab is active by default. Rows: Partitioning(section),
+	// Partitioning scheme, ├ Boot type, └ Device.
+	model = rowDownN(model, 3)
+	mm, _ := model.Update(keyEnter()) // open the device picker
+	model = mm.(*tui.Model)
+
+	view := model.View()
+	if !strings.Contains(view, "/dev/sda") {
+		t.Fatalf("device picker should offer the QEMU default /dev/sda, got:\n%s", view)
+	}
+	if !strings.Contains(view, "/dev/vda") {
+		t.Fatalf("device picker should offer the QEMU virtio /dev/vda, got:\n%s", view)
+	}
+
+	// The first fallback is /dev/sda; Enter confirms even though the node
+	// does not exist in this forced-empty scenario.
+	mm, _ = model.Update(keyEnter())
+	model = mm.(*tui.Model)
+
+	if got := model.Config().Disk.Device; got != "/dev/sda" {
+		t.Fatalf("Disk.Device = %q, want /dev/sda", got)
+	}
+}

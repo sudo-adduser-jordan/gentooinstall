@@ -12,15 +12,21 @@ import (
 	"strings"
 )
 
-// NeedModules is the curated set of storage drivers provided by the Alpine
-// linux-lts kernel that get modprobed at init time, so disks appear under
-// /dev even without udev/hotplug in the live rootfs.
+// NeedModules is the curated set of storage drivers the live init loads so
+// disks appear under /dev even without udev/hotplug in the live rootfs. The
+// modules themselves are bundled into the initramfs by scripts/release.sh
+// beneath ModuleDir; entries that are built into the bundled kernel (or lack
+// a matching module file on the build host) are skipped.
 var NeedModules = []string{
 	"virtio", "virtio_ring", "virtio_pci", "virtio_blk", "virtio_scsi",
-	"scsi_mod", "sd_mod", "libata", "ahci",
-	"nvme_core", "nvme",
+	"scsi_mod", "sd_mod", "libata", "ahci", "ata_piix", "ata_generic",
+	"nvme_keyring", "nvme_auth", "nvme_core", "nvme",
 	"usbcore", "usb_storage", "uas", "xhci_pci", "xhci_hcd",
 }
+
+// ModuleDir is where release.sh stores the decompressed module files that
+// loadModules reads; keep in sync with scripts/release.sh.
+const ModuleDir = "/lib/modules/bundle"
 
 // skipIfaces are pseudo-interfaces that should never receive a DHCP.
 var skipIfaces = map[string]bool{

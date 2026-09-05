@@ -7,9 +7,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
+
+	"gentooinstall/internal/sysinfo"
 )
 
 // DefaultPath is the PATH exported by the live init before any command runs.
@@ -41,6 +46,7 @@ func Init() error {
 	}
 
 	loadModules()
+	logBlockDevices()
 	go tryDHCP()
 
 	if len(errs) > 0 {
@@ -71,17 +77,47 @@ func isMounted(target string) bool {
 	return false
 }
 
-// loadModules best-effort loads the storage drivers in NeedModules.
+// logf writes a line to the console and best-effort mirrors it to the first
+// serial port, so headless serial boots (and the QEMU e2e) observe live-init
+// progress even though /dev/console resolves to the framebuffer (tty0) when
+// grub.cfg lists console=tty0 last.
+func logf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintln(os.Stdout, msg)
+	if f, err := os.OpenFile("/dev/ttyS0", os.O_WRONLY, 0); err == nil {
+		_, _ = f.WriteString(msg + "\n")
+		_ = f.Close()
+	}
+}
+
+// loadModules best-effort loads the storage drivers in NeedModules from the
+// modules bundled into the initramfs by scripts/release.sh. Modules are
+// injected with the init_module syscall directly because the initramfs has
+// no modprobe; entries that are built into the kernel or were not bundled
+// are skipped.
 func loadModules() {
 	for _, mod := range NeedModules {
 		if moduleLoaded(mod) {
 			continue
 		}
-		cmd := exec.Command("modprobe", mod)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stdout, "live: modprobe %s: %v %s\n", mod, err,
-				strings.TrimSpace(string(out)))
+		data, err := os.ReadFile(filepath.Join(ModuleDir, mod+".ko"))
+		if err != nil {
+			logf("live: load %s: %v", mod, err)
+			continue
 		}
+		if err := unix.InitModule(data, ""); err != nil {
+			logf("live: init_module %s: %v", mod, err)
+			continue
+		}
+		logf("live: loaded module %s", mod)
+	}
+}
+
+// logBlockDevices prints the discovered block devices so the headless e2e
+// and users can see which disks are visible after module loading.
+func logBlockDevices() {
+	for _, d := range sysinfo.Devices() {
+		logf("live: block device %s", d)
 	}
 }
 

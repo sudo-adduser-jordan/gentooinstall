@@ -30,6 +30,9 @@ func TestISOBoots(t *testing.T) {
 	if _, err := exec.LookPath("qemu-system-x86_64"); err != nil {
 		t.Skip("qemu-system-x86_64 not found; skipping live-ISO boot test")
 	}
+	if _, err := exec.LookPath("qemu-img"); err != nil {
+		t.Skip("qemu-img not found; skipping live-ISO boot test")
+	}
 
 	root := repoRoot(t)
 	iso := filepath.Join(t.TempDir(), "gentooinstall-live-amd64.iso")
@@ -42,6 +45,9 @@ func TestISOBoots(t *testing.T) {
 
 	if !strings.Contains(serial, "gentooinstall init: PID 1") {
 		t.Fatalf("gentooinstall init did not start on the serial console; full output above")
+	}
+	if !strings.Contains(serial, "live: block device /dev/sda") {
+		t.Fatalf("attached disk was not detected as /dev/sda; full output above")
 	}
 }
 
@@ -111,11 +117,19 @@ func assertISOName(t *testing.T, iso string) {
 
 func bootISO(t *testing.T, iso string) string {
 	t.Helper()
-	// t.Cleanup kills the process if the test is interrupted, so the VM never
-	// lingers. The flags below run with -no-reboot, and the watchdog kills the
-	// VM if it does not settle, so no `timeout` wrapper is needed.
+	// Attach a drive the same way the README exercise does: a plain qcow2 on
+	// the default IDE interface (shows up as /dev/sda once the bundled IDE
+	// driver loads). t.Cleanup kills the process if the test is interrupted,
+	// so the VM never lingers. The flags below run with -no-reboot, and the
+	// watchdog kills the VM if it does not settle, so no `timeout` wrapper is
+	// needed.
+	disk := filepath.Join(t.TempDir(), "gentoo-disk.img")
+	if out, err := exec.Command("qemu-img", "create", "-f", "qcow2", disk, "2G").CombinedOutput(); err != nil {
+		t.Fatalf("qemu-img create failed: %v\n%s", err, out)
+	}
 	cmd := exec.Command("qemu-system-x86_64",
 		"-cdrom", iso,
+		"-drive", "file="+disk+",format=qcow2",
 		"-m", "512",
 		"-nodefaults",
 		"-nographic",
