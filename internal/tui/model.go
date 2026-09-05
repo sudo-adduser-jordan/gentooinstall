@@ -786,27 +786,26 @@ func (m *Model) labelWidth() int {
 }
 
 // mirrorLine renders the mirror reachability indicator as a bordered box
-// shown to the left of the config file path. It shows "Mirror <host>" with a
-// spinner while probing, a green ✓ when reachable, and a red ✗ with a short
-// diagnostic when not (the live ISO shows "no network" while DHCP is still
-// coming up).
+// shown to the left of the config file path. It shows the mirror host with a
+// red ✗ and short diagnostic when down (the live ISO shows "no network" while
+// DHCP is still coming up), and "..." while a probe is in flight.
 func (m *Model) mirrorLine() string {
 	host := m.mirrorHost
 	if host == "" {
 		host = mirrorHostName(m.cfg.Gentoo.Mirror)
 	}
-	label := eGlobe + " Mirror " + truncateRunes(host, 28)
+	host = truncateRunes(host, 28)
 	switch m.mirrorState {
 	case mirrorChecking, mirrorUnknown:
-		return mirrorBoxWarnStyle.Render(spinnerStyle.Render("…") + " " + label + " checking…")
+		return mirrorBoxWarnStyle.Render(host + " ...")
 	case mirrorOK:
-		return mirrorBoxValidStyle.Render(label + " " + okStyle.Render("✓"))
+		return mirrorBoxValidStyle.Render(host)
 	default: // mirrorDown
 		note := m.mirrorNote
 		if note == "" {
 			note = "unreachable"
 		}
-		return mirrorBoxInvalidStyle.Render(label + " " + errorStyle.Render("✗") + " " + truncateRunes(note, 24))
+		return mirrorBoxInvalidStyle.Render(host + " " + errorStyle.Render("✗") + " " + truncateRunes(note, 24))
 	}
 }
 

@@ -95,7 +95,7 @@ func TestTuiMirrorIndicator(t *testing.T) {
 		mm, _ := m.Update(tui.MirrorProbeMsg{OK: true, Note: "ok"})
 		m = mm.(*tui.Model)
 		view := m.View()
-		for _, want := range []string{"Mirror", "mirror.example.com", "✓"} {
+		for _, want := range []string{"mirror.example.com"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("reachable view missing %q:\n%s", want, view)
 			}
@@ -107,7 +107,7 @@ func TestTuiMirrorIndicator(t *testing.T) {
 		mm, _ := m.Update(tui.MirrorProbeMsg{OK: false, Note: "no network"})
 		m = mm.(*tui.Model)
 		view := m.View()
-		for _, want := range []string{"Mirror", "✗", "no network"} {
+		for _, want := range []string{"mirror.example.com", "✗", "no network"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("down view missing %q:\n%s", want, view)
 			}
@@ -143,7 +143,7 @@ func TestTuiMirrorIndicator(t *testing.T) {
 		if !m.Dirty() {
 			t.Fatal("editing mirror must mark config dirty")
 		}
-		if !strings.Contains(m.View(), "checking") {
+		if !strings.Contains(m.View(), "...") {
 			t.Fatalf("editing mirror must re-enter the checking state:\n%s", m.View())
 		}
 	})
