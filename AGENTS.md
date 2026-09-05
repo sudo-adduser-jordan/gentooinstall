@@ -79,12 +79,23 @@ make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
 ## Notes
 Interactive boot (keyboard + monitor, opens the TUI in the window):
 
+
 ```sh
-qemu-system-x86_64 -m 512 -cdrom bin/gentooinstall.iso
+qemu-system-x86_64 -cdrom bin/gentooinstall.iso
+
 ```
 
-`-m 512` is required: QEMU's default 128 MiB makes GRUB run out of memory
-when loading the kernel/initrd. The ISO is interactive (a TUI), so an
-unattended boot appears to hang; headless/automated checks use `make vm-test`;
-for a serial-only diagnostic add `-serial stdio -display none`.
+Full install loop: create a drive image, boot the ISO with it attached to
+install onto, then boot the installed OS from the drive (both with keyboard +
+monitor):
+
+
+```sh
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+
+qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,format=qcow2
+
+qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2
+
+```
 

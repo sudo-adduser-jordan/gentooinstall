@@ -135,33 +135,6 @@ func TestTuiPackagesTabHasUseFlags(t *testing.T) {
 	}
 }
 
-// DISABLED: LUKS lock badge. Re-enable with the luksIndicator module in
-// model.go and the lock styles in styles.go.
-//
-//	func TestTuiLuksIndicator(t *testing.T) {
-//		locked := config.Default(true)
-//		locked.Disk.UseLuks = true
-//		m := tui.New(locked, "/tmp/test-gentoo.toml")
-//		v := m.View()
-//		if !strings.Contains(v, "🔒") {
-//			t.Fatalf("LUKS on should show a lock icon, got:\n%s", v)
-//		}
-//		if strings.Contains(v, "🔓") {
-//			t.Fatalf("LUKS on must not show the unlocked icon, got:\n%s", v)
-//		}
-//
-//		unlocked := config.Default(true)
-//		unlocked.Disk.UseLuks = false
-//		m = tui.New(unlocked, "/tmp/test-gentoo.toml")
-//		uv := m.View()
-//		if !strings.Contains(uv, "🔓") {
-//			t.Fatalf("LUKS off should show an unlocked icon, got:\n%s", uv)
-//		}
-//		if strings.Contains(uv, "🔒") {
-//			t.Fatalf("LUKS off must not show the lock icon, got:\n%s", uv)
-//		}
-//	}
-
 func TestTuiKernelDeblobSubOption(t *testing.T) {
 	bin := config.Default(true)
 	m := tui.New(bin, "/tmp/test-gentoo.toml")
