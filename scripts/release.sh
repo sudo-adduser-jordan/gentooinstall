@@ -58,10 +58,12 @@ tar -xzOf "$BUILD_DIR/$APK_TOOLS" sbin/apk.static > "$BUILD_DIR/apk.static"
 chmod +x "$BUILD_DIR/apk.static"
 
 echo "Installing live toolset with apk..."
-"$BUILD_DIR/apk.static" --root "$ROOTFS" --initdb --allow-untrusted --no-scripts \
+APK_OUT="$("$BUILD_DIR/apk.static" --root "$ROOTFS" --initdb --allow-untrusted --no-scripts \
     -X "$ALPINE_MIRROR/$ALPINE_BRANCH/main" -X "$ALPINE_MIRROR/$ALPINE_BRANCH/community" \
     add busybox util-linux e2fsprogs dosfstools sgdisk parted gnupg tar xz \
-        btrfs-progs mdadm cryptsetup git
+        btrfs-progs mdadm cryptsetup git 2>&1)" || true
+printf '%s\n' "$APK_OUT"
+grep -q '^OK: ' <<<"$APK_OUT" || die "apk install failed"
 
 # Live init mounts devtmpfs and runs DHCP via busybox udhcpc; ship its script.
 mkdir -p "$ROOTFS/etc/udhcpc"
@@ -114,22 +116,29 @@ bundle_mod() {
         *)     cp "$1" "$out" ;;
     esac
     echo "bundled module $name"
+    return 0
 }
 
 mkdir -p "$ROOTFS/lib/modules/bundle"
-if [[ -d "$MODDIR" ]] && command -v modprobe >/dev/null 2>&1; then
-    while read -r line; do
-        path="${line##* }"
-        [[ "$path" == *.ko* ]] || continue
-        bundle_mod "$path"
-    done < <(modprobe --show-depends "${MODULES[@]}")
-elif [[ -d "$MODDIR" ]]; then
-    for m in "${MODULES[@]}"; do
-        for alt in "$m" "${m//_/-}"; do
-            f="$(find "$MODDIR/kernel/drivers" -name "$alt.ko*" 2>/dev/null | head -n1)"
-            [[ -n "$f" ]] && { bundle_mod "$f"; break; }
-        done
+bundle_find() {
+    local alt f
+    for alt in "$1" "${1//_/-}"; do
+        f="$(find "$MODDIR/kernel/drivers" -name "$alt.ko*" 2>/dev/null | head -n1)"
+        [[ -n "$f" ]] && { bundle_mod "$f"; return 0; }
     done
+    return 0
+}
+if [[ -d "$MODDIR" ]]; then
+    if command -v modprobe >/dev/null 2>&1; then
+        while read -r line; do
+            path="${line##* }"
+            [[ "$path" == *.ko* ]] || continue
+            bundle_mod "$path"
+        done < <(modprobe --show-depends "${MODULES[@]}" 2>/dev/null || true)
+    fi
+    if ! compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null; then
+        for m in "${MODULES[@]}"; do bundle_find "$m"; done
+    fi
 fi
 compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null || \
     echo "Warning: no module tree for $KERNEL_VER; disks may need built-in drivers" >&2
