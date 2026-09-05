@@ -44,6 +44,20 @@ func (c *Context) touchFile(p string) error {
 	return f.Close()
 }
 
+func (c *Context) stat(p string) (os.FileInfo, error) {
+	if c.Stat != nil {
+		return c.Stat(p)
+	}
+	return os.Stat(p)
+}
+
+// hostHasEFI reports whether the running firmware is UEFI-capable: the
+// kernel exposes /sys/firmware/efi only on a UEFI boot.
+func (c *Context) hostHasEFI() bool {
+	_, err := c.stat("/sys/firmware/efi")
+	return err == nil
+}
+
 func (c *Context) mkdirAll(p string, mode os.FileMode) error {
 	return os.MkdirAll(c.path(p), mode)
 }

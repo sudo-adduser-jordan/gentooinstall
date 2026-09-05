@@ -3,7 +3,9 @@
 package sysinfo
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -148,7 +150,7 @@ func compareTimezone() string {
 			return nil
 		}
 		data, err := os.ReadFile(path)
-		if err == nil && bytes_equal(data, target) {
+		if err == nil && bytes.Equal(data, target) {
 			found = strings.TrimPrefix(path, root+"/")
 			return filepath.SkipAll
 		}
@@ -240,7 +242,7 @@ func DefaultKeymap(known []string) string {
 
 // SystemLocales runs `locale -a`.
 func SystemLocales() ([]string, error) {
-	out, err := runCapture("locale", "-a")
+	out, err := exec.Command("locale", "-a").Output()
 	if err != nil {
 		return nil, err
 	}

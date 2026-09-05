@@ -145,7 +145,7 @@ func labelDesc(label string) string {
 func displayID(id string) string {
 	switch {
 	case strings.HasPrefix(id, "__"):
-		return "" // synthetic fs/root markers stay anonymous
+		return ""
 	default:
 		return strings.TrimPrefix(id, "_")
 	}

@@ -217,6 +217,7 @@ func testContext(t *testing.T, cfg *config.Config, uuidSeeds map[string]string) 
 			return "00000000-1111-2222-3333-444444444444", nil
 		},
 		IsMountpoint: func(string) bool { return false },
+		Stat:         func(string) (os.FileInfo, error) { return nil, nil },
 		NProc:        8,
 	}
 	return c, stub

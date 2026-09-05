@@ -544,6 +544,9 @@ func runInstall(cfgPath string) {
 		SourceConfig: cfgPath,
 	}
 
+	if err := installer.CheckHostBootMode(c); err != nil {
+		fatal("%v", err)
+	}
 	if err := installer.PrepareEnvironment(c); err != nil {
 		fatal("%v", err)
 	}
@@ -797,6 +800,10 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		Layout:       layout,
 		Resolver:     &disklayout.Resolver{Layout: layout},
 		SourceConfig: cfgPath,
+	}
+
+	if err := installer.CheckHostBootMode(c); err != nil {
+		return err
 	}
 
 	t.logf("Preparing installation environment")

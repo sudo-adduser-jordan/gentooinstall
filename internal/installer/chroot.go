@@ -36,15 +36,40 @@ func (c *Context) isMountpoint(path string) bool {
 	return IsMountpoint(path)
 }
 
-// MountEfiVars mounts efivarfs when not already present.
+// MountEfiVars mounts efivarfs when not already present. It is only called
+// for EFI layouts and fails fast when the live system is not running under
+// UEFI, where efivarfs cannot exist.
 func MountEfiVars(c *Context) error {
 	if c.isMountpoint("/sys/firmware/efi/efivars") {
 		return nil
 	}
+	if !c.hostHasEFI() {
+		return fmt.Errorf("cannot mount efivarfs: the live system was not booted " +
+			"in UEFI mode (/sys/firmware/efi is missing) but the configuration " +
+			`requests an EFI install (disk.boot_type = "efi"); boot the live medium ` +
+			`under UEFI or set disk.boot_type = "bios" (e.g. builds/bios.toml)`)
+	}
 	c.R.log("Mounting efivars")
+	if err := c.mkdirAll("/sys/firmware/efi/efivars", 0o755); err != nil {
+		return fmt.Errorf("could not create efivars mountpoint: %w", err)
+	}
 	if err := c.R.Try("mount", "-t", "efivarfs", "efivarfs",
 		"/sys/firmware/efi/efivars"); err != nil {
 		return fmt.Errorf("could not mount efivarfs: %w", err)
+	}
+	return nil
+}
+
+// CheckHostBootMode fails fast when the configured boot type is not
+// supported by the running firmware: an EFI layout on a non-UEFI boot can
+// never mount efivarfs or register boot entries later, so it is rejected
+// before any destructive partitioning happens.
+func CheckHostBootMode(c *Context) error {
+	if c.IsEFI() && !c.hostHasEFI() {
+		return fmt.Errorf("configuration uses an EFI boot partition but the live " +
+			"system was not booted in UEFI mode (/sys/firmware/efi is missing); " +
+			"boot the live medium under UEFI or set disk.boot_type = \"bios\" " +
+			"(e.g. builds/bios.toml)")
 	}
 	return nil
 }

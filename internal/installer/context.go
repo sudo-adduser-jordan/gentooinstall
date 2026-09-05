@@ -54,6 +54,12 @@ type Context struct {
 	// keep the recorded command sequence independent of the host.
 	IsMountpoint func(path string) bool
 
+	// Stat, when non-nil, replaces os.Stat for host-firmware detection
+	// (EFI). Production leaves it nil so /sys/firmware/efi is probed on the
+	// real host; tests inject a stub to keep behavior independent of the
+	// machine running the suite.
+	Stat func(path string) (os.FileInfo, error)
+
 	// Root, when non-empty, is prefixed onto every static absolute path the
 	// installer writes or reads, so tests can run against a scratch
 	// directory without touching the real filesystem. Production builds

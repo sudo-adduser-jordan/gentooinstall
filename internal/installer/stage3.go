@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -143,7 +144,7 @@ func resolveFromIndex(c *Context, releasesURL, basename string) (string, int64, 
 	}
 
 	// Decode URL-encoded strings (parity with the python unquote step).
-	if dec, err := urlUnescape(body); err == nil {
+	if dec, err := url.PathUnescape(body); err == nil {
 		body = dec
 	}
 
@@ -364,34 +365,4 @@ func sha512FromDigests(path string) (string, error) {
 		return fields[0], nil
 	}
 	return "", fmt.Errorf("no SHA512 line found in %s", path)
-}
-
-// urlUnescape decodes percent-encodings without touching '+'.
-func urlUnescape(s string) (string, error) {
-	var sb strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == '%' && i+2 < len(s) {
-			hi, ok1 := unhex(s[i+1])
-			lo, ok2 := unhex(s[i+2])
-			if ok1 && ok2 {
-				sb.WriteByte(hi<<4 | lo)
-				i += 2
-				continue
-			}
-		}
-		sb.WriteByte(s[i])
-	}
-	return sb.String(), nil
-}
-
-func unhex(b byte) (byte, bool) {
-	switch {
-	case b >= '0' && b <= '9':
-		return b - '0', true
-	case b >= 'a' && b <= 'f':
-		return b - 'a' + 10, true
-	case b >= 'A' && b <= 'F':
-		return b - 'A' + 10, true
-	}
-	return 0, false
 }

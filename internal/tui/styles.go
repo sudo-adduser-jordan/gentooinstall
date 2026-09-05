@@ -8,7 +8,6 @@ import "github.com/charmbracelet/lipgloss"
 const (
 	eGear    = "🔧"
 	eGlobe   = "🌐"
-	eCrane   = "🔧"
 	ePackage = "📦"
 	eWarn    = "⚠️"
 	eParty   = "🎉"
@@ -32,7 +31,7 @@ func tabEmoji(name string) string {
 	case "Network":
 		return eGlobe
 	case "Gentoo":
-		return eCrane
+		return eGear
 	case "Packages":
 		return ePackage
 	case "Install":
