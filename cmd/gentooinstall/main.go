@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -146,7 +147,12 @@ func main() {
 	// a deterministic startup banner so the boot is observable on a headless
 	// serial console (e.g. the QEMU e2e test) before the TUI opens.
 	if os.Getpid() == 1 {
-		fmt.Printf("gentooinstall init: PID 1, version %s\n", version)
+		// The banner goes to /dev/console, which on a graphical boot is tty0.
+		// Mirror it to the serial port so headless serial consoles still see it.
+		msg := fmt.Sprintf("gentooinstall init: PID 1, version %s\n", version)
+		fmt.Print(msg)
+		mirrorSerialBanner(msg)
+		setupFBTty()
 	}
 
 	switch mode {
@@ -158,6 +164,51 @@ func main() {
 		runChroot(rest)
 	case "in-chroot":
 		runInChroot(cfgAbs)
+	}
+}
+
+// setupFBTty claims the first virtual terminal for the interactive live-ISO
+// boot. The initramfs ships no device nodes beyond /dev/console, and the
+// kernel hands PID1 a console whose writes do not reach the fbcon screen on a
+// GRUB+gfxpayload boot. Gettys solve the same problem by opening the VT
+// directly: recreate the missing /dev/tty1 node, make it the controlling
+// terminal and rebind stdio to it so the framebuffer console (fbcon displays
+// VT1 once it takes over) receives the TUI and the keyboard. Failures are
+// ignored; headless serial boots simply keep /dev/console.
+func setupFBTty() {
+	if _, err := os.Stat("/dev/tty1"); err != nil {
+		if err := syscall.Mknod("/dev/tty1", syscall.S_IFCHR|0o600, int(4<<8|1)); err != nil {
+			return
+		}
+	}
+	f, err := os.OpenFile("/dev/tty1", os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCSCTTY, 0); e != 0 {
+		return
+	}
+	_ = syscall.Dup2(int(f.Fd()), 0)
+	_ = syscall.Dup2(int(f.Fd()), 1)
+	_ = syscall.Dup2(int(f.Fd()), 2)
+}
+
+// mirrorSerialBanner writes msg to the first serial port (ttyS0) so headless
+// serial consoles observe the boot even when /dev/console is a graphical tty0.
+// The initramfs ships no device nodes, so as PID 1 (root) we create a missing
+// /dev/ttyS0 on the fly (char major 4, minor 64); any failure is ignored.
+func mirrorSerialBanner(msg string) {
+	const path = "/dev/ttyS0"
+	if _, err := os.Stat(path); err != nil {
+		dev := uint32(4)<<8 | 64
+		if err := syscall.Mknod(path, syscall.S_IFCHR|0o600, int(dev)); err != nil {
+			return
+		}
+	}
+	if f, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
+		_, _ = f.WriteString(msg)
+		_ = f.Close()
 	}
 }
 
@@ -305,9 +356,22 @@ func runTUI(cfgPath string) {
 	model.SetInstallFunc(func() error {
 		return runInstallTUI(cfg, cfgPath)
 	})
-	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	// As the live-ISO init we render to the virtual terminal created by
+	// setupFBTty instead of /dev/console: Bubble Tea only reaches the fbcon
+	// screen when handed a freshly opened /dev/tty1 file, and stdin (bound to
+	// tty1 by setupFBTty) carries the keyboard. Everywhere else the program
+	// renders to the caller's stdio.
+	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	if os.Getpid() == 1 {
+		if out, err := os.OpenFile("/dev/tty1", os.O_WRONLY, 0); err == nil {
+			opts = append(opts, tea.WithOutput(out))
+		}
+	}
+	p := tea.NewProgram(model, opts...)
 	tui.SetProgram(p)
 	if _, err := p.Run(); err != nil {
+		mirrorSerialBanner(fmt.Sprintf("tui: error: %v\n", err))
 		fatal("tui: %v", err)
 	}
 }

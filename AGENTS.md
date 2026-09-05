@@ -76,9 +76,15 @@ make vm-test    # QEMU boot e2e for the live ISO (skips if qemu is absent)
 - Never commit secrets; this repo has none, keep it that way.
 - Commit messages: short imperative subject line, lowercase.
 
-## Notes 
-qemu-system-x86_64 \
-    -cdrom bin/gentooinstall.iso \
-    -serial stdio \
-    -display none
+## Notes
+Interactive boot (keyboard + monitor, opens the TUI in the window):
+
+```sh
+qemu-system-x86_64 -m 512 -cdrom bin/gentooinstall.iso
+```
+
+`-m 512` is required: QEMU's default 128 MiB makes GRUB run out of memory
+when loading the kernel/initrd. The ISO is interactive (a TUI), so an
+unattended boot appears to hang; headless/automated checks use `make vm-test`;
+for a serial-only diagnostic add `-serial stdio -display none`.
 

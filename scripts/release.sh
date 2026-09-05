@@ -38,9 +38,14 @@ cp "$KERNEL" "$BUILD_DIR/boot/vmlinuz"
 cat > "$BUILD_DIR/boot/grub/grub.cfg" <<'EOF'
 set timeout=0
 set default=0
+insmod all_video
+set gfxmode=1024x768,800x600,auto
+insmod gfxterm
+terminal_output gfxterm
+set gfxpayload=keep
 
 menuentry "Gentoo Install" {
-    linux /boot/vmlinuz quiet console=ttyS0 loglevel=4 rdinit=/init
+    linux /boot/vmlinuz quiet console=ttyS0 console=tty0 loglevel=4 rdinit=/init
     initrd /boot/initrd.img
 }
 EOF
