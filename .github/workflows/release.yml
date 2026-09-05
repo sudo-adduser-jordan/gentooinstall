@@ -25,7 +25,7 @@ jobs:
       - name: Build live ISO
         run: |
           sudo apt-get update
-          sudo apt-get install -y grub-pc-bin grub-efi-amd64-bin xorriso busybox-static cpio mtools
+          sudo apt-get install -y grub-pc-bin grub-efi-amd64-bin xorriso cpio mtools curl
           # Hosted Azure kernel isn't world-readable; grant read, then build.
           sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
           scripts/release.sh

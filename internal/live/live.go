@@ -22,6 +22,11 @@ var NeedModules = []string{
 	"scsi_mod", "sd_mod", "libata", "ahci", "ata_piix", "ata_generic",
 	"nvme_keyring", "nvme_auth", "nvme_core", "nvme",
 	"usbcore", "usb_storage", "uas", "xhci_pci", "xhci_hcd",
+	// NICs so DHCP works on real hardware and under QEMU (kept in sync with
+	// scripts/release.sh MODULES).
+	"virtio_net", "e1000", "e1000e", "r8169", "igb", "ixgbe", "tg3",
+	// Feature support for the shipped templates.
+	"md_mod", "dm_mod", "dm_crypt", "btrfs",
 }
 
 // ModuleDir is where release.sh stores the decompressed module files that

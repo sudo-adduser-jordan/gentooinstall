@@ -11,10 +11,13 @@ import (
 	"strings"
 )
 
-// WantedPrograms returns the host programs required for cfg.
+// WantedPrograms returns the host programs required for cfg. Only programs
+// the Go engine actually shells out to are listed: downloads (http), sha512
+// digests and guid generation are implemented in Go, so wget/sha512sum/
+// uuidgen/python3 from the bash port are deliberately absent.
 func WantedPrograms(c *Context) (required, wanted []string) {
 	required = []string{"gpg", "hwclock", "lsblk", "ntpd", "partprobe",
-		"python3", "sha512sum", "sgdisk", "uuidgen", "wget"}
+		"sgdisk"}
 	wanted = []string{}
 	if c.Layout.Flags.UsedBtrfs {
 		required = append(required, "btrfs")

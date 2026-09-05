@@ -31,6 +31,23 @@ func TestSHA512File(t *testing.T) {
 	}
 }
 
+func TestWantedPrograms(t *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	c, _ := testContext(t, cfg, nil)
+
+	req, _ := installer.WantedPrograms(c)
+	wantReq := []string{"gpg", "hwclock", "lsblk", "ntpd", "partprobe", "sgdisk"}
+	if fmt.Sprint(req) != fmt.Sprint(wantReq) {
+		t.Fatalf("required programs = %v, want %v", req, wantReq)
+	}
+	// rhash is optional (sha512sum suffices); it may never be required.
+	for _, r := range req {
+		if r == "rhash" {
+			t.Fatalf("rhash must stay optional, got required: %v", req)
+		}
+	}
+}
+
 func TestSHA512FileMissing(t *testing.T) {
 	if _, err := installer.SHA512File(filepath.Join(t.TempDir(), "nope")); err == nil {
 		t.Fatal("expected error for missing file")

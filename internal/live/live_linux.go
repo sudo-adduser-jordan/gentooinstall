@@ -47,6 +47,7 @@ func Init() error {
 
 	loadModules()
 	logBlockDevices()
+	logTools()
 	go tryDHCP()
 
 	if len(errs) > 0 {
@@ -119,6 +120,20 @@ func logBlockDevices() {
 	for _, d := range sysinfo.Devices() {
 		logf("live: block device %s", d)
 	}
+}
+
+// logTools reports which host utilities the install engine needs are present
+// on the live rootfs, so the headless e2e and users can tell at a glance
+// whether the Alpine-based userspace was bundled correctly.
+func logTools() {
+	found := []string{}
+	for _, p := range []string{"busybox", "gpg", "lsblk", "ntpd", "partprobe",
+		"sgdisk", "mount", "tar", "udhcpc"} {
+		if _, err := exec.LookPath(p); err == nil {
+			found = append(found, p)
+		}
+	}
+	logf("live: tools: %s", strings.Join(found, " "))
 }
 
 // moduleLoaded reports whether name is listed in /proc/modules.

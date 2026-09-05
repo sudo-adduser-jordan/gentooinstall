@@ -49,6 +49,11 @@ func TestISOBoots(t *testing.T) {
 	if !strings.Contains(serial, "live: block device /dev/sda") {
 		t.Fatalf("attached disk was not detected as /dev/sda; full output above")
 	}
+	// The Alpine-based live rootfs must provide the engine's host tools.
+	if !strings.Contains(serial, "live: tools:") || !strings.Contains(serial, "sgdisk") ||
+		!strings.Contains(serial, "gpg") {
+		t.Fatalf("live toolset missing or incomplete; full output above")
+	}
 }
 
 // repoRoot walks up from the test working dir to the repository root (the

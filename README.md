@@ -145,8 +145,13 @@ gentooinstall TUI (statically linked, running as PID 1). Build it yourself with:
 scripts/release.sh
 ```
 
-The ISO contains only the built binary plus a minimal initramfs/kernel —
-no desktop, no login, no partitioning tooling.
+The rootfs is a trimmed-down Alpine userland (busybox + util-linux + gptfdisk +
+parted + gnupg + GNU tar, installed via apk), so the ISO can partition, format
+and install for real — no separate live stick required. Storage and network
+kernel modules are bundled alongside. ZFS schemes are not usable from the ISO
+(the Alpine ZFS module cannot match the bundled build-host kernel). Building the
+ISO fetches the Alpine base from dl-cdn.alpinelinux.org, so it needs network
+access and produces an ISO of roughly 100–200 MB.
 
 ## Releases
 

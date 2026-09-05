@@ -7,113 +7,134 @@ BUILD_DIR="$PWD/iso_build"
 ROOTFS="$PWD/rootfs"
 trap 'rm -rf "$BUILD_DIR" "$ROOTFS" init' EXIT
 
-# Storage drivers bundled into the initramfs so disks appear under /dev even
-# without udev; keep in sync with internal/live/live.go (NeedModules). The
-# live init loads them from /lib/modules/bundle via the init_module syscall.
-MODULES=(
-    virtio virtio_ring virtio_pci virtio_blk virtio_scsi
+die()   { echo "Error: $*" >&2; exit 1; }
+latest(){ curl -fsSL "$1/" | sed -n "s#.*href=\"\\($2\\)\".*#\\1#p" | sort -V | tail -n1; }
+
+# Live rootfs = minimal Alpine so the ISO can actually install Gentoo (mirrors
+# internal/live/live.go NeedModules and installer/prepare.go WantedPrograms).
+# Building needs network to dl-cdn.alpinelinux.org; ZFS stays excluded (alpine
+# zfs kmod cannot match the bundled build-host kernel).
+ALPINE_BRANCH=v3.21
+ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+MODULES=(virtio virtio_ring virtio_pci virtio_blk virtio_scsi
     scsi_mod sd_mod libata ahci ata_piix ata_generic
     nvme_keyring nvme_auth nvme_core nvme
     usbcore usb_storage uas xhci_pci xhci_hcd
-)
+    virtio_net e1000 e1000e r8169 igb ixgbe tg3
+    md_mod dm_mod dm_crypt btrfs)
 
-for cmd in go cpio gzip grub-mkrescue; do
-    command -v "$cmd" >/dev/null 2>&1 || { echo "Error: $cmd not found" >&2; exit 1; }
+for cmd in go cpio gzip grub-mkrescue curl tar modprobe file; do
+    command -v "$cmd" >/dev/null 2>&1 || die "$cmd not found"
 done
-
 case "$(uname -m)" in
-    x86_64)  GOARCH=amd64 ;; aarch64) GOARCH=arm64 ;;
-    *)       echo "Unsupported arch" >&2; exit 1 ;;
+    x86_64|amd64)  GOARCH=amd64;  ALPINE_ARCH=x86_64 ;;
+    aarch64|arm64) GOARCH=arm64; ALPINE_ARCH=aarch64 ;;
+    *) die "unsupported arch" ;;
 esac
 
+echo "Bootstrapping Alpine rootfs ($ALPINE_ARCH)..."
+mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub" "$(dirname "$ISO_OUTPUT")"
+
 echo "Compiling init..."
-CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o init "$APP_SRC"
-chmod 0755 init
+CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o "$ROOTFS/init" "$APP_SRC"
+chmod 0755 "$ROOTFS/init"
 
 echo "Locating kernel..."
-KERNEL=""
-for d in /boot /boot/efi /lib/modules; do
-    [[ -d "$d" ]] || continue
-    KERNEL="$(find "$d" -maxdepth 1 -type f -name 'vmlinuz-*' -print 2>/dev/null | sort -V | tail -n 1)" && break
-done
-[[ -n "$KERNEL" ]] || { echo "Error: no kernel found" >&2; exit 1; }
-
-# Resolve the kernel release so its matching module tree can be bundled. The
-# version string survives in the bzImage header (`file` knows it) even though
-# the payload is compressed; uname -r is the fallback when parsing fails.
-KERNEL_VER=""
-if command -v file >/dev/null 2>&1; then
-    KERNEL_VER="$(file "$KERNEL" | sed -n 's/.*version \([^ ()]*\).*/\1/p')"
-fi
-[[ -n "$KERNEL_VER" ]] || KERNEL_VER="$(uname -r)"
+KERNEL="$(for d in /boot /boot/efi /lib/modules; do find "$d" -maxdepth 1 -type f -name 'vmlinuz-*' 2>/dev/null; done | sort -V | tail -n1)"
+[[ -n "$KERNEL" ]] || die "no kernel found"
+KERNEL_VER="$(file "$KERNEL" | sed -n 's/.*version \([^ ()]*\).*/\1/p')"
+KERNEL_VER="${KERNEL_VER:-$(uname -r)}"
 MODDIR="/lib/modules/$KERNEL_VER"
 
-echo "Building initramfs..."
-mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$ROOTFS/builds" "$BUILD_DIR/boot/grub" "$(dirname "$ISO_OUTPUT")"
-# Ship the config templates so the live ISO mirrors the repo layout: saving
-# the default redirects to /builds/custom.toml (writable ramfs).
+MINIROOTFS="$(latest "$ALPINE_MIRROR/$ALPINE_BRANCH/releases/$ALPINE_ARCH" "alpine-minirootfs-[^\"]*-$ALPINE_ARCH\\.tar\\.gz")"
+[[ -n "$MINIROOTFS" ]] || die "could not resolve minirootfs"
+curl -fsSL -o "$BUILD_DIR/$MINIROOTFS" "$ALPINE_MIRROR/$ALPINE_BRANCH/releases/$ALPINE_ARCH/$MINIROOTFS"
+tar -xzf "$BUILD_DIR/$MINIROOTFS" -C "$ROOTFS"
+
+APK_TOOLS="$(latest "$ALPINE_MIRROR/$ALPINE_BRANCH/main/$ALPINE_ARCH" "apk-tools-static-[^\"]*\\.apk")"
+[[ -n "$APK_TOOLS" ]] || die "could not resolve apk-tools-static"
+curl -fsSL -o "$BUILD_DIR/$APK_TOOLS" "$ALPINE_MIRROR/$ALPINE_BRANCH/main/$ALPINE_ARCH/$APK_TOOLS"
+tar -xzOf "$BUILD_DIR/$APK_TOOLS" sbin/apk.static > "$BUILD_DIR/apk.static"
+chmod +x "$BUILD_DIR/apk.static"
+
+echo "Installing live toolset with apk..."
+"$BUILD_DIR/apk.static" --root "$ROOTFS" --initdb --allow-untrusted --no-scripts \
+    -X "$ALPINE_MIRROR/$ALPINE_BRANCH/main" -X "$ALPINE_MIRROR/$ALPINE_BRANCH/community" \
+    add busybox util-linux e2fsprogs dosfstools sgdisk parted gnupg tar xz \
+        btrfs-progs mdadm cryptsetup git
+
+# Live init mounts devtmpfs and runs DHCP via busybox udhcpc; ship its script.
+mkdir -p "$ROOTFS/etc/udhcpc"
+cat > "$ROOTFS/etc/udhcpc/default.script" <<'EOF'
+#!/bin/sh
+RESOLV_CONF=/etc/resolv.conf
+case "$1" in
+    deconfig)
+        ip addr flush dev "$interface" 2>/dev/null
+        ;;
+    bound)
+        ip link set "$interface" up
+        ip addr add "$ip/24" dev "$interface"
+        for r in $router; do
+            ip route del default 2>/dev/null
+            ip route add default via "$r" dev "$interface"
+        done
+        : > "$RESOLV_CONF"
+        for d in $dns; do
+            echo "nameserver $d" >> "$RESOLV_CONF"
+        done
+        ;;
+esac
+exit 0
+EOF
+chmod +x "$ROOTFS/etc/udhcpc/default.script"
+
+# Config templates so saving from the live ISO lands in the writable ramfs.
+mkdir -p "$ROOTFS/builds"
 cp builds/*.toml "$ROOTFS/builds/"
-mv init "$ROOTFS/init"
+
 [[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console" 2>/dev/null || true
 cp "$KERNEL" "$BUILD_DIR/boot/vmlinuz"
 
-# Resolve the module file paths: prefer modprobe --show-depends (gives the
-# exact names and the dependency closure), fall back to a name search for the
-# curated list (still ordered so dependencies load first).
-MODULE_FILES=""
+bundle_mod() {
+    local base name
+    base="$(basename "$1")"
+    case "$base" in
+        *.ko.zst) name="${base%.ko.zst}" ;;
+        *.ko.gz)  name="${base%.ko.gz}" ;;
+        *.ko)     name="${base%.ko}" ;;
+        *)        return ;;
+    esac
+    name="${name//-/_}"
+    local out="$ROOTFS/lib/modules/bundle/$name.ko"
+    [[ -e "$out" ]] && return
+    case "$base" in
+        *.zst) command -v zstd >/dev/null 2>&1 && zstd -d -c "$1" > "$out" || echo "Warning: zstd missing, skip $name" >&2 ;;
+        *.gz)  gzip -d -c "$1" > "$out" ;;
+        *)     cp "$1" "$out" ;;
+    esac
+    echo "bundled module $name"
+}
+
+mkdir -p "$ROOTFS/lib/modules/bundle"
 if [[ -d "$MODDIR" ]] && command -v modprobe >/dev/null 2>&1; then
-    for m in "${MODULES[@]}"; do
-        while IFS= read -r line; do
-            path="${line##* }" # last whitespace field (bare path or "insmod <path>")
-            case "$path" in
-                *".ko"*) MODULE_FILES="$MODULE_FILES $path" ;;
-            esac
-        done < <(modprobe --show-depends "$m" 2>/dev/null)
-    done
-fi
-if [[ -z "$MODULE_FILES" && -d "$MODDIR" ]]; then
+    while read -r line; do
+        path="${line##* }"
+        [[ "$path" == *.ko* ]] || continue
+        bundle_mod "$path"
+    done < <(modprobe --show-depends "${MODULES[@]}")
+elif [[ -d "$MODDIR" ]]; then
     for m in "${MODULES[@]}"; do
         for alt in "$m" "${m//_/-}"; do
-            f="$(find "$MODDIR/kernel/drivers" \( -name "$alt.ko" -o -name "$alt.ko.zst" -o -name "$alt.ko.gz" \) -print 2>/dev/null | head -n 1)"
-            [[ -n "$f" ]] && { MODULE_FILES="$MODULE_FILES $f"; break; }
+            f="$(find "$MODDIR/kernel/drivers" -name "$alt.ko*" 2>/dev/null | head -n1)"
+            [[ -n "$f" ]] && { bundle_mod "$f"; break; }
         done
     done
 fi
-
-# Copy each module into the initramfs as a plain, decompressed .ko named
-# <module-with-underscores>.ko so the live init can look it up by name.
-if [[ -n "$MODULE_FILES" ]]; then
-    mkdir -p "$ROOTFS/lib/modules/bundle"
-    for f in $MODULE_FILES; do
-        [[ -f "$f" ]] || continue
-        base="$(basename "$f")"
-        case "$base" in
-            *.ko.zst) name="${base%.ko.zst}" ;;
-            *.ko.gz)  name="${base%.ko.gz}" ;;
-            *.ko)     name="${base%.ko}" ;;
-            *)        continue ;;
-        esac
-        name="${name//-/_}"
-        out="$ROOTFS/lib/modules/bundle/$name.ko"
-        [[ -e "$out" ]] && continue
-        case "$base" in
-            *.zst)
-                if command -v zstd >/dev/null 2>&1; then
-                    zstd -d -c "$f" > "$out"
-                else
-                    echo "Warning: zstd missing, skipping module $name" >&2
-                    continue
-                fi
-                ;;
-            *.gz) gzip -d -c "$f" > "$out" ;;
-            *)    cp "$f" "$out" ;;
-        esac
-        echo "bundled module $name"
-    done
-else
+compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null || \
     echo "Warning: no module tree for $KERNEL_VER; disks may need built-in drivers" >&2
-fi
 
+echo "Building initramfs..."
 (cd "$ROOTFS" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$BUILD_DIR/boot/initrd.img"
 
 cat > "$BUILD_DIR/boot/grub/grub.cfg" <<'EOF'
