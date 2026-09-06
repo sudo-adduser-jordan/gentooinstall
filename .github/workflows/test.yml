@@ -35,11 +35,11 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Run tests
-        run: go test -count=1 -race -coverprofile=coverage.out ./...
+        run: make test
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-out
-          path: coverage.out
+          path: bin/coverage.out
           if-no-files-found: ignore

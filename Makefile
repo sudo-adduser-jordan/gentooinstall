@@ -1,6 +1,13 @@
 BINARY := gentooinstall
 BIN_DIR := ./bin
 
+# Colorized test runner (gotestsum, pinned for reproducibility). `go run`
+# resolves it on demand: one-time network, then cached in GOMODCACHE, so
+# later runs work offline. Fully offline hosts can run plain
+# `go test -count=1 ./...` directly instead of these targets.
+GOTESTSUM ?= go run gotest.tools/gotestsum@v1.13.0
+GOTESTSUM_FLAGS ?= --format pkgname --hide-summary skipped
+
 .PHONY: build test test-short cover vet fmt iso clean build-testkit vm-test vm-test-boot vm-test-net
 
 build: vet
@@ -13,22 +20,23 @@ iso:
 CONFIG ?= builds/default.toml
 
 test: vet
-	go test -count=1 -race -coverprofile=coverage.out ./...
+	mkdir -p $(BIN_DIR)
+	$(GOTESTSUM) $(GOTESTSUM_FLAGS) -- -count=1 -race -coverprofile=$(BIN_DIR)/coverage.out ./...
 
 test-short: vet
-	go test -short -count=1 ./...
+	$(GOTESTSUM) --format short-verbose -- -short -count=1 ./...
 
 cover: test
-	go tool cover -html=coverage.out -o coverage.html
+	go tool cover -html=$(BIN_DIR)/coverage.out -o $(BIN_DIR)/coverage.html
 
 vm-test: vet
-	GENTOOINSTALL_E2E=1 go test -count=1 -v -run 'TestISOBoots|TestISOBootNetwork' ./tests/
+	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots|TestISOBootNetwork' ./tests/
 
 vm-test-boot: vet
-	GENTOOINSTALL_E2E=1 go test -count=1 -v -run 'TestISOBoots$' ./tests/
+	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots$' ./tests/
 
 vm-test-net: vet
-	GENTOOINSTALL_E2E=1 go test -count=1 -v -run 'TestISOBootNetwork$' ./tests/
+	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBootNetwork$' ./tests/
 
 vet:
 	go vet ./...
