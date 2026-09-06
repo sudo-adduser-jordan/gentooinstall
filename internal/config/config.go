@@ -220,6 +220,7 @@ type Gentoo struct {
 	PortageSyncType        string `toml:"portage_sync_type"` // git | rsync
 	PortageGitFullHistory  bool   `toml:"portage_git_full_history"`
 	PortageGitMirror       string `toml:"portage_git_mirror"`
+	PortageRsyncMirror     string `toml:"portage_rsync_mirror"`
 	UsePortageTesting      bool   `toml:"use_portage_testing"`
 	SelectMirrors          bool   `toml:"select_mirrors"`
 	SelectMirrorsLargeFile bool   `toml:"select_mirrors_large_file"`
@@ -340,12 +341,13 @@ func Default(hasEFI bool) *Config {
 			InitramfsSSHD:                false,
 		},
 		Gentoo: Gentoo{
-			Mirror:            "https://mirror.leaseweb.com/gentoo",
-			Arch:              "amd64",
-			Stage3Variant:     "systemd",
-			PortageSyncType:   "git",
-			PortageGitMirror:  "https://anongit.gentoo.org/git/repo/sync/gentoo.git",
-			UsePortageTesting: true,
+			Mirror:             "https://mirror.leaseweb.com/gentoo",
+			Arch:               "amd64",
+			Stage3Variant:      "systemd",
+			PortageSyncType:    "git",
+			PortageGitMirror:   "https://anongit.gentoo.org/git/repo/sync/gentoo.git",
+			PortageRsyncMirror: DefaultPortageRsyncMirror,
+			UsePortageTesting:  true,
 		},
 		Packages: Packages{
 			EnableSSHD: true,
@@ -394,6 +396,10 @@ var Overlays = []Repo{
 // (rsync-friendly mirror) whose "metadata/pkg_desc_index" feeds
 // data/repos/gentoo.packages.
 const MainRepoIndexURL = "https://mirrors.kernel.org/gentoo-portage"
+
+// DefaultPortageRsyncMirror is the canonical rsync URI used when no custom
+// portage_rsync_mirror is configured.
+const DefaultPortageRsyncMirror = "rsync://rsync.gentoo.org/gentoo-portage"
 
 // LookupOverlay returns the overlay with the given name, or nil.
 func LookupOverlay(name string) *Repo {

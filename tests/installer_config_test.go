@@ -197,6 +197,53 @@ func TestConfigureGitSyncSkipsRsync(t *testing.T) {
 	}
 }
 
+func TestWriteReposConfGit(t *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	c, s := testContext(t, cfg, nil)
+
+	if err := installer.WriteReposConf(c); err != nil {
+		t.Fatal(err)
+	}
+	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	for _, want := range []string{"main-repo = gentoo", "sync-type = git",
+		"sync-depth = 1", "sync-uri = https://anongit.gentoo.org/git/repo/sync/gentoo.git",
+		"auto-sync = yes", "sync-git-verify-commit-signature = yes"} {
+		if !strings.Contains(conf, want) {
+			t.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/var/db/repos/gentoo")); err != nil {
+		t.Fatalf("repository location should exist: %v", err)
+	}
+	if len(s.Calls()) != 0 {
+		t.Fatalf("WriteReposConf should issue no commands, got %v", s.Lines())
+	}
+}
+
+func TestWriteReposConfRsync(t *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.PortageSyncType = "rsync"
+	cfg.Gentoo.PortageRsyncMirror = "rsync://mirror.example.invalid/gentoo-portage"
+	c, s := testContext(t, cfg, nil)
+
+	if err := installer.WriteReposConf(c); err != nil {
+		t.Fatal(err)
+	}
+	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	for _, want := range []string{"main-repo = gentoo", "sync-type = rsync",
+		"sync-uri = rsync://mirror.example.invalid/gentoo-portage", "auto-sync = yes"} {
+		if !strings.Contains(conf, want) {
+			t.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/var/db/repos/gentoo")); err != nil {
+		t.Fatalf("repository location should exist: %v", err)
+	}
+	if len(s.Calls()) != 0 {
+		t.Fatalf("WriteReposConf should issue no commands, got %v", s.Lines())
+	}
+}
+
 func TestEnableRepositories(t *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Packages.EnablingRepos = []string{"guru", "kde"}

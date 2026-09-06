@@ -242,20 +242,32 @@ func appendMakeConfUser(c *Context) error {
 	return nil
 }
 
-// ConfigureGitSync writes repos.conf for git sync and runs emerge --sync.
-func ConfigureGitSync(c *Context) error {
-	if c.Cfg.Gentoo.PortageSyncType != "git" {
-		return nil
-	}
+// reposConfContent returns the /etc/portage/repos.conf/gentoo.conf content
+// for the configured portage sync type (git or rsync). The "gentoo" repo must
+// be registered before any sync (emerge-webrsync or emerge --sync), otherwise
+// portage fails with "Repository 'gentoo' not found".
+func reposConfContent(c *Context) string {
 	g := &c.Cfg.Gentoo
-	if err := c.mkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
-		return err
+	if g.PortageSyncType == "rsync" {
+		uri := g.PortageRsyncMirror
+		if uri == "" {
+			uri = config.DefaultPortageRsyncMirror
+		}
+		return fmt.Sprintf(`[DEFAULT]
+main-repo = gentoo
+
+[gentoo]
+location = /var/db/repos/gentoo
+sync-type = rsync
+sync-uri = %s
+auto-sync = yes
+`, uri)
 	}
 	depth := 1
 	if g.PortageGitFullHistory {
 		depth = 0
 	}
-	content := fmt.Sprintf(`[DEFAULT]
+	return fmt.Sprintf(`[DEFAULT]
 main-repo = gentoo
 
 [gentoo]
@@ -267,8 +279,39 @@ sync-depth = %d
 sync-git-verify-commit-signature = yes
 sync-openpgp-key-path = /usr/share/openpgp-keys/gentoo-release.asc
 `, g.PortageGitMirror, depth)
+}
+
+// WriteReposConf registers the "gentoo" repository in
+// /etc/portage/repos.conf so portage tools (emerge-webrsync, emerge --sync,
+// emaint) can resolve it. The repository location is pre-created as well;
+// portage reports "Repository 'gentoo' not found" when a configured repo has
+// no usable location, which otherwise breaks the initial emerge-webrsync.
+func WriteReposConf(c *Context) error {
+	if err := c.mkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
+		return err
+	}
 	path := "/etc/portage/repos.conf/gentoo.conf"
-	if err := c.writeFile(path, []byte(content), 0o644); err != nil {
+	if err := c.writeFile(path, []byte(reposConfContent(c)), 0o644); err != nil {
+		return fmt.Errorf("could not write '%s': %w", path, err)
+	}
+	if err := c.mkdirAll("/var/db/repos/gentoo", 0o755); err != nil {
+		return fmt.Errorf("could not create repository location: %w", err)
+	}
+	return nil
+}
+
+// ConfigureGitSync re-syncs the portage tree over git for the git sync type.
+// The repos.conf registration itself is handled by WriteReposConf, which runs
+// before the initial emerge-webrsync; for rsync this function is a no-op.
+func ConfigureGitSync(c *Context) error {
+	if c.Cfg.Gentoo.PortageSyncType != "git" {
+		return nil
+	}
+	if err := c.mkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
+		return err
+	}
+	path := "/etc/portage/repos.conf/gentoo.conf"
+	if err := c.writeFile(path, []byte(reposConfContent(c)), 0o644); err != nil {
 		return fmt.Errorf("could not write '%s': %w", path, err)
 	}
 	if err := c.removeAll("/var/db/repos/gentoo"); err != nil {
@@ -318,6 +361,10 @@ func MainInstallGentooInChroot(c *Context) error {
 		return fmt.Errorf("could not change root password: %w", err)
 	}
 
+	c.R.log("Registering gentoo repository in repos.conf")
+	if err := WriteReposConf(c); err != nil {
+		return err
+	}
 	c.R.log("Syncing portage tree")
 	if err := c.R.Try("emerge-webrsync"); err != nil {
 		return err

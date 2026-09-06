@@ -101,7 +101,7 @@ qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2 \
   -netdev user,id=net0 \
-  -device e1000,netdev=net0 -m 2048
+  -device e1000,netdev=net0 -m 4096
 
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
 ```

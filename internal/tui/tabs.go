@@ -485,6 +485,14 @@ func buildTabs(m *Model) []tabDef {
 			return f
 		}(),
 		func() *field {
+			f := text("└ Rsync mirror",
+				"The rsync endpoint used to sync the portage tree.",
+				func(cc *config.Config) string { return cc.Gentoo.PortageRsyncMirror },
+				func(cc *config.Config, v string) { cc.Gentoo.PortageRsyncMirror = v })
+			f.vis = func(cc *config.Config) bool { return cc.Gentoo.PortageSyncType == "rsync" }
+			return f
+		}(),
+		func() *field {
 			f := text("Gentoo mirror",
 				"Initial gentoo mirror used during installation (full path incl. subdirectories).",
 				func(cc *config.Config) string { return cc.Gentoo.Mirror },
