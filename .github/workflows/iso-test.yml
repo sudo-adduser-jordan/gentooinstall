@@ -25,6 +25,7 @@ on:
 jobs:
   iso-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -34,7 +35,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 grub-pc-bin grub-efi-amd64-bin xorriso cpio mtools
-          sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
-      - name: Run ISO boot test
+          sudo apt-get install -y qemu-system-x86 grub-pc-bin grub-efi-amd64-bin xorriso cpio mtools shellcheck
+          ls -l /boot/vmlinuz* || true
+          if [ -e "/boot/vmlinuz-$(uname -r)" ]; then sudo chmod 644 "/boot/vmlinuz-$(uname -r)"; fi
+          qemu-system-x86_64 --version
+          xorriso --version | head -n 5
+      - name: Shellcheck release.sh
+        run: shellcheck -S warning scripts/release.sh
+      - name: Run ISO boot test (PR: boot only)
+        if: github.event_name == 'pull_request'
+        run: make vm-test-boot
+      - name: Run ISO boot test (main: full)
+        if: github.event_name != 'pull_request'
         run: make vm-test

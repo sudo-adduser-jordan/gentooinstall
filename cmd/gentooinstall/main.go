@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
+	"gentooinstall/internal/cli"
 	"gentooinstall/internal/config"
 	"gentooinstall/internal/disklayout"
 	"gentooinstall/internal/installer"
@@ -101,53 +102,21 @@ verifies a stage3 tarball and completes configuration inside a chroot.`
 func main() {
 	args := os.Args[1:]
 
-	cfgPath := ""
-	mode := ""
-	var rest []string
-
-	i := 0
-	for i < len(args) {
-		a := args[i]
-		switch a {
-		case "-h", "--help", "help":
-			fmt.Println(usage)
-			return
-		case "-v", "--version":
-			fmt.Println("gentooinstall", version)
-			return
-		case "-c", "--config":
-			if i+1 >= len(args) {
-				fatal("--config requires a path")
-			}
-			i++
-			cfgPath = args[i]
-		case "install":
-			if mode == "gif" {
-				fatal("invalid argument '%s'", a)
-			}
-			mode = "install"
-		case "gif":
-			if mode == "install" {
-				fatal("invalid argument '%s'", a)
-			}
-			mode = "gif"
-			rest = args[i+1:]
-			i = len(args)
-		case "chroot":
-			mode = "chroot"
-			rest = args[i+1:]
-			i = len(args)
-		case "--in-chroot":
-			mode = "in-chroot"
-		default:
-			if cfgPath == "" && !strings.HasPrefix(a, "-") {
-				cfgPath = a // positional config for TUI/install mode
-			} else {
-				fatal("invalid argument '%s'", a)
-			}
-		}
-		i++
+	p, err := cli.ParseArgs(args)
+	if err != nil {
+		fatal("%v", err)
 	}
+	if p.ShowHelp {
+		fmt.Println(usage)
+		return
+	}
+	if p.ShowVersion {
+		fmt.Println("gentooinstall", version)
+		return
+	}
+	cfgPath := p.CfgPath
+	mode := p.Mode
+	rest := p.Rest
 
 	if mode == "gif" {
 		runGIF(rest)
