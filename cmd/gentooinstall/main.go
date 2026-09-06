@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -536,6 +537,13 @@ func runInstall(cfgPath string) {
 	nonInteractive := assumeYes()
 	r := newRunner(!nonInteractive)
 	r.NonInteractive = nonInteractive
+	// Mirror everything (host phases plus the chroot child) into the
+	// persistent install log so a failure can be inspected afterwards.
+	if f, err := installer.OpenInstallLog(); err == nil {
+		r.Stdout = io.MultiWriter(r.Stdout, f)
+		r.Stderr = io.MultiWriter(r.Stderr, f)
+		defer f.Close()
+	}
 	c := &installer.Context{
 		R:            r,
 		Cfg:          cfg,
@@ -582,6 +590,9 @@ func runInstall(cfgPath string) {
 	if err := installer.EnterChroot(c, installer.RootMountpoint); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
+			// Preserve the child's exit code for scripting, but surface the
+			// wrapped error (including the child-output tail) first.
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(ee.ExitCode())
 		}
 		fatal("%v", err)
@@ -697,6 +708,10 @@ type tuiInstaller struct {
 	r      *installer.Runner
 	decide chan tui.InstallDecision
 
+	// logFile appends every install line (host + chroot child output) to
+	// the persistent install log so failures survive window scrollback.
+	logFile io.Closer
+
 	// decided records that the user has already answered a prompt for the
 	// current step. It prevents a command-level abort (the user chose
 	// "Abort" on the runner's OnFailure prompt) from also triggering a
@@ -762,7 +777,12 @@ func (t *tuiInstaller) logf(format string, args ...any) {
 // newTUIRunner builds a non-interactive runner streaming everything
 // into the TUI install window (nothing goes to the real terminal).
 func (t *tuiInstaller) newRunner() *installer.Runner {
-	out := installer.NewLineTee(nil, tui.EmitInstallLine)
+	var sink io.Writer
+	if f, err := installer.OpenInstallLog(); err == nil {
+		t.logFile = f
+		sink = f
+	}
+	out := installer.NewLineTee(sink, tui.EmitInstallLine)
 	r := installer.NewRunner(out, out)
 	r.NonInteractive = true
 	r.OnFailure = func(cmdline string, err error) installer.FailAction {
@@ -793,6 +813,12 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 	t := &tuiInstaller{cfg: cfg, path: cfgPath,
 		decide: make(chan tui.InstallDecision, 1)}
 	r := t.newRunner()
+	defer func() {
+		if t.logFile != nil {
+			_ = t.logFile.Close()
+			t.logFile = nil
+		}
+	}()
 
 	c := &installer.Context{
 		R:            r,

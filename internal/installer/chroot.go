@@ -150,7 +150,9 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 }
 
 // EnterChroot re-executes this binary inside the chroot to run the
-// in-chroot phase (port of exec chroot ... dispatch_chroot.sh).
+// in-chroot phase (port of exec chroot ... dispatch_chroot.sh). The child's
+// output is streamed as usual, but also retained so a failure carries the
+// tail back in the returned error instead of only living in scrollback.
 func EnterChroot(c *Context, chrootDir string, args ...string) error {
 	if err := StageBind(c); err != nil {
 		return err
@@ -172,15 +174,28 @@ func EnterChroot(c *Context, chrootDir string, args ...string) error {
 	} else {
 		cmd.Stdin = os.Stdin
 	}
-	cmd.Stdout = c.R.stdout()
-	cmd.Stderr = c.R.stderr()
+	outTW := NewTailWriter(c.R.stdout(), maxTailLines)
+	errTW := NewTailWriter(c.R.stderr(), maxTailLines)
+	cmd.Stdout = outTW
+	cmd.Stderr = errTW
 	cmd.Env = env
-	if err := cmd.Run(); err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf("chroot phase failed with exit code %d: %w",
-				ee.ExitCode(), err)
+	err := cmd.Run()
+	outTW.Flush()
+	errTW.Flush()
+	if err != nil {
+		tail := append(outTW.Tail(), errTW.Tail()...)
+		if len(tail) > maxTailLines {
+			tail = tail[len(tail)-maxTailLines:]
 		}
-		return fmt.Errorf("failed to chroot into '%s': %w", chrootDir, err)
+		detail := ""
+		if len(tail) > 0 {
+			detail = "\n\nRecent output:\n" + strings.Join(tail, "\n")
+		}
+		if ee, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("chroot phase failed with exit code %d: %w%s",
+				ee.ExitCode(), err, detail)
+		}
+		return fmt.Errorf("failed to chroot into '%s': %w%s", chrootDir, err, detail)
 	}
 	return nil
 }

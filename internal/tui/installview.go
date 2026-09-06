@@ -73,6 +73,11 @@ var instStateNames = map[int]string{
 
 const maxInstLines = 5000
 
+// installCardH is the fixed outer height (border + padding included) of the
+// install status card, chosen so the modal stays a constant size while
+// steps scroll under the loading bar.
+const installCardH = 24
+
 var reAnsi = regexp.MustCompile(
 	"\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)?")
 
@@ -448,9 +453,10 @@ func (m *Model) renderFailPanel() string {
 	return b.String()
 }
 
-// renderInstallView draws the status card: title, loading bar, checklist,
-// current command and (on failure) the decision panel. No scrolling log —
-// that lives behind the `l` overlay.
+// renderInstallView draws the status card: pinned header and current
+// command over the loading bar, with the step checklist scrolling up
+// underneath it. The card has a constant size so streaming output never
+// resizes the modal; the failure decision panel is stacked below, unchanged.
 func (m *Model) renderInstallView() string {
 	w, h := m.width, m.height
 	if w == 0 {
@@ -491,27 +497,35 @@ func (m *Model) renderInstallView() string {
 		m.prog.Width = barW
 	}
 
-	step := m.curStep
-	if step == "" {
-		step = "starting…"
-	}
-
 	header := titleStyle.Render("Installation") +
 		helpStyle.Render(" · ") + st.Render(status)
 
 	var cmdLine string
 	if m.curCmd != "" {
-		cmdLine = "\n" + unsetStyle.Render("$ "+m.curCmd)
+		cmdLine = unsetStyle.Render("$ " + m.curCmd)
 	}
 
 	bar := m.prog.ViewAs(m.stepProgress())
 
-	checklist := m.renderChecklist(cardW-8, h-12)
+	// Data box: border 2 + padding 2 rows, then header (1), blank, cmd (1),
+	// blank, bar (1), blank, checklist (rest), blank, hint (1). The
+	// checklist window is bottom-anchored, so older steps scroll up under
+	// the loading bar as new ones stream in.
+	inner := installCardH - 4
+	checklistSlots := maxInt(1, inner-8)
+	checklist := m.renderChecklist(cardW-8, checklistSlots)
 
-	body := header + cmdLine + "\n\n" + bar + "\n" + checklist + "\n\n" +
-		helpStyle.Render(hint)
+	body := strings.Join([]string{
+		header,
+		cmdLine,
+		bar,
+		checklist,
+		helpStyle.Render(hint),
+	}, "\n\n")
 
-	card := modalBoxStyle.Width(cardW - 6).Render(body)
+	// lipgloss Height excludes the 2 border rows, so budget them out to hit
+	// the fixed outer size.
+	card := modalBoxStyle.Width(cardW - 6).Height(installCardH - 2).Render(body)
 
 	stack := []string{card}
 	if m.fail != nil {

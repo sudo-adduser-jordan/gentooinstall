@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -67,6 +68,50 @@ func TestLineTeeTruncatesLongLines(t *testing.T) {
 	w.Write([]byte(long + "\n"))
 	if len(lines) != 1 || len(lines[0]) != 4096 {
 		t.Fatalf("line length = %d, want 4096", len(lines[0]))
+	}
+}
+
+func TestTailWriterKeepsLastLines(t *testing.T) {
+	var sink bytes.Buffer
+	tw := installer.NewTailWriter(&sink, 3)
+	tw.Write([]byte("one\ntwo\nthree\n"))
+	tw.Write([]byte("four\n"))
+	if got := tw.Tail(); len(got) != 3 || got[0] != "two" || got[2] != "four" {
+		t.Fatalf("tail = %q, want the last 3 lines", got)
+	}
+	if got := sink.String(); got != "one\ntwo\nthree\nfour\n" {
+		t.Fatalf("sink = %q", got)
+	}
+}
+
+func TestTailWriterFlushCapturesTrailingPartial(t *testing.T) {
+	tw := installer.NewTailWriter(nil, 5)
+	tw.Write([]byte("error: something bad"))
+	tw.Flush()
+	if got := tw.Tail(); len(got) != 1 || got[0] != "error: something bad" {
+		t.Fatalf("tail = %q", got)
+	}
+}
+
+func TestInstallLogRoundTrip(t *testing.T) {
+	path := installer.InstallLogPath()
+	defer os.Remove(path)
+	f, err := installer.OpenInstallLog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte("hello install log\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read install log: %v", err)
+	}
+	if !strings.Contains(string(data), "hello install log") {
+		t.Fatalf("install log missing expected content: %q", data)
 	}
 }
 

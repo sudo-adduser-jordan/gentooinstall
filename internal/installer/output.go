@@ -2,12 +2,18 @@ package installer
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
 // maxLineTeeLine caps the length of a single forwarded line.
 const maxLineTeeLine = 4096
+
+// maxTailLines caps how many child-output lines are kept for error reports.
+const maxTailLines = 40
 
 // lineTee is an io.Writer that optionally mirrors bytes to a sink writer
 // and forwards every complete line to a callback. It is used to stream
@@ -72,4 +78,76 @@ func (t *lineTee) Flush() {
 	line := t.buf.String()
 	t.buf.Reset()
 	t.emit(line + "\n")
+}
+
+// TailWriter mirrors every write to sink while retaining the last maxLines
+// newline-terminated lines, so a failing child's final output can be
+// surfaced in errors instead of being lost in scrollback.
+type TailWriter struct {
+	sink  io.Writer
+	max   int
+	lines []string
+	buf   string
+}
+
+// NewTailWriter returns a writer that forwards raw bytes to sink (nil to
+// discard) and keeps the last maxLines complete non-blank lines.
+func NewTailWriter(sink io.Writer, maxLines int) *TailWriter {
+	if maxLines < 1 {
+		maxLines = 1
+	}
+	return &TailWriter{sink: sink, max: maxLines}
+}
+
+func (tw *TailWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	if tw.sink != nil {
+		_, _ = tw.sink.Write(p)
+	}
+	tw.buf += string(p)
+	for {
+		i := strings.IndexByte(tw.buf, '\n')
+		if i < 0 {
+			break
+		}
+		line := strings.TrimRight(tw.buf[:i], "\r")
+		tw.buf = tw.buf[i+1:]
+		if line != "" {
+			tw.push(line)
+		}
+	}
+	return n, nil
+}
+
+func (tw *TailWriter) push(line string) {
+	tw.lines = append(tw.lines, line)
+	if len(tw.lines) > tw.max {
+		tw.lines = tw.lines[len(tw.lines)-tw.max:]
+	}
+}
+
+// Flush records a trailing partial line (prompt-style output that ends
+// without a newline), mirroring lineTee.Flush.
+func (tw *TailWriter) Flush() {
+	if tw.buf == "" {
+		return
+	}
+	tw.push(strings.TrimRight(tw.buf, "\r\n"))
+	tw.buf = ""
+}
+
+// Tail returns the retained lines in their original order.
+func (tw *TailWriter) Tail() []string { return append([]string{}, tw.lines...) }
+
+// InstallLogPath is the rolling log of an installation run, kept on the
+// live system so failures stay greppable after the TUI window scrolls.
+func InstallLogPath() string { return filepath.Join(TmpDir, "install.log") }
+
+// OpenInstallLog appends to InstallLogPath, creating it and its parents.
+func OpenInstallLog() (io.WriteCloser, error) {
+	path := InstallLogPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create install log directory: %w", err)
+	}
+	return os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 }

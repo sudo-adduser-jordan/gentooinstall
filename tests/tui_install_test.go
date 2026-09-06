@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -203,6 +204,70 @@ func TestTuiInstallPauseResetsToIdle(t *testing.T) {
 	view := model.View()
 	if !strings.Contains(view, "Start installation") {
 		t.Fatalf("i should open a fresh installation confirmation, got:\n%s", view)
+	}
+}
+
+func TestTuiInstallStepsScrollUnderBar(t *testing.T) {
+	m, _ := newInstallModel(t)
+	mm, _ := m.Update(tui.InstallStartMsg{})
+	model := mm.(*tui.Model)
+
+	// Enough steps to overflow the fixed checklist window: the oldest ones
+	// scroll up and off under the loading bar, latest stay visible.
+	for i := 0; i < 16; i++ {
+		mm, _ = model.Update(tui.InstallLineMsg{Line: fmt.Sprintf("[+] Step %d", i+1)})
+		model = mm.(*tui.Model)
+	}
+	view := model.View()
+	if !strings.Contains(view, "Step 16") {
+		t.Fatal("latest step missing from install view")
+	}
+	if !strings.Contains(view, "Step 5") {
+		t.Fatal("first visible step missing from the scrolling window")
+	}
+	if strings.Contains(view, "Step 4") {
+		t.Fatal("step scrolled off under the loading bar")
+	}
+	if !strings.Contains(view, "⋮") {
+		t.Fatal("overflow marker missing from the step window")
+	}
+}
+
+func TestTuiInstallCardStaticSize(t *testing.T) {
+	m, _ := newInstallModel(t)
+	mm, _ := m.Update(tui.InstallStartMsg{})
+	model := mm.(*tui.Model)
+
+	span := func() int {
+		lines := strings.Split(model.View(), "\n")
+		top, bottom := -1, -1
+		for i, l := range lines {
+			if strings.Contains(l, "╭") && top < 0 {
+				top = i
+			}
+			if top >= 0 && strings.Contains(l, "╰") {
+				bottom = i
+				break
+			}
+		}
+		return bottom - top + 1
+	}
+
+	for i := 0; i < 3; i++ {
+		mm, _ = model.Update(tui.InstallLineMsg{Line: fmt.Sprintf("early%d", i)})
+		model = mm.(*tui.Model)
+	}
+	small := span()
+	for i := 0; i < 30; i++ {
+		mm, _ = model.Update(tui.InstallLineMsg{Line: fmt.Sprintf("more%d", i)})
+		model = mm.(*tui.Model)
+	}
+	large := span()
+	if small != large {
+		t.Fatalf("install card height changed with log size: %d vs %d", small, large)
+	}
+	if small != 24 {
+		t.Fatalf("install card height = %d, want fixed 24 rows", small)
 	}
 }
 
