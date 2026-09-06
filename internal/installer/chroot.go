@@ -157,7 +157,7 @@ func EnterChroot(c *Context, chrootDir string, args ...string) error {
 	if err := StageBind(c); err != nil {
 		return err
 	}
-	fullArgs := []string{"--", chrootDir, BinInBind(),
+	fullArgs := []string{chrootDir, BinInBind(),
 		"--in-chroot", "--config", ConfigInBind()}
 	fullArgs = append(fullArgs, args...)
 
@@ -210,7 +210,7 @@ func ChrootShell(c *Context, chrootDir string, args ...string) error {
 	if err := c.writeFile(initScript, []byte(script+"\n"), 0o644); err != nil {
 		return err
 	}
-	cmdArgs := []string{"--", chrootDir, "/bin/bash", "--init-file", initScript}
+	cmdArgs := []string{chrootDir, "/bin/bash", "--init-file", initScript}
 	if len(args) > 0 {
 		cmdArgs = append(cmdArgs, "-c", strings.Join(args, " "))
 	}
