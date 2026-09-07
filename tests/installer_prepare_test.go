@@ -63,7 +63,7 @@ func TestResolveStage3(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "latest-stage3-amd64-systemd.txt"):
 			fmt.Fprint(w, "# Latest as of now\nstage3-amd64-systemd-20240121T123456Z.tar.xz 123456\n")
 		case strings.HasSuffix(r.URL.Path, "/"):
-			fmt.Fprint(w,
+			fmt.Fprintf(w, "%s",
 				`<a href="stage3-amd64-systemd-20240121T120000Z.tar.xz">`+
 					`<a href="stage3-amd64-systemd-20240121T123456Z.tar.xz">`+
 					`<a href="stage3%20with%25es%2Finside">`+
