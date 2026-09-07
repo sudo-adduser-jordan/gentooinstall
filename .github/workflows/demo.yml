@@ -28,12 +28,23 @@ jobs:
         run: go build -o bin/gentooinstall ./cmd/gentooinstall
 
       - name: Install vhs
+        # Pinned for reproducible recordings; vhs ships its own Chromium and
+        # font handling, so @latest can shift emoji metrics any run.
         run: |
-          go install github.com/charmbracelet/vhs@latest
+          go install github.com/charmbracelet/vhs@v0.11.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Install ffmpeg, ttyd and emoji font
         run: sudo apt-get update && sudo apt-get install -y ffmpeg ttyd fonts-noto-color-emoji
+
+      - name: Verify emoji font
+        # The tape's FontFamily stack assumes Noto Color Emoji renders the
+        # tab icons at a uniform 2-cell advance; fail fast if fontconfig
+        # cannot see it instead of recording misaligned tabs.
+        run: |
+          sudo fc-cache -f >/dev/null
+          fc-match "Noto Color Emoji"
+          test "$(fc-list | grep -ci emoji)" -ge 1
 
       - name: Record demo.gif
         env:
