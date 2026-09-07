@@ -96,14 +96,26 @@ fetches fail, so always attach a user-mode NIC:
 ```sh
 make iso
 qemu-img create -f qcow2 bin/gentoo-disk.img 20G
-
 qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2 \
   -netdev user,id=net0 \
   -device e1000,netdev=net0 -m 4096
 
+make iso
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+qemu-system-x86_64 \
+  -cdrom bin/gentooinstall.iso \
+  -drive file=bin/gentoo-disk.img,format=qcow2,cache=writeback,aio=threads,discard=unmap \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -machine q35,accel=kvm \
+  -cpu host \
+  -smp 3 \
+  -m 4096
+
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
+
 ```
 
 Notes:
