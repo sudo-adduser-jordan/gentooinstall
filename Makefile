@@ -8,7 +8,7 @@ BIN_DIR := ./bin
 GOTESTSUM ?= go run gotest.tools/gotestsum@v1.13.0
 GOTESTSUM_FLAGS ?= --format pkgname --hide-summary skipped
 
-.PHONY: build test test-short cover vet fmt iso clean build-testkit vm-test vm-test-boot vm-test-net
+.PHONY: build test test-short cover vet fmt iso clean vm-test vm-test-net vm-install
 
 build: vet
 	mkdir -p $(BIN_DIR)
@@ -32,7 +32,10 @@ cover: test
 vm-test: vet
 	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots$' ./tests/
 
-vm-test-boot: vm-test
+# Full installs inside the VM for every shipped build template. Very long
+# (stage3 download + chroot + kernel per file); opt-in, local-only.
+vm-install: vet
+	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_INSTALL=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestInstallInVM$' ./tests/
 
 vm-test-net: vet
 	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_NET=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBootNetwork$' ./tests/

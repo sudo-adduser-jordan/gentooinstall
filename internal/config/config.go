@@ -307,11 +307,12 @@ type Config struct {
 }
 
 // Default returns the built-in default configuration
-// (port of load_default_config).
+// (port of load_default_config). EFI is the default boot type on modern
+// machines; it falls back to BIOS only when the live system reports no EFI.
 func Default(hasEFI bool) *Config {
-	boot := "bios"
-	if hasEFI {
-		boot = "efi"
+	boot := "efi"
+	if !hasEFI {
+		boot = "bios"
 	}
 	return &Config{
 		Disk: Disk{

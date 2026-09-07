@@ -95,9 +95,9 @@ Options:
   -v, --version       Print version
 
 Pre-made build configurations live in builds/ (default, openrc, musl,
-desktop-systemd, bios, btrfs-efi, raid0-efi, raid1-efi, existing-efi, zfs-efi,
-...). The installer performs partitioning (destructive!), downloads and
-verifies a stage3 tarball and completes configuration inside a chroot.`
+desktop-systemd, bios, btrfs-efi, existing-efi, ...). The installer performs
+partitioning (destructive!), downloads and verifies a stage3 tarball and
+completes configuration inside a chroot.`
 
 func main() {
 	args := os.Args[1:]
@@ -146,12 +146,25 @@ func main() {
 		if err := live.Init(); err != nil {
 			fmt.Fprintf(os.Stderr, "live init: %v\n", err)
 		}
+		// Headless install mode (drives the opt-in VM e2e tests): when the
+		// kernel command line carries `gentooinstall.install=<config path>`,
+		// run the CLI install flow straight away instead of opening the TUI.
+		// Relative paths resolve against /builds (where release.sh stages the
+		// shipped configs on the live rootfs). GENTOOINSTALL_ASSUME_YES=1
+		// answers the confirmation prompts and GENTOO_INSTALL_ENCRYPTION_KEY
+		// supplies the luks/zfs passphrase (override with
+		// gentooinstall.install-key=<key> on the cmdline). The install runs as
+		// a child so a fatal() in the CLI path cannot kill PID 1; afterwards
+		// the result is reported on the serial console and the machine powers
+		// off (the QEMU harness uses -no-reboot to end the capture).
+		if cfg, key := headlessInstallRequest(); cfg != "" {
+			runHeadlessInstall(cfg, key)
+		}
 		// Probe the default mirror in the background and mirror the result to
 		// the serial console so headless e2e tests can assert that DNS + outbound
 		// HTTPS + CA certs all work inside the ISO (the things the tarball fetch
 		// depends on). This never blocks the TUI from opening.
 		go probeMirrorSerial()
-		setupFBTty()
 	}
 
 	switch mode {
@@ -166,31 +179,74 @@ func main() {
 	}
 }
 
-// setupFBTty claims the first virtual terminal for the interactive live-ISO
-// boot. The initramfs ships no device nodes beyond /dev/console, and the
-// kernel hands PID1 a console whose writes do not reach the fbcon screen on a
-// GRUB+gfxpayload boot. Gettys solve the same problem by opening the VT
-// directly: recreate the missing /dev/tty1 node, make it the controlling
-// terminal and rebind stdio to it so the framebuffer console (fbcon displays
-// VT1 once it takes over) receives the TUI and the keyboard. Failures are
-// ignored; headless serial boots simply keep /dev/console.
-func setupFBTty() {
-	if _, err := os.Stat("/dev/tty1"); err != nil {
-		if err := syscall.Mknod("/dev/tty1", syscall.S_IFCHR|0o600, int(4<<8|1)); err != nil {
-			return
+// headlessInstallRequest reads the headless-install kernel parameters
+// (`gentooinstall.install=<config path>`, optional `gentooinstall.install-key=<key>`)
+// from /proc/cmdline. An empty cfg means no headless install was requested.
+func headlessInstallRequest() (cfg, key string) {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return "", ""
+	}
+	for _, f := range strings.Fields(string(data)) {
+		switch {
+		case strings.HasPrefix(f, "gentooinstall.install="):
+			cfg = strings.TrimPrefix(f, "gentooinstall.install=")
+		case strings.HasPrefix(f, "gentooinstall.install-key="):
+			key = strings.TrimPrefix(f, "gentooinstall.install-key=")
 		}
 	}
-	f, err := os.OpenFile("/dev/tty1", os.O_RDWR, 0)
-	if err != nil {
+	return cfg, key
+}
+
+// runHeadlessInstall drives a full installation from the PID-1 init path.
+// The actual install runs in a child process (this binary's "install" mode)
+// so a fatal() inside the CLI never kills PID 1; the marker line is mirrored
+// to the serial console (the headless e2e asserts on it) and the machine is
+// powered off either way so QEMU's -no-reboot terminates the capture.
+func runHeadlessInstall(cfg, key string) {
+	if !filepath.IsAbs(cfg) {
+		cfg = filepath.Join("/builds", cfg)
+	}
+	report := func(status string) {
+		msg := "gentooinstall install: " + status + "\n"
+		fmt.Print(msg)
+		mirrorSerialBanner(msg)
+		powerOff()
+		os.Exit(0)
+	}
+	if _, err := os.Stat(cfg); err != nil {
+		report("failed (" + cfg + " not found)")
+	}
+	if key == "" {
+		key = "gentooinstall-e2e-key-12345"
+	}
+	cmd := exec.Command("/proc/self/exe", "install", cfg)
+	cmd.Env = append(os.Environ(),
+		"GENTOOINSTALL_ASSUME_YES=1",
+		"GENTOO_NONINTERACTIVE=1",
+		"GENTOO_INSTALL_ENCRYPTION_KEY="+key)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			report(fmt.Sprintf("failed (exit %d)", ee.ExitCode()))
+		}
+		report("failed (" + err.Error() + ")")
+	}
+	report("success")
+}
+
+// powerOff attempts a clean shutdown after a headless install. The live rootfs
+// ships busybox, so `poweroff -f` (a direct reboot() syscall, PID-1 safe) is
+// preferred; a bare exit would kill init and panic the kernel instead.
+func powerOff() {
+	if err := exec.Command("poweroff", "-f").Run(); err == nil {
 		return
 	}
-	defer f.Close()
-	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCSCTTY, 0); e != 0 {
-		return
-	}
-	_ = syscall.Dup2(int(f.Fd()), 0)
-	_ = syscall.Dup2(int(f.Fd()), 1)
-	_ = syscall.Dup2(int(f.Fd()), 2)
+	time.Sleep(time.Second)
+	os.Exit(0)
 }
 
 // mirrorSerialBanner writes msg to the first serial port (ttyS0) so headless
@@ -400,17 +456,11 @@ func runTUI(cfgPath string) {
 		return runInstallTUI(cfg, cfgPath)
 	})
 
-	// As the live-ISO init we render to the virtual terminal created by
-	// setupFBTty instead of /dev/console: Bubble Tea only reaches the fbcon
-	// screen when handed a freshly opened /dev/tty1 file, and stdin (bound to
-	// tty1 by setupFBTty) carries the keyboard. Everywhere else the program
-	// renders to the caller's stdio.
+	// The TUI always renders to the caller's terminal. As the live-ISO init
+	// that is /dev/console: the default grub entry (console=ttyS0) puts it on
+	// the serial port, so under QEMU -nographic -serial stdio the TUI appears
+	// directly in the terminal that launched QEMU instead of a framebuffer VT.
 	opts := []tea.ProgramOption{tea.WithAltScreen()}
-	if os.Getpid() == 1 {
-		if out, err := os.OpenFile("/dev/tty1", os.O_WRONLY, 0); err == nil {
-			opts = append(opts, tea.WithOutput(out))
-		}
-	}
 	p := tea.NewProgram(model, opts...)
 	tui.SetProgram(p)
 	if os.Getpid() == 1 {

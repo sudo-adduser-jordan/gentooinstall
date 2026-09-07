@@ -59,9 +59,12 @@ make fmt        # gofmt -l -w .
 make iso        # builds the live ISO (scripts/release.sh -> ./bin/gentooinstall.iso;
                 # needs network to dl-cdn.alpinelinux.org and host cpio/gzip/
                 # grub-mkrescue/xorriso/modprobe)
-make vm-test    # QEMU e2e: TestISOBoots + TestISOBootNetwork. Needs qemu-system,
-                # qemu-img, grub-mkrescue/xorriso, a build-host kernel and
-                # outbound access to the Gentoo mirror.
+make vm-test    # QEMU e2e: TestISOBoots (boot to the TUI on the serial console).
+                # Needs qemu-system, qemu-img, grub-mkrescue/xorriso, a
+                # build-host kernel and outbound access to the Gentoo mirror.
+make vm-install # QEMU e2e: TestInstallInVM runs a FULL install for every
+                # builds/*.toml inside a VM (headless install via the
+                # gentooinstall.install= kernel flag). Very slow; opt-in.
 ```
 
 ## Reference material when porting
@@ -81,7 +84,11 @@ make vm-test    # QEMU e2e: TestISOBoots + TestISOBootNetwork. Needs qemu-system
 - Commit messages: short imperative subject line, lowercase.
 
 ## Notes
-Interactive boot (keyboard + monitor, opens the TUI in the window):
+Interactive boot (keyboard + monitor, opens the TUI in the window). The grub
+menu defaults to the **terminal** entry (serial console), so for a graphical
+window you must pick the "(graphical)" entry: at the 3s menu press Down then
+Enter (or use the `qemu-system-x86_64` window and click). Steps marked UEFI
+are required for the default EFI configs:
 
 ```sh
 make iso
@@ -139,6 +146,8 @@ qemu-system-x86_64 \
 
 # BIOS install, accelerated (ONLY with builds/bios.toml, disk.boot_type = "bios"):
 # no OVMF -> SeaBIOS -> no /sys/firmware/efi; an EFI config fails here.
+make iso
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
 qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2,cache=writeback,aio=threads,discard=unmap \
@@ -152,6 +161,31 @@ qemu-system-x86_64 \
 # Boot the installed OS (firmware must match the installed boot type; for EFI
 # targets reuse the same writable VARS file so the efibootmgr entry persists):
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
+
+# Dev/CI: boot headless into the TUI inside the terminal. The default grub
+# entry "Gentoo Install (terminal)" sets console=ttyS0 only, so /dev/console
+# IS the serial port: with -nographic -serial stdio the TUI renders directly
+# in the terminal that launched QEMU (no framebuffer window is created):
+qemu-system-x86_64 \
+  -cdrom bin/gentooinstall.iso \
+  -drive file=bin/gentoo-disk.img,format=qcow2 \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -nographic -serial stdio -monitor none \
+  -m 1024
+
+# make vm-test covers this path headlessly (TestISOBoots asserts the PID 1
+# banner and the "live: tui starting" marker appear on the serial console).
+
+
+# Headless full install (the o/vm-install driver): stage a config as
+# builds/custom.toml and add the gentooinstall.install kernel flag so PID 1
+# runs `gentooinstall install` non-interactively, prints
+# "gentooinstall install: success" on the serial console and powers off. The
+# VM install test (tests/install_vm_test.go) drives this for every template:
+GENTOOINSTALL_INSTALL_CFG=$PWD/builds/openrc.toml make iso
+qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,format=qcow2 \
+  -netdev user,id=net0 -device e1000,netdev=net0 -nographic -serial stdio -monitor none -m 1024
 
 ```
 
@@ -169,4 +203,10 @@ Notes:
   `virtio_net.ko`; distro kernels often build it in, so prefer `e1000`.
   `make vm-test`'s TestISOBootNetwork boot-tests exactly this e1000 + DHCP +
   DNS + mirror-reachability path on the serial console.
+- FAT/vfat (`fat`, `vfat`, `nls_cp437`, `nls_ascii`) are bundled for the ESP
+  and the FAT32 bios_grub partition only when the build-host kernel ships them
+  as modules; when `CONFIG_VFAT_FS=y` the ISO relies on the built-in driver.
+  Both module lists (scripts/release.sh `MODULES` + live.NeedModules) stay in
+  sync; a release host with `=m` but no installed `.ko` produces an ISO that
+  cannot mount `/boot/efi` or `/boot/bios` ("unknown filesystem type vfat").
 

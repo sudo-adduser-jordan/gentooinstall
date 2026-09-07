@@ -32,7 +32,7 @@ func TestLiveNeedModules(t *testing.T) {
 	}
 	// NICs so DHCP works under QEMU (e1000) and feature support for
 	// shipped templates; kept in sync with scripts/release.sh MODULES.
-	for _, want := range []string{"e1000", "virtio_net", "dm_crypt", "btrfs", "md_mod", "nvme"} {
+	for _, want := range []string{"e1000", "virtio_net", "dm_crypt", "btrfs", "md_mod", "nvme", "fat", "vfat"} {
 		if !need[want] {
 			t.Fatalf("NeedModules missing %q: %v", want, live.NeedModules)
 		}

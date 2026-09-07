@@ -17,38 +17,33 @@ make fmt          # gofmt -l -w .
 
 ## End-to-end tests (QEMU)
 
-`scripts/run-vm-test.sh` runs the real, destructive install path entirely
-inside QEMU — **no privileges needed at test time**, so it behaves identically
-on a laptop and on a GitHub Actions runner (no privileged containers involved;
-ubuntu-24.04 runners disable unprivileged user namespaces, so there is nothing
-to fall back to):
+Two opt-in test suites drive the real installer inside QEMU. Both are
+local-only (never run in CI) and need host `qemu-system-x86_64`, `qemu-img`,
+`grub-mkrescue`/`xorriso`, a build-host kernel and outbound access to the
+Gentoo mirror:
 
 ```sh
-sudo make build-testkit   # builds the Debian "testkit" live image (root only)
-make vm-test              # fully unprivileged; uses KVM, falls back to TCG
+make vm-test       # boots the live ISO to the TUI on the serial console.
+make vm-install    # runs a FULL install for every builds/*.toml template.
 ```
 
-How it works:
+`make vm-test` covers the boot path headlessly: the default grub entry
+"Gentoo Install (terminal)" maps the serial port to `/dev/console`, so with
+`-nographic -serial stdio` the TUI renders straight into the launching
+terminal and `TestISOBoots` asserts the PID 1 banner and the
+`live: tui starting` marker appear on the serial console.
 
-1. **Boot 1** — the testkit (built by `scripts/build-testkit.sh`) boots under
-   OVMF/EFI firmware, fetches an inject payload over the user-mode network
-   (the binary, a config and an optional stage3 seed), and runs
-   `gentooinstall install` with `GENTOOINSTALL_ASSUME_YES=1` against a fresh
-   `/dev/vdb`. Every interactive prompt is answered with its intended default
-   and the pre-apply countdown is skipped.
-2. **Boot 2** — the installed disk is booted for real: via OVMF reusing the
-   same NVRAM file (so the `efibootmgr` entry persists) for EFI targets, or
-   plain SeaBIOS for BIOS targets. Reaching the multi-user target (a serial
-   `login:` prompt) is the pass criterion.
-
-The stage3 tarball can be seeded from the host with `--stage3 file.tar.xz`,
-renamed to match the mirror's current listing so the installer's `.verified`
-resume path is exercised instead of a live download. `.e2e-images/` (work
-dir, logs, disk snapshots) is gitignored.
-
-`.github/workflows/install-test.yml` runs the default (EFI/systemd) build on
-every push touching the installer, and `workflow_dispatch` can pick layout
-variants: `default`, `bios`, `luks-efi` and `btrfs-efi`.
+`make vm-install` (`TestInstallInVM`) executes a real installation for each
+shipped template. It stages the config (rewriting placeholder device paths to
+the VM's disks), builds the ISO with `release.sh`'s
+`GENTOOINSTALL_INSTALL_CFG` hook so the default grub entry passes a
+`gentooinstall.install=builds/custom.toml` kernel flag, boots the ISO under
+the config's firmware (OVMF for `efi`, SeaBIOS for `bios`) with user-mode NIC
+and raw disks, and passes when the headless PID 1 install prints
+`gentooinstall install: success` and powers the guest down. The
+`existing-efi.toml` case pre-partitions its first disk (GPT ESP + swap + ext4)
+and skips cleanly when the `losetup`/mkfs tools need root that isn't
+available.
 
 ## Usage
 
@@ -92,9 +87,8 @@ go install github.com/charmbracelet/vhs@latest   # one-time setup
 Configurations are TOML and live in `builds/`. The repo ships templates for
 every supported scheme: classic single disk with EFI (`default.toml`,
 `openrc.toml`, `musl.toml`, `desktop-systemd.toml`) or legacy BIOS
-(`bios.toml`), btrfs RAID (`btrfs-efi.toml`), mdadm RAID0/RAID1 + LUKS
-(`raid0-efi.toml`, `raid1-efi.toml`), reuse of existing partitions
-(`existing-efi.toml`), and ZFS (`zfs-efi.toml`).
+(`bios.toml`), btrfs RAID (`btrfs-efi.toml`), and reuse of existing partitions
+(`existing-efi.toml`).
 Running `gentooinstall` with no arguments opens `builds/custom.toml` if it exists,
 otherwise the shipped `builds/default.toml`; the first save always writes
 `builds/custom.toml` (gitignored) so the templates are never overwritten.
@@ -163,6 +157,11 @@ qemu-system-x86_64 -cdrom bin/gentooinstall.iso \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
   -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd
 ```
+
+The grub menu defaults to the **terminal** entry, which maps the serial port
+to `/dev/console` (so the TUI renders over `-nographic -serial stdio`, no
+framebuffer window). Pick the **"(graphical)"** entry (at the 3s menu press
+Down then Enter) to render the TUI in a QEMU window instead.
 
 Booting the same ISO without OVMF (plain SeaBIOS) is a legacy-BIOS boot —
 pair it with `builds/bios.toml` (`disk.boot_type = "bios"`).

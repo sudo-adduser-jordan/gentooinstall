@@ -21,7 +21,8 @@ MODULES=(virtio virtio_ring virtio_pci virtio_blk virtio_scsi
     nvme_keyring nvme_auth nvme_core nvme
     usbcore usb_storage uas xhci_pci xhci_hcd
     virtio_net e1000 e1000e r8169 igb ixgbe tg3
-    md_mod dm_mod dm_crypt btrfs)
+    md_mod dm_mod dm_crypt btrfs
+    fat vfat nls_cp437 nls_ascii)
 
 for cmd in go cpio gzip grub-mkrescue curl tar modprobe file; do
     command -v "$cmd" >/dev/null 2>&1 || die "$cmd not found"
@@ -95,6 +96,19 @@ chmod +x "$ROOTFS/etc/udhcpc/default.script"
 mkdir -p "$ROOTFS/builds"
 cp builds/*.toml "$ROOTFS/builds/"
 
+# Optional dev/e2e hook: stage a single pre-made config as builds/custom.toml
+# and add `gentooinstall.install=builds/custom.toml` to the default grub entry
+# so the ISO boots straight into a headless install (used by the VM install
+# tests, `make vm-install`). A plain `make iso` keeps the default interactive
+# TUI boot.
+INSTALL_KERNEL_ARGS=""
+if [[ -n "${GENTOOINSTALL_INSTALL_CFG:-}" ]]; then
+    cp "$GENTOOINSTALL_INSTALL_CFG" "$ROOTFS/builds/custom.toml"
+    # Absolute path: runHeadlessInstall resolves relative flags against /builds,
+    # and "builds/custom.toml" would otherwise double up to /builds/builds/...
+    INSTALL_KERNEL_ARGS=" gentooinstall.install=/builds/custom.toml"
+fi
+
 [[ -e /dev/console ]] && cp -a /dev/console "$ROOTFS/dev/console" 2>/dev/null || true
 cp "$KERNEL" "$BUILD_DIR/boot/vmlinuz"
 
@@ -146,16 +160,28 @@ compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null || \
 echo "Building initramfs..."
 (cd "$ROOTFS" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$BUILD_DIR/boot/initrd.img"
 
-cat > "$BUILD_DIR/boot/grub/grub.cfg" <<'EOF'
-set timeout=0
+cat > "$BUILD_DIR/boot/grub/grub.cfg" <<EOF
+set timeout=3
 set default=0
 insmod all_video
 set gfxmode=1024x768,800x600,auto
 insmod gfxterm
 terminal_output gfxterm
 set gfxpayload=keep
+serial --unit=0 --speed=115200
+terminal_input serial console
+terminal_output serial gfxterm
 
-menuentry "Gentoo Install" {
+# Default entry: serial console only, so under -nographic -serial stdio the
+# TUI renders inside the terminal that launched QEMU (no separate window).
+menuentry "Gentoo Install (terminal)" {
+    linux /boot/vmlinuz quiet console=ttyS0 loglevel=4 rdinit=/init$INSTALL_KERNEL_ARGS
+    initrd /boot/initrd.img
+}
+
+# Graphical entry: primary framebuffer console (console=tty0 last) for a
+# real monitor+keyboard boot on hardware with an attached display.
+menuentry "Gentoo Install (graphical)" {
     linux /boot/vmlinuz quiet console=ttyS0 console=tty0 loglevel=4 rdinit=/init
     initrd /boot/initrd.img
 }

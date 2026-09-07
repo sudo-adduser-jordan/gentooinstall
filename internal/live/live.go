@@ -35,6 +35,10 @@ var NeedModules = []string{
 	"virtio_net", "e1000", "e1000e", "r8169", "igb", "ixgbe", "tg3",
 	// Feature support for the shipped templates.
 	"md_mod", "dm_mod", "dm_crypt", "btrfs",
+	// FAT/VFAT so the ESP and the (FAT32-formatted) bios_grub partition mount
+	// at /boot/efi and /boot/bios. Modprobe resolves the fat/vfat dependency at
+	// bundle time on the build host; kept in sync with scripts/release.sh.
+	"fat", "vfat", "nls_cp437", "nls_ascii",
 }
 
 // ModuleDir is where release.sh stores the decompressed module files that
