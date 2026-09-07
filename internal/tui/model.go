@@ -207,6 +207,11 @@ func New(cfg *config.Config, cfgPath string) *Model {
 	return m
 }
 
+// SetHasEFI overrides the host-firmware probe for the install pre-flight
+// checks. Production leaves it at the sysinfo.HasEFI result probed in New;
+// tests use it to simulate a BIOS-booted live system.
+func (m *Model) SetHasEFI(has bool) { m.hasEFI = has }
+
 // mirrorHostName returns the host portion of the mirror URL for display,
 // falling back to "mirror" when the URL cannot be parsed.
 func mirrorHostName(mirror string) string {

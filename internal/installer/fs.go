@@ -58,6 +58,19 @@ func (c *Context) hostHasEFI() bool {
 	return err == nil
 }
 
+// HostHasEFI is the exported form of hostHasEFI for preflight logging in
+// cmd/gentooinstall: it honors the Stat stub so tests stay host-independent.
+func (c *Context) HostHasEFI() bool { return c.hostHasEFI() }
+
+// HostBootMode renders the running firmware as "UEFI" or "BIOS/legacy" for
+// install summaries and logs.
+func (c *Context) HostBootMode() string {
+	if c.hostHasEFI() {
+		return "UEFI"
+	}
+	return "BIOS/legacy (no /sys/firmware/efi)"
+}
+
 func (c *Context) mkdirAll(p string, mode os.FileMode) error {
 	return os.MkdirAll(c.path(p), mode)
 }

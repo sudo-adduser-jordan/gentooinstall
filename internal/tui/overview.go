@@ -149,10 +149,17 @@ func renderInstallTab(m *Model) string {
 	st.render(&b, " ", w)
 	b.WriteString("\n")
 
-	if errs := c.Validate(); len(errs) > 0 {
+	var problems []string
+	for _, e := range c.Validate() {
+		problems = append(problems, e.Error())
+	}
+	if err := FirmwareBlockError(c.Disk.BootType, m.hasEFI); err != nil {
+		problems = append(problems, err.Error())
+	}
+	if len(problems) > 0 {
 		b.WriteString(errorStyle.Render("⛔ Cannot install — fix these problems first:") + "\n")
-		for _, e := range errs {
-			b.WriteString("  " + errorStyle.Render("✗") + " " + e.Error() + "\n")
+		for _, e := range problems {
+			b.WriteString("  " + errorStyle.Render("✗") + " " + e + "\n")
 		}
 		b.WriteString("\n")
 	}

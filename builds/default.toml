@@ -3,8 +3,8 @@
 # builds/custom.toml instead so the template is never overwritten.
 [disk]
     scheme = "classic_single_disk"
-    boot_type = "efi"
-    device = "/dev/sdX"
+    boot_type = "bios"
+    device = "/dev/sda"
     use_swap = false
     swap_size = "8GiB"
     use_luks = false

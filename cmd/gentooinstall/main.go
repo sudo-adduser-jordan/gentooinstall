@@ -547,6 +547,8 @@ func runInstall(cfgPath string) {
 	// (port of gentoo_umount); best effort, never prompts.
 	unmountStale(c, installer.RootMountpoint)
 
+	fmt.Printf("[+] Live firmware: %s; configured boot type: %s\n",
+		c.HostBootMode(), c.Cfg.Disk.BootType)
 	if err := installer.CheckHostBootMode(c); err != nil {
 		fatal("%v", err)
 	}
@@ -609,6 +611,8 @@ func summarizeAndConfirm(c *installer.Context) {
 	fmt.Println("[+] \x1b[1mCurrent lsblk output:\x1b[m")
 	fmt.Println(out)
 	fmt.Println()
+	fmt.Printf("[+] Live firmware: %s; configured boot type: %s\n",
+		c.HostBootMode(), c.Cfg.Disk.BootType)
 	fmt.Println("[+] \x1b[1mConfigured disk layout:\x1b[m")
 	fmt.Println(c.Layout.SummaryPlain())
 	fmt.Println()
@@ -833,11 +837,15 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		SourceConfig: cfgPath,
 	}
 
+	t.logf("Live firmware: %s; configured boot type: %s",
+		c.HostBootMode(), c.Cfg.Disk.BootType)
 	if err := installer.CheckHostBootMode(c); err != nil {
 		return err
 	}
 
 	t.logf("Preparing installation environment")
+	t.logf("Configured disk layout:")
+	t.logf("%s", c.Layout.SummaryPlain())
 	if err := installer.PrepareEnvironment(c); err != nil {
 		return err
 	}

@@ -1,11 +1,29 @@
 package tui
 
 import (
+	"errors"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"gentooinstall/internal/config"
 	"gentooinstall/internal/disklayout"
 )
+
+// FirmwareBlockError reports whether the configured boot type cannot run on
+// the live firmware. An EFI install requires a UEFI boot: without the
+// kernel-exposed /sys/firmware/efi there is no efivarfs to mount and no
+// efibootmgr boot entry can be registered, so proceeding is guaranteed to
+// fail mid-install. BIOS installs always pass.
+func FirmwareBlockError(bootType string, hasEFI bool) error {
+	if bootType == "efi" && !hasEFI {
+		return errors.New("the live system was not booted in UEFI mode " +
+			"(/sys/firmware/efi is missing) but the configuration requests an EFI " +
+			`install; reboot the live ISO under UEFI (bare metal: enable UEFI boot; ` +
+			`QEMU: add OVMF firmware) or set disk.boot_type = "bios" ` +
+			"(e.g. builds/bios.toml)")
+	}
+	return nil
+}
 
 // layoutForDisplay builds the disk layout for preview purposes.
 func layoutForDisplay(c *config.Config) (*disklayout.Layout, error) {
@@ -22,6 +40,17 @@ func (m *Model) Dirty() bool { return m.dirty }
 func (m *Model) Config() *config.Config { return m.cfg }
 
 func (m *Model) confirmInstall() (tea.Model, tea.Cmd) {
+	if err := FirmwareBlockError(m.cfg.Disk.BootType, m.hasEFI); err != nil {
+		m.overlay = overlay{
+			kind:    ovButtons,
+			title:   eWarn + " Firmware mismatch",
+			body:    err.Error(),
+			buttons: []string{"Dismiss"},
+			btnCur:  0,
+			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },
+		}
+		return m, nil
+	}
 	l, err := layoutForDisplay(m.cfg)
 	if err != nil {
 		m.setStatusErr("disk configuration error: " + err.Error())

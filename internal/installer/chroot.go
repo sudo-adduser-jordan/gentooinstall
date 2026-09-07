@@ -48,8 +48,12 @@ func MountEfiVars(c *Context) error {
 	if !c.hostHasEFI() {
 		return fmt.Errorf("cannot mount efivarfs: the live system was not booted " +
 			"in UEFI mode (/sys/firmware/efi is missing) but the configuration " +
-			`requests an EFI install (disk.boot_type = "efi"); boot the live medium ` +
-			`under UEFI or set disk.boot_type = "bios" (e.g. builds/bios.toml)`)
+			`requests an EFI install (disk.boot_type = "efi"); the live ISO is ` +
+			`hybrid BIOS+UEFI, so either reboot it under UEFI (bare metal: enable ` +
+			`UEFI boot; QEMU: add OVMF firmware, e.g. -drive ` +
+			`if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd ` +
+			`-drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd) or switch to a ` +
+			`legacy-BIOS install with disk.boot_type = "bios" (e.g. builds/bios.toml)`)
 	}
 	c.R.log("Mounting efivars")
 	if err := c.mkdirAll("/sys/firmware/efi/efivars", 0o755); err != nil {
@@ -70,8 +74,11 @@ func CheckHostBootMode(c *Context) error {
 	if c.IsEFI() && !c.hostHasEFI() {
 		return fmt.Errorf("configuration uses an EFI boot partition but the live " +
 			"system was not booted in UEFI mode (/sys/firmware/efi is missing); " +
-			"boot the live medium under UEFI or set disk.boot_type = \"bios\" " +
-			"(e.g. builds/bios.toml)")
+			"the live ISO is hybrid BIOS+UEFI, so either reboot it under UEFI " +
+			"(bare metal: enable UEFI boot; QEMU: add OVMF firmware, e.g. -drive " +
+			"if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd " +
+			"-drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd) or set " +
+			"disk.boot_type = \"bios\" (e.g. builds/bios.toml)")
 	}
 	return nil
 }

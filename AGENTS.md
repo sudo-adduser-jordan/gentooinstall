@@ -85,8 +85,21 @@ Interactive boot (keyboard + monitor, opens the TUI in the window):
 
 ```sh
 make iso
+# UEFI boot (required for the default EFI configs: disk.boot_type = "efi"):
+cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
+qemu-system-x86_64 -cdrom bin/gentooinstall.iso \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd
+# Legacy-BIOS boot (use with builds/bios.toml: disk.boot_type = "bios"):
 qemu-system-x86_64 -cdrom bin/gentooinstall.iso
 ```
+
+The live ISO is hybrid BIOS+UEFI (`grub-mkrescue` El Torito BIOS +
+`/efi.img` UEFI). Booting it without OVMF lands in legacy BIOS mode, so
+`/sys/firmware/efi` is missing and any EFI config fails fast in
+`CheckHostBootMode`/`MountEfiVars` ("live system was not booted in UEFI
+mode"). Either reboot under UEFI or switch the config to
+`disk.boot_type = "bios"`.
 
 Full install loop: create a drive image, boot the ISO with it attached to
 install onto, then boot the installed OS from the drive (both with keyboard +
@@ -96,14 +109,36 @@ fetches fail, so always attach a user-mode NIC:
 ```sh
 make iso
 qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+
+# UEFI install (default EFI configs, disk.boot_type = "efi"):
+# attach OVMF firmware + NIC. VARS must be a writable copy.
+cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
 qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2 \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
   -netdev user,id=net0 \
   -device e1000,netdev=net0 -m 4096
 
+# UEFI install, accelerated (same as above with KVM/q35 tuning):
 make iso
 qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
+qemu-system-x86_64 \
+  -cdrom bin/gentooinstall.iso \
+  -drive file=bin/gentoo-disk.img,format=qcow2,cache=writeback,aio=threads,discard=unmap \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -machine q35,accel=kvm \
+  -cpu host \
+  -smp 3 \
+  -m 4096
+
+# BIOS install, accelerated (ONLY with builds/bios.toml, disk.boot_type = "bios"):
+# no OVMF -> SeaBIOS -> no /sys/firmware/efi; an EFI config fails here.
 qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2,cache=writeback,aio=threads,discard=unmap \
@@ -114,6 +149,8 @@ qemu-system-x86_64 \
   -smp 3 \
   -m 4096
 
+# Boot the installed OS (firmware must match the installed boot type; for EFI
+# targets reuse the same writable VARS file so the efibootmgr entry persists):
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
 
 ```

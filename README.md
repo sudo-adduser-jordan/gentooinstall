@@ -153,6 +153,20 @@ kernel modules are bundled alongside. ZFS schemes are not usable from the ISO
 ISO fetches the Alpine base from dl-cdn.alpinelinux.org, so it needs network
 access and produces an ISO of roughly 100–200 MB.
 
+The ISO is hybrid BIOS+UEFI. The default configs use
+`disk.boot_type = "efi"`, which requires a UEFI boot (so that
+`/sys/firmware/efi` exists for `efivarfs`/`efibootmgr`):
+
+```sh
+cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
+qemu-system-x86_64 -cdrom bin/gentooinstall.iso \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd
+```
+
+Booting the same ISO without OVMF (plain SeaBIOS) is a legacy-BIOS boot —
+pair it with `builds/bios.toml` (`disk.boot_type = "bios"`).
+
 ## Releases
 
 Versioned releases are built with [GoReleaser](https://goreleaser.com) and
@@ -202,6 +216,14 @@ Both are fine init systems. If you cannot decide:
 - Systemd is an OS-level software suite — steep learning curve but huge feature set.
 
 ## Troubleshooting and FAQ
+
+#### Q: `cannot mount efivarfs: the live system was not booted in UEFI mode (/sys/firmware/efi is missing)` (or `configuration uses an EFI boot partition but the live system was not booted in UEFI mode`)
+
+**A:** The config requests an EFI install (`disk.boot_type = "efi"`) but the
+live medium was booted in legacy-BIOS mode, where `efivarfs` cannot exist.
+Either reboot the live ISO under UEFI (bare metal: enable UEFI boot; QEMU:
+attach OVMF firmware as shown in [Live ISO](#live-iso)), or switch to a
+BIOS install with `disk.boot_type = "bios"` (e.g. `builds/bios.toml`).
 
 #### Q: ZFS cannot be installed in the chroot due to an unsupported kernel version
 
