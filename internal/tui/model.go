@@ -73,12 +73,20 @@ type Model struct {
 	spinOn       bool
 	prog         progress.Model
 	logVp        viewport.Model
-	curStep      string
-	curCmd       string
-	fail         *InstallFailedMsg
-	btnCur       int
-	instFn       InstallFunc
-	usedEnc      bool
+	// rawVp is the dedicated viewport for the raw output window (ovLog).
+	// It is separate from logVp (used by config/make.conf/packages
+	// overlays) so resizing one overlay never resets another, and so
+	// SetContent can be cached instead of rebuilt on every View().
+	rawVp      viewport.Model
+	rawFollow  bool     // tail-follow: jump to bottom on new output
+	rawDirty   bool     // cached rawContent needs a SetContent
+	rawContent []string // colorized lines parallel to instRawLines
+	curStep    string
+	curCmd     string
+	fail       *InstallFailedMsg
+	btnCur     int
+	instFn     InstallFunc
+	usedEnc    bool
 	// Overlay callbacks (moved off package-level maps).
 	pickFn  func(*Model, string)
 	textFn  *textState
@@ -185,7 +193,8 @@ func (m *Model) probeMirror() tea.Cmd {
 // New builds the configurator model.
 func New(cfg *config.Config, cfgPath string) *Model {
 	m := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI(),
-		mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror)}
+		mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror),
+		rawFollow: true, rawDirty: true}
 	m.tabs = buildTabs(m)
 	for range m.tabs {
 		m.cursors = append(m.cursors, 0)

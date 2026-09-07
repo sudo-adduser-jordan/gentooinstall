@@ -429,11 +429,16 @@ func (m *Model) runEmergencyShell() (tea.Model, tea.Cmd) {
 }
 
 // openLogOverlay shows the buffered raw output in a scrollable modal.
+// It uses a dedicated viewport with tail-follow: new output jumps to the
+// bottom while the user stays at the bottom, and scrolling up pauses the
+// follow until End/G resumes it.
 func (m *Model) openLogOverlay() {
 	m.overlay = overlay{kind: ovLog}
-	if m.logVp.Height == 0 {
+	m.rawFollow = true
+	m.rawDirty = true
+	if m.rawVp.Height == 0 {
 		// Sized on first render; jump to bottom once content is set.
-		m.logVp.GotoBottom()
+		m.rawVp.GotoBottom()
 	}
 }
 

@@ -123,6 +123,150 @@ func (m *Model) updatePickerKeys(msg tea.KeyMsg) (routed bool, cmd tea.Cmd) {
 	}
 }
 
+// handleRawViewportKeys scrolls the dedicated raw output viewport. Any
+// scroll away from the bottom pauses tail-follow; reaching the bottom
+// (via keys or End/G) resumes it.
+func (m *Model) handleRawViewportKeys(msg tea.KeyMsg) {
+	switch msg.String() {
+	case "down", "j":
+		m.rawVp.LineDown(1)
+		m.rawFollow = m.rawVp.AtBottom()
+	case "up", "k":
+		m.rawVp.LineUp(1)
+		m.rawFollow = m.rawVp.AtBottom()
+	case "pgdown", "ctrl+f", " ":
+		m.rawVp.HalfViewDown()
+		m.rawFollow = m.rawVp.AtBottom()
+	case "pgup", "ctrl+b":
+		m.rawVp.HalfViewUp()
+		m.rawFollow = m.rawVp.AtBottom()
+	case "home", "g":
+		m.rawVp.GotoTop()
+		m.rawFollow = false
+	case "end", "G":
+		m.rawVp.GotoBottom()
+		m.rawFollow = true
+	}
+}
+
+// syncRawViewport sizes the dedicated raw viewport, incrementally
+// colorizes lines appended since the last render, and refreshes the
+// viewport content only when something changed. New output jumps to the
+// bottom while tail-follow is on; a scrolled-up viewport keeps its offset.
+func (m *Model) syncRawViewport(w, vh int) {
+	if m.rawVp.Width != w || m.rawVp.Height != vh {
+		m.rawVp = viewport.New(w, vh)
+		m.rawDirty = true
+	}
+	if len(m.rawContent) > len(m.instRawLines) {
+		// instRawLines is capped (oldest lines dropped); drop the same
+		// prefix from the colorized cache so indexes stay aligned.
+		m.rawContent = append([]string(nil),
+			m.rawContent[len(m.rawContent)-len(m.instRawLines):]...)
+		m.rawDirty = true
+	}
+	for i := len(m.rawContent); i < len(m.instRawLines); i++ {
+		stripped := ""
+		if i < len(m.instLines) {
+			stripped = m.instLines[i]
+		} else {
+			stripped = stripAnsi(m.instRawLines[i])
+		}
+		m.rawContent = append(m.rawContent, colorizeRawLine(stripped, m.instRawLines[i]))
+		m.rawDirty = true
+	}
+	if m.rawDirty {
+		m.rawVp.SetContent(strings.Join(m.rawContent, "\n"))
+		m.rawDirty = false
+		if m.rawFollow {
+			m.rawVp.GotoBottom()
+		}
+	} else if m.rawFollow && !m.rawVp.AtBottom() {
+		m.rawVp.GotoBottom()
+	}
+}
+
+// colorizeRawLine paints one raw output line for the raw window. Lines that
+// already carry ANSI codes (e.g. the demo stream) pass through untouched;
+// plain lines — the common case for piped child output, which disables its
+// own colors when stdout isn't a TTY — get fallback highlighting so steps,
+// commands, atoms and failures are distinguishable.
+//
+// Explicit SGR codes (shared with demo.go) are used instead of lipgloss
+// styles so colors survive dumb/test terminals where lipgloss downgrades to
+// ASCII and would otherwise render plain text.
+func colorizeRawLine(stripped, raw string) string {
+	if strings.Contains(raw, "\x1b") {
+		return raw
+	}
+	s := stripped
+	switch {
+	case strings.HasPrefix(s, "[+]"):
+		name := strings.TrimSpace(strings.TrimPrefix(s, "[+]"))
+		return demoCyan + "[+]" + demoReset + " " + demoBold + name + demoReset
+	case strings.HasPrefix(s, "[!]"):
+		return demoRed + s + demoReset
+	case strings.HasPrefix(s, "$ "):
+		return colorizeCmdLine(s)
+	}
+	lower := strings.ToLower(s)
+	switch {
+	case strings.Contains(lower, "fail"),
+		strings.Contains(lower, "error"),
+		strings.Contains(lower, "abort"),
+		strings.Contains(lower, "not found"),
+		strings.Contains(lower, "denied"),
+		strings.Contains(lower, "no such"):
+		return demoRed + s + demoReset
+	case strings.Contains(lower, "warn"):
+		return demoYellow + s + demoReset
+	case strings.Contains(s, "://") || strings.Contains(s, "/dev/") ||
+		strings.HasSuffix(s, ".tar.xz"):
+		return demoCyan + s + demoReset
+	}
+	return highlightAtoms(s)
+}
+
+// colorizeCmdLine paints "$ cmd args", highlighting package atoms in green.
+func colorizeCmdLine(s string) string {
+	rest := strings.TrimPrefix(s, "$ ")
+	prompt := demoYellow + "$" + demoReset
+	if rest == "" {
+		return prompt
+	}
+	// Keep the dimmed command style across green atoms: re-apply dim after
+	// each atom's reset so trailing args don't lose the dimming.
+	args := strings.ReplaceAll(highlightAtomsPlain(rest), demoReset, demoReset+demoDim)
+	return prompt + " " + demoDim + args + demoReset
+}
+
+// highlightAtoms paints whitespace-separated category/name tokens green,
+// leaving the rest of the line untouched.
+func highlightAtoms(s string) string {
+	out := highlightAtomsPlain(s)
+	if out == s {
+		return s
+	}
+	return out
+}
+
+// highlightAtomsPlain is the ANSI-core of highlightAtoms so callers can nest
+// it inside other sequences (e.g. the dimmed command line).
+func highlightAtomsPlain(s string) string {
+	parts := strings.Split(s, " ")
+	painted := false
+	for i, p := range parts {
+		if strings.Contains(p, "/") {
+			parts[i] = demoGreen + p + demoReset
+			painted = true
+		}
+	}
+	if !painted {
+		return s
+	}
+	return strings.Join(parts, " ")
+}
+
 // handleViewportKeys applies scroll keys to the shared log viewport used
 // by the log/config/make.conf/packages overlays.
 func (m *Model) handleViewportKeys(msg tea.KeyMsg) {
@@ -154,7 +298,7 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc", "l", "q":
 			m.closeOverlay()
 		default:
-			m.handleViewportKeys(msg)
+			m.handleRawViewportKeys(msg)
 		}
 		return m, nil
 
@@ -347,14 +491,14 @@ func (m *Model) renderOverlay() string {
 	case ovLog:
 		h := maxInt(6, m.height-8)
 		bw := maxInt(40, minInt(110, m.width-10))
-		if m.logVp.Width != bw-2 || m.logVp.Height != h-2 {
-			m.logVp = viewport.New(bw-2, h-2)
-		}
-		m.logVp.SetContent(strings.Join(m.instRawLines, "\n"))
+		m.syncRawViewport(bw-2, h-2)
 		box := overlayBoxStyle.Width(bw).Height(h).Render(
-			titleStyle.Render(eScroll+" Raw output") + "\n\n" + m.logVp.View())
-		hint := helpStyle.Render("↑↓ scroll · l/Esc close")
-		return lipgloss.JoinVertical(lipgloss.Center, box, hint)
+			titleStyle.Render(eScroll+" Raw output") + "\n\n" + m.rawVp.View())
+		hint := "↑↓ scroll · End resumes tail · l/Esc close"
+		if !m.rawFollow {
+			hint = "▲ scrolled — End resumes tail · l/Esc close"
+		}
+		return lipgloss.JoinVertical(lipgloss.Center, box, helpStyle.Render(hint))
 
 	case ovConfig:
 		h := maxInt(6, m.height-8)
