@@ -1,3 +1,5 @@
+// Package pkglists exposes the static per-repository package lists
+// embedded from data/repos (refreshed daily by scripts/packages.sh).
 package pkglists
 
 import (

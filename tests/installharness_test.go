@@ -1,3 +1,4 @@
+// Shared test harness: recording ExecStub and scratch-filesystem helpers.
 package tests
 
 import (

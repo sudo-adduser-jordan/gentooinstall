@@ -1,3 +1,4 @@
+// Mirror hosts, device enumeration and locale/keymap helpers.
 package tests
 
 import (

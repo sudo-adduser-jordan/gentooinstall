@@ -1,3 +1,4 @@
+// Opt-in QEMU end-to-end tests for the live ISO (needs GENTOOINSTALL_E2E=1).
 package tests
 
 import (

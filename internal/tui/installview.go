@@ -21,9 +21,12 @@ const EncryptionKeyEnv = "GENTOO_INSTALL_ENCRYPTION_KEY"
 type InstallDecision int
 
 const (
-	DecideRetry  InstallDecision = iota // rerun the failed step
-	DecideEditor                        // return to the config tabs first
-	DecideAbort                         // abort the installation
+	// DecideRetry reruns the failed step.
+	DecideRetry InstallDecision = iota
+	// DecideEditor returns to the config tabs first.
+	DecideEditor
+	// DecideAbort aborts the installation.
+	DecideAbort
 )
 
 // InstallFunc performs the entire installation, streaming progress via

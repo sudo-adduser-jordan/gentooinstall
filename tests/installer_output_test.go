@@ -1,3 +1,4 @@
+// Output writers, prompts and failure-handling helpers.
 package tests
 
 import (

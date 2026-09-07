@@ -1,3 +1,4 @@
+// Device ID resolution (disklayout.Resolver, Canonicalize, SplitIDList).
 package tests
 
 import (

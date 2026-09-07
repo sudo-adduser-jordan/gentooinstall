@@ -1,3 +1,4 @@
+// Headless TUI install flow: phases, decisions and progress view.
 package tests
 
 import (

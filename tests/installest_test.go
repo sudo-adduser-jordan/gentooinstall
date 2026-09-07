@@ -1,3 +1,4 @@
+// Install size/count estimates and related TUI tabs.
 package tests
 
 import (

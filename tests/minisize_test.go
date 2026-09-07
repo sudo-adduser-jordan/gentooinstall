@@ -1,3 +1,4 @@
+// Minimum terminal size gate of the TUI.
 package tests
 
 import (

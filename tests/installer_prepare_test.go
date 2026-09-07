@@ -1,3 +1,4 @@
+// Stage3 resolution, download, resume and verification.
 package tests
 
 import (

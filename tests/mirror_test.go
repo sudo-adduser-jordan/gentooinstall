@@ -1,3 +1,4 @@
+// Mirror reachability probing and the TUI mirror indicator.
 package tests
 
 import (

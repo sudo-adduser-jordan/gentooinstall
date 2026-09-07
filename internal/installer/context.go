@@ -11,10 +11,15 @@ import (
 
 // Standard locations (port of scripts/config.sh constants).
 const (
-	TmpDir              = "/tmp/gentoo-install"
-	RootMountpoint      = TmpDir + "/root"
-	RepoBind            = TmpDir + "/bind"
-	UUIDStorageDir      = TmpDir + "/uuids"
+	// TmpDir is the working directory on the live system.
+	TmpDir = "/tmp/gentoo-install"
+	// RootMountpoint is where the target root filesystem is mounted.
+	RootMountpoint = TmpDir + "/root"
+	// RepoBind stages the installer binary and config for the chroot.
+	RepoBind = TmpDir + "/bind"
+	// UUIDStorageDir persists generated partition/array UUIDs across runs.
+	UUIDStorageDir = TmpDir + "/uuids"
+	// LuksHeaderBackupDir holds LUKS header backups.
 	LuksHeaderBackupDir = TmpDir + "/luks-headers"
 	// Stage3ScratchDir is where the verified stage3 tarball is staged, inside
 	// the mounted target root filesystem. TmpDir sits on the live system's

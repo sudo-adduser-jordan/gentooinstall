@@ -1,3 +1,4 @@
+// Smaller installer units (programs, paths, mountpoints, runner).
 package tests
 
 import (

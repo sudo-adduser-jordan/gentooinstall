@@ -1,3 +1,4 @@
+// Headless TUI model: tabs, editors, pickers and overlays.
 package tests
 
 import (

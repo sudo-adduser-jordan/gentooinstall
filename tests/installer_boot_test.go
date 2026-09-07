@@ -1,3 +1,4 @@
+// Pure bootloader helpers (VersionLess, EfiBootmgrArgs, DiskNames).
 package tests
 
 import (

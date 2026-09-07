@@ -1,3 +1,4 @@
+// In-chroot system configurators (portage, repos, networking, sshd).
 package tests
 
 import (

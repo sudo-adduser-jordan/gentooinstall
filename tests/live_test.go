@@ -1,3 +1,4 @@
+// Live-ISO environment helpers (mount table, modules, interfaces).
 package tests
 
 import (

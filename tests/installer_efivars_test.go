@@ -1,3 +1,4 @@
+// EFI firmware checks and efivarfs mounting.
 package tests
 
 import (

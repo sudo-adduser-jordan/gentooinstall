@@ -1,3 +1,4 @@
+// Command-line argument parsing (internal/cli).
 package tests
 
 import (

@@ -1,3 +1,5 @@
+// Chroot environment preparation and verification (PrepareChrootEnv,
+// EnsureDevSymlinks, CheckChrootEnv, MountByID, UnmountChroot).
 package tests
 
 import (

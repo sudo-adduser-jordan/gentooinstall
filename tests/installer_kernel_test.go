@@ -1,3 +1,4 @@
+// Kernel install, initramfs, cmdline and fstab generation.
 package tests
 
 import (

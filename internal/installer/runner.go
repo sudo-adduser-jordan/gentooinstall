@@ -11,13 +11,20 @@ import (
 	"strings"
 )
 
+// FailAction is the user's answer to a failed command when the runner
+// runs interactively.
 type FailAction int
 
 const (
+	// FailRetry reruns the failed command.
 	FailRetry FailAction = iota
+	// FailShell drops into an emergency shell before re-prompting.
 	FailShell
+	// FailAbort aborts the installation.
 	FailAbort
+	// FailContinue ignores the failure and continues.
 	FailContinue
+	// FailPrint prints the full output and re-prompts.
 	FailPrint
 )
 

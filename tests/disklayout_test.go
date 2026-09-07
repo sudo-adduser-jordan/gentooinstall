@@ -1,3 +1,4 @@
+// Disk layout construction from config (disklayout.BuildFromConfig).
 package tests
 
 import (

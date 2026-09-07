@@ -1,3 +1,4 @@
+// Full in-chroot installation sequences (MainInstallGentooInChroot).
 package tests
 
 import (

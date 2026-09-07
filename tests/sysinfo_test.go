@@ -1,3 +1,4 @@
+// System information basics and embedded assets.
 package tests
 
 import (

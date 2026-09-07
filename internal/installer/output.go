@@ -99,6 +99,7 @@ func NewTailWriter(sink io.Writer, maxLines int) *TailWriter {
 	return &TailWriter{sink: sink, max: maxLines}
 }
 
+// Write mirrors p to the sink and retains complete lines for Tail.
 func (tw *TailWriter) Write(p []byte) (int, error) {
 	n := len(p)
 	if tw.sink != nil {
