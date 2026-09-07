@@ -499,6 +499,22 @@ func buildLayout(cfg *config.Config) *disklayout.Layout {
 	return l
 }
 
+// unmountStale best-effort unmounts a previous run's chroot mounts without
+// ever prompting: cleanup failures warn, they must not block a fresh install.
+func unmountStale(c *installer.Context, dir string) {
+	prev := c.R.OnFailure
+	c.R.OnFailure = installer.DefaultOnFailure
+	defer func() { c.R.OnFailure = prev }()
+	if err := installer.UnmountChroot(c, dir); err != nil {
+		msg := fmt.Sprintf("[!] warning: could not unmount stale filesystems: %v", err)
+		if c.R.Log != nil {
+			c.R.Log("%s", msg)
+		} else {
+			fmt.Fprintln(os.Stderr, msg)
+		}
+	}
+}
+
 func runInstall(cfgPath string) {
 	requireRoot()
 	cfg := loadConfigForInstall(cfgPath)
@@ -526,6 +542,10 @@ func runInstall(cfgPath string) {
 		Resolver:     resolver,
 		SourceConfig: cfgPath,
 	}
+
+	// Drop stale mounts from a previous run before touching disks
+	// (port of gentoo_umount); best effort, never prompts.
+	unmountStale(c, installer.RootMountpoint)
 
 	if err := installer.CheckHostBootMode(c); err != nil {
 		fatal("%v", err)
@@ -850,6 +870,8 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		cleanRoot bool // clear the root mountpoint before a retry
 		fn        func() error
 	}{
+		{"Unmounting stale filesystems", false,
+			func() error { unmountStale(c, installer.RootMountpoint); return nil }},
 		{"Applying disk configuration", false,
 			func() error { return installer.ApplyDiskActions(c) }},
 		// The root filesystem must be mounted before the stage3 download so

@@ -92,6 +92,21 @@ func MountSource(path string) string {
 	return ""
 }
 
+// hasNameserver reports whether resolv.conf data contains at least one
+// active (non-blank, non-comment) nameserver line.
+func hasNameserver(data []byte) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasPrefix(line, "nameserver") {
+			return true
+		}
+	}
+	return false
+}
+
 // MountByID mounts the device identified by id at mountpoint.
 func MountByID(c *Context, id, mountpoint string) error {
 	if c.isMountpoint(mountpoint) {
@@ -196,7 +211,15 @@ func CheckChrootEnv(chrootDir string) error {
 func PrepareChrootEnv(c *Context, chrootDir string) error {
 	c.R.log("Preparing chroot environment")
 	dst := filepath.Join(chrootDir, "etc/resolv.conf")
-	src, _ := os.ReadFile("/etc/resolv.conf")
+	// A missing or nameserver-less host resolv.conf would leave the chroot
+	// without DNS; fail here instead of breaking every fetch later.
+	src, err := os.ReadFile("/etc/resolv.conf")
+	if err != nil {
+		return fmt.Errorf("could not read host resolv.conf (live network not up?): %w", err)
+	}
+	if !hasNameserver(src) {
+		return fmt.Errorf("host resolv.conf has no nameserver entry, chroot would have no DNS")
+	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
