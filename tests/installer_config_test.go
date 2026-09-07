@@ -245,6 +245,37 @@ func TestWriteReposConfRsync(t *testing.T) {
 	}
 }
 
+// The seed phase must register an rsync-typed repo even when git is
+// configured: emerge-webrsync rejects git-typed repos with an "invalid sync
+// type" validation failure. The flip to git happens later in
+// ConfigureGitSync.
+func TestSeedPortageTree(t *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	if cfg.Gentoo.PortageSyncType != "git" {
+		t.Fatalf("precondition: default sync type = %q, want git", cfg.Gentoo.PortageSyncType)
+	}
+	c, s := testContext(t, cfg, nil)
+	// A stale git checkout from a previous run must not survive the seed.
+	mkScratchDir(t, c, "/var/db/repos/gentoo/.git")
+
+	if err := installer.SeedPortageTree(c); err != nil {
+		t.Fatal(err)
+	}
+	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	for _, want := range []string{"sync-type = rsync", "auto-sync = yes"} {
+		if !strings.Contains(conf, want) {
+			t.Fatalf("seed gentoo.conf missing %q:\n%s", want, conf)
+		}
+	}
+	if strings.Contains(conf, "sync-type = git") {
+		t.Fatalf("seed gentoo.conf must not be git-typed:\n%s", conf)
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, "/var/db/repos/gentoo/.git")); !os.IsNotExist(err) {
+		t.Fatalf("stale .git checkout should be cleared, stat err: %v", err)
+	}
+	assertCmds(t, s, "emerge-webrsync")
+}
+
 func TestEnableRepositories(t *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Packages.EnablingRepos = []string{"guru", "kde"}

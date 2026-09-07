@@ -247,8 +247,17 @@ func appendMakeConfUser(c *Context) error {
 // be registered before any sync (emerge-webrsync or emerge --sync), otherwise
 // portage fails with "Repository 'gentoo' not found".
 func reposConfContent(c *Context) string {
+	return reposConfContentFor(c, c.Cfg.Gentoo.PortageSyncType)
+}
+
+// reposConfContentFor renders the repos.conf content for an explicit sync
+// type instead of the configured one, so the install sequence can register
+// an rsync-typed repo for the emerge-webrsync seed phase even when the
+// configured type is git (webrsync rejects git-typed repos with an
+// "invalid sync type" validation failure).
+func reposConfContentFor(c *Context, syncType string) string {
 	g := &c.Cfg.Gentoo
-	if g.PortageSyncType == "rsync" {
+	if syncType == "rsync" {
 		uri := g.PortageRsyncMirror
 		if uri == "" {
 			uri = config.DefaultPortageRsyncMirror
@@ -287,11 +296,15 @@ sync-openpgp-key-path = /usr/share/openpgp-keys/gentoo-release.asc
 // portage reports "Repository 'gentoo' not found" when a configured repo has
 // no usable location, which otherwise breaks the initial emerge-webrsync.
 func WriteReposConf(c *Context) error {
+	return writeReposConf(c, c.Cfg.Gentoo.PortageSyncType)
+}
+
+func writeReposConf(c *Context, syncType string) error {
 	if err := c.mkdirAll("/etc/portage/repos.conf", 0o755); err != nil {
 		return err
 	}
 	path := "/etc/portage/repos.conf/gentoo.conf"
-	if err := c.writeFile(path, []byte(reposConfContent(c)), 0o644); err != nil {
+	if err := c.writeFile(path, []byte(reposConfContentFor(c, syncType)), 0o644); err != nil {
 		return fmt.Errorf("could not write '%s': %w", path, err)
 	}
 	if err := c.mkdirAll("/var/db/repos/gentoo", 0o755); err != nil {
@@ -300,8 +313,27 @@ func WriteReposConf(c *Context) error {
 	return nil
 }
 
+// SeedPortageTree registers the "gentoo" repository rsync-typed and
+// populates it with emerge-webrsync. The seed always uses the rsync variant,
+// even when the configured sync type is git: emerge-webrsync rejects
+// git-typed repos, and the seed tree is what lets the later
+// `emerge dev-vcs/git` succeed before the real git sync. A stale .git
+// checkout left by a previous git-typed run is dropped first so the seed
+// never layers a snapshot over a git working tree.
+func SeedPortageTree(c *Context) error {
+	c.R.log("Registering gentoo repository in repos.conf")
+	if err := writeReposConf(c, "rsync"); err != nil {
+		return err
+	}
+	if err := c.removeAll("/var/db/repos/gentoo/.git"); err != nil {
+		return fmt.Errorf("could not clear stale git checkout: %w", err)
+	}
+	c.R.log("Syncing portage tree")
+	return c.R.Try("emerge-webrsync")
+}
+
 // ConfigureGitSync re-syncs the portage tree over git for the git sync type.
-// The repos.conf registration itself is handled by WriteReposConf, which runs
+// The rsync-typed seed registration is handled by SeedPortageTree, which runs
 // before the initial emerge-webrsync; for rsync this function is a no-op.
 func ConfigureGitSync(c *Context) error {
 	if c.Cfg.Gentoo.PortageSyncType != "git" {
@@ -361,12 +393,7 @@ func MainInstallGentooInChroot(c *Context) error {
 		return fmt.Errorf("could not change root password: %w", err)
 	}
 
-	c.R.log("Registering gentoo repository in repos.conf")
-	if err := WriteReposConf(c); err != nil {
-		return err
-	}
-	c.R.log("Syncing portage tree")
-	if err := c.R.Try("emerge-webrsync"); err != nil {
+	if err := SeedPortageTree(c); err != nil {
 		return err
 	}
 
