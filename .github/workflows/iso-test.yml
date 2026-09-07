@@ -42,9 +42,5 @@ jobs:
           xorriso --version | head -n 5
       - name: Shellcheck release.sh
         run: shellcheck -S warning scripts/release.sh
-      - name: "Run ISO boot test (PR: boot only)"
-        if: github.event_name == 'pull_request'
-        run: make vm-test-boot
-      - name: "Run ISO boot test (main: full)"
-        if: github.event_name != 'pull_request'
+      - name: Run ISO boot test
         run: make vm-test

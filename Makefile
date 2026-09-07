@@ -30,13 +30,12 @@ cover: test
 	go tool cover -html=$(BIN_DIR)/coverage.out -o $(BIN_DIR)/coverage.html
 
 vm-test: vet
-	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots|TestISOBootNetwork' ./tests/
-
-vm-test-boot: vet
 	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots$' ./tests/
 
+vm-test-boot: vm-test
+
 vm-test-net: vet
-	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBootNetwork$' ./tests/
+	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_NET=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBootNetwork$' ./tests/
 
 vet:
 	go vet ./...

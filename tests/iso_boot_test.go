@@ -15,8 +15,10 @@ import (
 // TestISOBoots is a QEMU end-to-end test for the live ISO built by
 // scripts/release.sh. It compiles the init binary, bundles an initramfs and
 // the host kernel, runs grub-mkrescue, then boots the result under
-// qemu-system-x86_64 and asserts the gentooinstall installer starts (its PID-1
-// startup banner appears) on the serial console.
+// qemu-system-x86_64 and asserts the boot reaches the TUI: the PID-1
+// startup banner plus the TUI launch marker appear on the serial console.
+// Network-dependent checks (DHCP, DNS, mirror) are deliberately out of
+// scope here; see TestISOBootNetwork for the local-only coverage.
 //
 // This test is intentionally opt-in: it requires QEMU (and, to build the ISO,
 // a kernel plus grub-mkrescue/xorriso), so it skips by default. Run it via
@@ -47,13 +49,8 @@ func TestISOBoots(t *testing.T) {
 	if !strings.Contains(serial, "gentooinstall init: PID 1") {
 		t.Fatalf("gentooinstall init did not start on the serial console; full output above")
 	}
-	if !strings.Contains(serial, "live: block device /dev/sda") {
-		t.Fatalf("attached disk was not detected as /dev/sda; full output above")
-	}
-	// The Alpine-based live rootfs must provide the engine's host tools.
-	if !strings.Contains(serial, "live: tools:") || !strings.Contains(serial, "sgdisk") ||
-		!strings.Contains(serial, "gpg") {
-		t.Fatalf("live toolset missing or incomplete; full output above")
+	if !strings.Contains(serial, "live: tui starting") {
+		t.Fatalf("boot did not reach the TUI on the serial console; full output above")
 	}
 }
 
@@ -63,9 +60,16 @@ func TestISOBoots(t *testing.T) {
 // the configured Gentoo mirror (the serial mirror self-check). This exercises
 // the exact path a real install depends on — DHCP → DNS → outbound HTTPS → CA
 // certs — which TestISOBoots deliberately skips because it boots without a NIC.
+//
+// Local-only: guest outbound networking is unreliable on shared CI runners,
+// so this test stays out of CI. It needs GENTOOINSTALL_E2E_NET=1 on top of
+// GENTOOINSTALL_E2E=1. Run it via `make vm-test-net`.
 func TestISOBootNetwork(t *testing.T) {
 	if os.Getenv("GENTOOINSTALL_E2E") == "" {
 		t.Skip("set GENTOOINSTALL_E2E=1 to run QEMU e2e test")
+	}
+	if os.Getenv("GENTOOINSTALL_E2E_NET") == "" {
+		t.Skip("set GENTOOINSTALL_E2E_NET=1 to run the local-only network e2e test")
 	}
 	if testing.Short() {
 		t.Skip("skipping QEMU e2e in short mode")

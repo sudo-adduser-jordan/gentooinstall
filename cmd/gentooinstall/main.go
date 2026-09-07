@@ -413,6 +413,12 @@ func runTUI(cfgPath string) {
 	}
 	p := tea.NewProgram(model, opts...)
 	tui.SetProgram(p)
+	if os.Getpid() == 1 {
+		// Headless serial consoles cannot see the framebuffer TUI; announce
+		// its launch so e2e tests can assert the boot reached the TUI.
+		// Serial-only: stdout is the TUI's terminal from here on.
+		mirrorSerialBanner("live: tui starting\n")
+	}
 	if _, err := p.Run(); err != nil {
 		mirrorSerialBanner(fmt.Sprintf("tui: error: %v\n", err))
 		fatal("tui: %v", err)
