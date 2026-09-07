@@ -71,7 +71,8 @@ func waitPartition(c *Context, newID string) error {
 		time.Sleep(time.Second)
 	}
 	fmt.Fprintln(c.R.stderr())
-	return nil // proceed optimistically, matching bash behavior
+	return fmt.Errorf("partition (%s) did not appear within 10s "+
+		"(run partprobe and check dmesg for kernel partition events)", newID)
 }
 
 // ApplyDiskActions executes the layout's action list in order

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // WantedPrograms returns the host programs required for cfg. Only programs
@@ -76,8 +77,10 @@ func SyncTime(c *Context) error {
 			return err
 		}
 	default:
-		// Fall back to the Date header of a plain http request.
-		resp, err := http.Head("http://example.com")
+		// Fall back to the Date header of a plain http request, bounded
+		// so a blackholed network cannot hang the install forever.
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		resp, err := httpClient.Head("http://example.com")
 		if err != nil {
 			return fmt.Errorf("could not fetch time over http: %w", err)
 		}

@@ -539,6 +539,14 @@ func runInstall(cfgPath string) {
 	}
 	fmt.Println("[+] Disk configuration was applied successfully")
 
+	// The root filesystem must be mounted before the stage3 download so
+	// the tarball is staged on the (disk-backed) target disk instead of
+	// the RAM-backed /tmp: mounting later would hide the download beneath
+	// the new mount (same ordering as the TUI flow).
+	fmt.Println("[+] Mounting root filesystem")
+	if err := installer.MountRoot(c); err != nil {
+		fatal("%v", err)
+	}
 	stage3, err := installer.DownloadStage3(c)
 	if err != nil {
 		fatal("%v", err)
@@ -554,9 +562,11 @@ func runInstall(cfgPath string) {
 	}
 
 	if err := installer.PrepareChrootEnv(c, installer.RootMountpoint); err != nil {
+		installer.UnmountChroot(c, installer.RootMountpoint)
 		fatal("%v", err)
 	}
 	if err := installer.EnterChroot(c, installer.RootMountpoint); err != nil {
+		installer.UnmountChroot(c, installer.RootMountpoint)
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			// Preserve the child's exit code for scripting, but surface the

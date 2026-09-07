@@ -193,6 +193,10 @@ type stage3Mirror struct {
 	// latestSize is the published byte size written into the latest-*.txt
 	// listing; the download space pre-check compares it with free space.
 	latestSize int64
+	// digestsFirstIrrelevant serves the DIGESTS file with a valid-looking
+	// but foreign .tar.xz line first, so tests can prove the verifier
+	// picks the line naming our tarball instead of the first match.
+	digestsFirstIrrelevant bool
 }
 
 func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
@@ -201,15 +205,19 @@ func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
 	sum := sha512.Sum512(payload)
 	m.hash = hex.EncodeToString(sum[:])
 	basename := "stage3-amd64-systemd-20240121T123456Z.tar.xz"
-	digests := m.hash + "  " + basename + "\n" +
-		strings.Repeat("0", 128) + "  irrelevant.tar.xz\n"
 	m.ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		m.mu.Lock()
 		m.hits[r.URL.Path]++
 		m.mu.Unlock()
 		switch {
 		case strings.HasSuffix(r.URL.Path, basename+".DIGESTS"):
-			fmt.Fprint(w, digests)
+			ours := m.hash + "  " + basename + "\n"
+			foreign := strings.Repeat("0", 128) + "  irrelevant.tar.xz\n"
+			if m.digestsFirstIrrelevant {
+				fmt.Fprint(w, foreign+ours)
+			} else {
+				fmt.Fprint(w, ours+foreign)
+			}
 		case strings.HasSuffix(r.URL.Path, basename):
 			m.mu.Lock()
 			if m.failTarballN > 0 {
@@ -304,7 +312,10 @@ func TestDownloadStage3ResumesFromVerifiedMarker(t *testing.T) {
 	c, _ := testContext(t, cfg, nil)
 	mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
 	path := "/tmp/gentoo-install/root/.gentoo-stage3/stage3-amd64-systemd-20240121T123456Z.tar.xz"
-	writeScratch(t, c, path+".verified", "")
+	// A resume needs the verified tarball the marker was written for.
+	writeScratch(t, c, path, string(payload))
+	writeScratch(t, c, path+".verified",
+		"stage3-amd64-systemd-20240121T123456Z.tar.xz\n")
 
 	info, err := installer.DownloadStage3(c)
 	if err != nil {
@@ -326,6 +337,49 @@ func TestDownloadStage3ResumesFromVerifiedMarker(t *testing.T) {
 	}
 }
 
+func TestDownloadStage3IgnoresStaleMarker(t *testing.T) {
+	payload := []byte("the tarball bytes")
+	mirror := newStage3Mirror(t, payload)
+	defer mirror.ts.Close()
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = mirror.ts.URL
+
+	t.Run("marker without tarball re-downloads", func(t *testing.T) {
+		c, _ := testContext(t, cfg, nil)
+		mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
+		path := "/tmp/gentoo-install/root/.gentoo-stage3/stage3-amd64-systemd-20240121T123456Z.tar.xz"
+		writeScratch(t, c, path+".verified",
+			"stage3-amd64-systemd-20240121T123456Z.tar.xz\n")
+
+		if _, err := installer.DownloadStage3(c); err != nil {
+			t.Fatal(err)
+		}
+		if got := mirror.countTarball("stage3-amd64-systemd-20240121T123456Z.tar.xz"); got == 0 {
+			t.Fatal("stale marker must trigger a re-download")
+		}
+		if got := readScratch(t, c, path); got != string(payload) {
+			t.Fatalf("re-downloaded tarball = %q", got)
+		}
+	})
+
+	t.Run("marker for another basename re-downloads", func(t *testing.T) {
+		c, _ := testContext(t, cfg, nil)
+		mkScratchDir(t, c, "/tmp/gentoo-install/root/.gentoo-stage3")
+		path := "/tmp/gentoo-install/root/.gentoo-stage3/stage3-amd64-systemd-20240121T123456Z.tar.xz"
+		writeScratch(t, c, path, string(payload))
+		writeScratch(t, c, path+".verified", "stage3-amd64-systemd-OLDER.tar.xz\n")
+
+		before := mirror.countTarball("stage3-amd64-systemd-20240121T123456Z.tar.xz")
+		if _, err := installer.DownloadStage3(c); err != nil {
+			t.Fatal(err)
+		}
+		if got := mirror.countTarball("stage3-amd64-systemd-20240121T123456Z.tar.xz"); got == before {
+			t.Fatal("foreign marker must trigger a re-download")
+		}
+	})
+}
+
 func TestDownloadStage3ChecksumMismatch(t *testing.T) {
 	payload := []byte("different bytes than digest")
 	mirror := newStage3Mirror(t, payload)
@@ -342,6 +396,24 @@ func TestDownloadStage3ChecksumMismatch(t *testing.T) {
 
 	if _, err := installer.DownloadStage3(c); err == nil {
 		t.Fatal("expected checksum mismatch error")
+	}
+}
+
+func TestDownloadStage3PrefersBasenameDigest(t *testing.T) {
+	payload := []byte("the tarball bytes")
+	mirror := newStage3Mirror(t, payload)
+	defer mirror.ts.Close()
+	mirror.digestsFirstIrrelevant = true
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = mirror.ts.URL
+	c, _ := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install")
+
+	// The first .tar.xz line names a foreign file; the verifier must use
+	// the line naming our tarball instead of failing the checksum.
+	if _, err := installer.DownloadStage3(c); err != nil {
+		t.Fatalf("DownloadStage3 with reordered DIGESTS: %v", err)
 	}
 }
 

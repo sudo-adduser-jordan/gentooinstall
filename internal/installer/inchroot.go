@@ -398,6 +398,15 @@ func MainInstallGentooInChroot(c *Context) error {
 	if err := ConfigurePortage(c); err != nil {
 		return err
 	}
+	// Testing keywords must be set before any package is emerged,
+	// otherwise they never apply to the kernel/profile/package emerges below.
+	if c.Cfg.Gentoo.UsePortageTesting {
+		c.R.logf("Adding ~%s to ACCEPT_KEYWORDS", c.Cfg.Gentoo.Arch)
+		if err := c.appendFile("/etc/portage/make.conf",
+			fmt.Sprintf("ACCEPT_KEYWORDS=\"~%s\"", c.Cfg.Gentoo.Arch)); err != nil {
+			return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
+		}
+	}
 
 	c.R.log("Installing git")
 	if err := c.R.Try("emerge", "--verbose", "dev-vcs/git"); err != nil {
@@ -472,10 +481,6 @@ func MainInstallGentooInChroot(c *Context) error {
 		if err := c.R.Try("emerge", "--verbose", "sys-fs/btrfs-progs"); err != nil {
 			return err
 		}
-	}
-
-	if err := c.R.Try("emerge", "--verbose", "dev-vcs/git"); err != nil {
-		return err
 	}
 
 	if c.Layout.Flags.UsedZFS {
@@ -560,14 +565,6 @@ func MainInstallGentooInChroot(c *Context) error {
 			return err
 		}
 		c.R.log("[!] Root password cleared, set one as soon as possible!")
-	}
-
-	if c.Cfg.Gentoo.UsePortageTesting {
-		c.R.logf("Adding ~%s to ACCEPT_KEYWORDS", c.Cfg.Gentoo.Arch)
-		if err := c.appendFile("/etc/portage/make.conf",
-			fmt.Sprintf("ACCEPT_KEYWORDS=\"~%s\"", c.Cfg.Gentoo.Arch)); err != nil {
-			return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
-		}
 	}
 
 	c.R.log("Gentoo installation complete.")

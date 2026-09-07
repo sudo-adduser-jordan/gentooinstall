@@ -54,8 +54,26 @@ type Stage3Info struct {
 	Size     int64  // published byte size, 0 when unknown
 }
 
+// stage3MetaTimeout bounds metadata fetches (listings, DIGESTS, gpg key):
+// small payloads that must never hang the install. The tarball itself has
+// no total timeout so slow links can still complete large downloads.
+const stage3MetaTimeout = 30 * time.Second
+
+// httpClientFor returns a client with the given total timeout, or the
+// default client (no timeout) when timeout <= 0.
+func httpClientFor(timeout time.Duration) *http.Client {
+	if timeout <= 0 {
+		return http.DefaultClient
+	}
+	return &http.Client{Timeout: timeout}
+}
+
 func httpDownload(r *Runner, url, dest string) error {
-	resp, err := http.Get(url)
+	return httpDownloadTimeout(r, url, dest, 0)
+}
+
+func httpDownloadTimeout(r *Runner, url, dest string, timeout time.Duration) error {
+	resp, err := httpClientFor(timeout).Get(url)
 	if err != nil {
 		return err
 	}
@@ -78,7 +96,7 @@ func httpDownload(r *Runner, url, dest string) error {
 }
 
 func httpGetBody(r *Runner, url string) (string, error) {
-	resp, err := http.Get(url)
+	resp, err := httpClientFor(stage3MetaTimeout).Get(url)
 	if err != nil {
 		return "", err
 	}
@@ -289,11 +307,19 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 	dst := c.path(info.Path)
 	verifiedMarker := dst + ".verified"
 
-	if _, err := os.Stat(verifiedMarker); err == nil {
-		c.R.logf("%s tarball already downloaded and verified", basename)
-		c.Stage3File = info.Path
-		return info, nil
+	// A previous attempt may have verified this exact tarball already
+	// (marker names the basename it was written for). A marker without a
+	// matching tarball on disk — deleted, truncated, or superseded by a
+	// newer published build — must re-download, never silently resume.
+	if marker, err := os.ReadFile(verifiedMarker); err == nil &&
+		strings.TrimSpace(string(marker)) == basename {
+		if _, terr := os.Stat(dst); terr == nil {
+			c.R.logf("%s tarball already downloaded and verified", basename)
+			c.Stage3File = info.Path
+			return info, nil
+		}
 	}
+	_ = os.Remove(verifiedMarker) // stale marker (if any); best effort
 
 	c.R.logf("Downloading %s tarball", basename)
 	tarballURL := strings.TrimSuffix(releasesURL, "/") + "/" + basename
@@ -301,13 +327,13 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 		return info, fmt.Errorf("could not download %s: %w", basename, err)
 	}
 	digestsPath := dst + ".DIGESTS"
-	if err := httpDownload(c.R, tarballURL+".DIGESTS", digestsPath); err != nil {
+	if err := httpDownloadTimeout(c.R, tarballURL+".DIGESTS", digestsPath, stage3MetaTimeout); err != nil {
 		return info, fmt.Errorf("could not download DIGESTS: %w", err)
 	}
 
 	c.R.log("Importing gentoo gpg key")
 	keyPath := c.path(filepath.Join(TmpDir, "gentoo-keys.gpg"))
-	if err := httpDownload(c.R, gentooReleaseKeyURL, keyPath); err != nil {
+	if err := httpDownloadTimeout(c.R, gentooReleaseKeyURL, keyPath, stage3MetaTimeout); err != nil {
 		return info, fmt.Errorf("could not retrieve gentoo gpg key: %w", err)
 	}
 	if out, err := c.R.QuietRun("gpg", "--quiet", "--import", keyPath); err != nil {
@@ -324,7 +350,7 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 	}
 
 	c.R.log("Verifying tarball integrity")
-	want, err := sha512FromDigests(digestsPath)
+	want, err := sha512FromDigests(digestsPath, basename)
 	if err != nil {
 		return info, err
 	}
@@ -336,20 +362,26 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 		return info, fmt.Errorf("checksum mismatch!\n want %s\n got  %s", want, got)
 	}
 
-	if err := c.writeFile(info.Path+".verified", nil, 0o644); err != nil {
+	// The marker names the verified basename so a later run with a
+	// superseded build (or a deleted tarball) re-downloads instead of
+	// resuming a stale verification.
+	if err := c.writeFile(info.Path+".verified", []byte(basename+"\n"), 0o644); err != nil {
 		return info, err
 	}
 	c.Stage3File = info.Path
 	return info, nil
 }
 
-// sha512FromDigests extracts the SHA512 line for our tarball from a
-// .DIGESTS file (grep 'tar.xz$' + sed 's/  .*stage3-/  stage3-/').
-func sha512FromDigests(path string) (string, error) {
+// sha512FromDigests extracts the SHA512 line for basename from a .DIGESTS
+// file. The line naming our tarball is preferred; the first .tar.xz line is
+// kept as a fallback for listings that elide filenames, matching the old
+// behavior rather than failing outright.
+func sha512FromDigests(path, basename string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
+	var fallback string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimRight(line, "\r")
 		if !strings.HasSuffix(line, ".tar.xz") && !strings.HasSuffix(line, ".tar.xz ") {
@@ -362,7 +394,16 @@ func sha512FromDigests(path string) (string, error) {
 		if _, err := hex.DecodeString(fields[0]); err != nil {
 			continue
 		}
-		return fields[0], nil
+		if fallback == "" {
+			fallback = fields[0]
+		}
+		name := fields[len(fields)-1]
+		if name == basename || strings.HasSuffix(name, "/"+basename) {
+			return fields[0], nil
+		}
+	}
+	if fallback != "" {
+		return fallback, nil
 	}
 	return "", fmt.Errorf("no SHA512 line found in %s", path)
 }

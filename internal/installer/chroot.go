@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"gentooinstall/internal/disklayout"
 )
 
 // IsMountpoint reports whether path appears in /proc/mounts.
@@ -74,9 +76,38 @@ func CheckHostBootMode(c *Context) error {
 	return nil
 }
 
+// MountSource returns the source device currently mounted at path, or ""
+// when path is not a mountpoint (or /proc/mounts is unreadable).
+func MountSource(path string) string {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && unescapeMount(fields[1]) == path {
+			return unescapeMount(fields[0])
+		}
+	}
+	return ""
+}
+
 // MountByID mounts the device identified by id at mountpoint.
 func MountByID(c *Context, id, mountpoint string) error {
 	if c.isMountpoint(mountpoint) {
+		// Already mounted: reuse it only when it is the expected device.
+		// A stale mount from a previous layout must never be silently
+		// reused (a later mkfs/cleanup would hit the wrong filesystem).
+		dev, err := resolveID(c, id)
+		if err != nil {
+			return err
+		}
+		if src := MountSource(mountpoint); src != "" &&
+			disklayout.Canonicalize(src) != dev {
+			return fmt.Errorf("'%s' is already mounted from '%s', expected '%s' "+
+				"(id=%s): unmount the stale mount before retrying",
+				mountpoint, src, dev, id)
+		}
 		return nil
 	}
 	c.R.logf("Mounting device with id=%s to '%s'", id, mountpoint)
@@ -103,6 +134,61 @@ var virtualFS = []struct {
 	{"/tmp", nil, true},
 	{"/sys", nil, true},
 	{"/dev", nil, true},
+	// devpts must come after /dev: portage, sshd and other tools expect
+	// /dev/pts, and the live ISO's devtmpfs-only /dev never provides it.
+	{"/dev/pts", []string{"-t", "devpts", "devpts", "-o", "gid=5,mode=620"}, false},
+}
+
+// devSymlinks are the standard /dev entries portage's bash helpers rely on
+// (process substitution <(...) needs /dev/fd). The live ISO runs a
+// devtmpfs-only /dev without udev, so these symlinks may be absent on the
+// host; a bare --rbind would then propagate the gap into the chroot and
+// emerge-webrsync fails with "/dev/fd/63: No such file or directory".
+var devSymlinks = []struct{ name, target string }{
+	{"fd", "/proc/self/fd"},
+	{"stdin", "/proc/self/fd/0"},
+	{"stdout", "/proc/self/fd/1"},
+	{"stderr", "/proc/self/fd/2"},
+}
+
+// EnsureDevSymlinks creates the standard /dev/{fd,stdin,stdout,stderr}
+// symlinks under chrootDir/dev when missing. Existing entries of any type
+// are never clobbered.
+func EnsureDevSymlinks(chrootDir string) error {
+	devDir := filepath.Join(chrootDir, "dev")
+	if err := os.MkdirAll(devDir, 0o755); err != nil {
+		return fmt.Errorf("could not create '%s': %w", devDir, err)
+	}
+	for _, s := range devSymlinks {
+		p := filepath.Join(devDir, s.name)
+		if _, err := os.Lstat(p); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("could not inspect '%s': %w", p, err)
+		}
+		if err := os.Symlink(s.target, p); err != nil && !os.IsExist(err) {
+			return fmt.Errorf("could not create '%s' symlink: %w", p, err)
+		}
+	}
+	return nil
+}
+
+// CheckChrootEnv verifies the virtual filesystems a chroot needs are usable:
+// /proc must be mounted (proc/self resolves) and /dev/fd must resolve
+// through to it. It fails fast with an actionable message instead of
+// letting portage die later on "/dev/fd/63: No such file or directory".
+func CheckChrootEnv(chrootDir string) error {
+	if fi, err := os.Stat(filepath.Join(chrootDir, "proc", "self")); err != nil || !fi.IsDir() {
+		return fmt.Errorf("chroot at '%s' has no usable /proc "+
+			"(run PrepareChrootEnv or mount -t proc proc '%s' first)",
+			chrootDir, filepath.Join(chrootDir, "proc"))
+	}
+	if _, err := os.Stat(filepath.Join(chrootDir, "dev", "fd")); err != nil {
+		return fmt.Errorf("chroot at '%s' has no usable /dev/fd "+
+			"(run PrepareChrootEnv or bind /dev and create the fd symlinks first): %w",
+			chrootDir, err)
+	}
+	return nil
 }
 
 // PrepareChrootEnv copies resolv.conf and mounts the virtual filesystems
@@ -121,7 +207,7 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 	c.R.log("Mounting virtual filesystems")
 	for _, vfs := range virtualFS {
 		mp := filepath.Join(chrootDir, vfs.mountpoint)
-		if IsMountpoint(mp) {
+		if c.isMountpoint(mp) {
 			continue
 		}
 		if err := os.MkdirAll(mp, 0o755); err != nil {
@@ -144,9 +230,41 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 		}
 	}
 
+	// The live ISO's devtmpfs-only /dev may lack the fd symlinks portage
+	// needs, so create them explicitly, then verify the whole environment
+	// before any chrooted command can fail opaquely on /dev/fd.
+	if err := EnsureDevSymlinks(chrootDir); err != nil {
+		return err
+	}
+	if err := CheckChrootEnv(chrootDir); err != nil {
+		return err
+	}
+
 	// lsblk output must be cached before entering the chroot because it
 	// returns almost no information from within.
 	return c.Resolver.CacheLsblkOutput()
+}
+
+// UnmountChroot lazily unmounts the chroot environment at chrootDir: the
+// virtual filesystems in reverse mount order, then chrootDir itself.
+// Missing mountpoints are skipped; the first error is returned after all
+// attempts. Callers use it for best-effort cleanup on failure paths so a
+// re-run does not trip over leaked binds.
+func UnmountChroot(c *Context, chrootDir string) error {
+	var firstErr error
+	unmount := func(mp string) {
+		if !c.isMountpoint(mp) {
+			return
+		}
+		if err := c.R.Try("umount", "-l", mp); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("could not unmount '%s': %w", mp, err)
+		}
+	}
+	for i := len(virtualFS) - 1; i >= 0; i-- {
+		unmount(filepath.Join(chrootDir, virtualFS[i].mountpoint))
+	}
+	unmount(chrootDir)
+	return firstErr
 }
 
 // EnterChroot re-executes this binary inside the chroot to run the
@@ -154,6 +272,9 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 // output is streamed as usual, but also retained so a failure carries the
 // tail back in the returned error instead of only living in scrollback.
 func EnterChroot(c *Context, chrootDir string, args ...string) error {
+	if err := CheckChrootEnv(chrootDir); err != nil {
+		return err
+	}
 	if err := StageBind(c); err != nil {
 		return err
 	}
