@@ -23,10 +23,18 @@ import (
 
 // Minimum terminal size for the TUI; below it only the resize notice is
 // rendered (the layout wraps and breaks when the window is too small).
+// Serial consoles (qemu -nographic) are commonly 80x24, so the narrow
+// layout below must stay usable down to that size.
 const (
-	minWidth  = 100
-	minHeight = 30
+	minWidth  = 80
+	minHeight = 24
 )
+
+// wideLayoutWidth is the terminal width at which the full two-column layout
+// (logo/hint sidebar + divider + main pane) is used. Below it the sidebar
+// is hidden and the main pane takes the full window width so tabs and
+// fields fit 80-column serial terminals.
+const wideLayoutWidth = 100
 
 // tabDef is one numbered tab.
 type tabDef struct {
@@ -584,7 +592,10 @@ func (m *Model) confirmQuit() (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 func (m *Model) View() string {
 	if m.width == 0 {
-		m.width, m.height = 100, 30
+		// Unknown size (e.g. serial ttyS0 with no winsize yet): assume a
+		// conservative 80x24 so first frames fit instead of emitting a
+		// 100-column layout clipped by the host terminal.
+		m.width, m.height = 80, 24
 	}
 
 	if m.width < minWidth || m.height < minHeight {
@@ -601,9 +612,17 @@ func (m *Model) View() string {
 		return out
 	}
 
+	inner := maxInt(1, m.width-8) // frameWindow budget: border + padding
+	tabs := m.renderTabBarMax(inner)
+	var pathBox string
+	if m.width < wideLayoutWidth {
+		// Narrow serial terminals: stack indicator above path so neither
+		// is clipped by the horizontal join.
+		pathBox = lipgloss.JoinVertical(lipgloss.Left, m.mirrorLine(), m.pathLine())
+	} else {
+		pathBox = lipgloss.JoinHorizontal(lipgloss.Top, m.mirrorLine(), " ", m.pathLine())
+	}
 	logo := renderLogo()
-	tabs := m.renderTabBar()
-	pathBox := lipgloss.JoinHorizontal(lipgloss.Top, m.mirrorLine(), " ", m.pathLine())
 	left := lipgloss.JoinVertical(lipgloss.Top, logo, "", m.renderHints())
 
 	// Render the status message to the right of the path box.
@@ -641,6 +660,17 @@ func (m *Model) View() string {
 	main := pageStyle.Render(rawBody)
 
 	right := lipgloss.JoinVertical(lipgloss.Top, header, "", main)
+
+	if m.width < wideLayoutWidth {
+		// Narrow path: single column, no logo sidebar or divider.
+		out := m.frameWindow(right)
+		if m.overlay.kind != ovNone {
+			box := m.renderOverlay()
+			out = lipgloss.Place(m.width, m.height,
+				lipgloss.Center, lipgloss.Center, box)
+		}
+		return out
+	}
 
 	// Static divider height: the full terminal (or more if content
 	// overflows), so it does not change size when switching tabs.
@@ -765,16 +795,71 @@ func truncateToWidth(s string, w int) string {
 }
 
 func (m *Model) renderTabBar() string {
-	var parts []string
+	return m.renderTabBarMax(maxInt(1, m.width-8))
+}
+
+// renderTabBarMax renders the tab strip constrained to maxW visible columns.
+// The full strip is returned when it fits; otherwise a window around the
+// active tab is shown with ellipsis markers so the active tab is never the
+// part clipped off (80-column serial terminals fit ~5 of 6 tabs).
+func (m *Model) renderTabBarMax(maxW int) string {
+	parts := make([]string, len(m.tabs))
+	widths := make([]int, len(m.tabs))
 	for i, t := range m.tabs {
 		label := tabEmoji(t.name) + " " + t.name
 		if i == m.active {
-			parts = append(parts, tabActiveBorderStyle.Render(label))
+			parts[i] = tabActiveBorderStyle.Render(label)
 		} else {
-			parts = append(parts, tabInactiveBorderStyle.Render(label))
+			parts[i] = tabInactiveBorderStyle.Render(label)
+		}
+		widths[i] = lipgloss.Width(parts[i])
+	}
+	total := 0
+	for _, w := range widths {
+		total += w
+	}
+	if total <= maxW {
+		return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+	}
+	ellipsisL := unsetStyle.Render("…")
+	ellipsisR := unsetStyle.Render("…")
+	ew := lipgloss.Width(ellipsisL) + lipgloss.Width(ellipsisR)
+	// Expand outward from the active tab while the window fits.
+	s, e := m.active, m.active+1
+	used := widths[m.active]
+	for {
+		grew := false
+		if s > 0 && used+widths[s-1]+ew <= maxW {
+			s--
+			used += widths[s]
+			grew = true
+		}
+		if e < len(parts) && used+widths[e]+ew <= maxW {
+			used += widths[e]
+			e++
+			grew = true
+		}
+		if !grew {
+			break
 		}
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+	out := lipgloss.JoinHorizontal(lipgloss.Top, parts[s:e]...)
+	if s > 0 {
+		out = lipgloss.JoinHorizontal(lipgloss.Top, ellipsisL, out)
+	}
+	if e < len(parts) {
+		out = lipgloss.JoinHorizontal(lipgloss.Top, out, ellipsisR)
+	}
+	// Per-line safety: the strip is multi-row (borders), so a whole-string
+	// cut would slice rows apart. The window above already fits by
+	// construction; this only guards rounding.
+	lines := strings.Split(out, "\n")
+	for i, ln := range lines {
+		if lipgloss.Width(ln) > maxW {
+			lines[i] = truncateToWidth(ln, maxW)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // bodyWidth is the usable width of the main pane (sidebar, divider, window

@@ -27,8 +27,8 @@ make vm-test       # boots the live ISO to the TUI on the serial console.
 make vm-install    # runs a FULL install for every builds/*.toml template.
 ```
 
-`make vm-test` covers the boot path headlessly: the default grub entry
-"Gentoo Install (terminal)" maps the serial port to `/dev/console`, so with
+`make vm-test` covers the boot path headlessly: the grub entry
+"Gentoo Install" maps the serial port to `/dev/console`, so with
 `-nographic -serial stdio` the TUI renders straight into the launching
 terminal and `TestISOBoots` asserts the PID 1 banner and the
 `live: tui starting` marker appear on the serial console.
@@ -158,10 +158,8 @@ qemu-system-x86_64 -cdrom bin/gentooinstall.iso \
   -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd
 ```
 
-The grub menu defaults to the **terminal** entry, which maps the serial port
-to `/dev/console` (so the TUI renders over `-nographic -serial stdio`, no
-framebuffer window). Pick the **"(graphical)"** entry (at the 3s menu press
-Down then Enter) to render the TUI in a QEMU window instead.
+The single grub entry maps the serial port to `/dev/console` (so the TUI
+renders over `-nographic -serial stdio`, no framebuffer window).
 
 Booting the same ISO without OVMF (plain SeaBIOS) is a legacy-BIOS boot —
 pair it with `builds/bios.toml` (`disk.boot_type = "bios"`).

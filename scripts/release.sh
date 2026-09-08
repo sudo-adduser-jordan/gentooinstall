@@ -172,17 +172,10 @@ serial --unit=0 --speed=115200
 terminal_input serial console
 terminal_output serial gfxterm
 
-# Default entry: serial console only, so under -nographic -serial stdio the
+# Single entry: serial console only, so under -nographic -serial stdio the
 # TUI renders inside the terminal that launched QEMU (no separate window).
-menuentry "Gentoo Install (terminal)" {
+menuentry "Gentoo Install" {
     linux /boot/vmlinuz quiet console=ttyS0 loglevel=4 rdinit=/init$INSTALL_KERNEL_ARGS
-    initrd /boot/initrd.img
-}
-
-# Graphical entry: primary framebuffer console (console=tty0 last) for a
-# real monitor+keyboard boot on hardware with an attached display.
-menuentry "Gentoo Install (graphical)" {
-    linux /boot/vmlinuz quiet console=ttyS0 console=tty0 loglevel=4 rdinit=/init
     initrd /boot/initrd.img
 }
 EOF

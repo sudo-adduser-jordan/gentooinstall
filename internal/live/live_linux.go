@@ -81,27 +81,82 @@ func isMounted(target string) bool {
 
 // logf writes a line to the console and best-effort mirrors it to the first
 // serial port, so headless serial boots (and the QEMU e2e) observe live-init
-// progress even though /dev/console resolves to the framebuffer (tty0) when
-// grub.cfg lists console=tty0 last. It is intended for the synchronous boot
-// sequence that completes before setupFBTty rebinds stdio to the framebuffer
-// tty the TUI renders on; use logSerial for anything that may fire later.
+// progress. The single grub entry boots console=ttyS0 only, so /dev/console
+// IS the serial port. It is intended for the synchronous boot sequence that
+// completes before the TUI starts; use logSerial for anything that may fire
+// later.
 func logf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stdout, msg)
 	writeSerial(msg)
 }
 
+// tuiOwnsSerial is set once the BubbleTea TUI owns the terminal. Background
+// goroutines must not write raw bytes to /dev/ttyS0 afterwards when the TUI
+// itself renders on the serial port (console=ttyS0 under
+// qemu -nographic -serial stdio): it injects lines into the alt-screen and
+// smears the footer. Logs still go to the file fallback below.
+var tuiOwnsSerial bool
+
+// SetTuiActive reports whether the TUI now owns the terminal. Call with true
+// immediately before p.Run() and false afterwards.
+func SetTuiActive(active bool) { tuiOwnsSerial = active }
+
+// TuiActive reports whether the TUI currently owns the terminal.
+func TuiActive() bool { return tuiOwnsSerial }
+
+// serialConsoleOnly reports whether the kernel was booted with console=ttyS0
+// and without console=tty0 (the single grub entry). Then the TUI's
+// stdout IS /dev/ttyS0 and raw serial writes corrupt it.
+func serialConsoleOnly() bool {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return false
+	}
+	fields := strings.Fields(string(data))
+	hasS0, hasTty0 := false, false
+	for _, f := range fields {
+		if f == "console=ttyS0" || strings.HasPrefix(f, "console=ttyS0,") {
+			hasS0 = true
+		}
+		if f == "console=tty0" || strings.HasPrefix(f, "console=tty0") {
+			hasTty0 = true
+		}
+	}
+	return hasS0 && !hasTty0
+}
+
+// appendFileLog best-effort appends background status to a file so it stays
+// debuggable after serial is muted (serial TUI owns the port).
+func appendFileLog(msg string) {
+	for _, path := range []string{"/run/live-net.log", "/tmp/live-net.log"} {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+			_, _ = f.WriteString(msg + "\n")
+			_ = f.Close()
+			return
+		}
+	}
+}
+
 // logSerial writes a line to the first serial port only (never stdio), for
 // log output produced after the live boot has handed the terminal to the TUI
-// (e.g. the background DHCP bring-up): writing to stdout there would smear
-// across the framebuffer tty that /dev/tty1 now owns.
+// (e.g. the background DHCP bring-up). Muted once the TUI owns a
+// serial-only console; the message is kept in the file log instead.
 func logSerial(format string, args ...any) {
-	writeSerial(fmt.Sprintf(format, args...))
+	msg := fmt.Sprintf(format, args...)
+	appendFileLog(msg)
+	if tuiOwnsSerial && serialConsoleOnly() {
+		return
+	}
+	writeSerial(msg)
 }
 
 // writeSerial best-effort mirrors msg to /dev/ttyS0 so headless serial consoles
 // (and the QEMU e2e) observe live-init progress.
 func writeSerial(msg string) {
+	if tuiOwnsSerial && serialConsoleOnly() {
+		return
+	}
 	if f, err := os.OpenFile("/dev/ttyS0", os.O_WRONLY, 0); err == nil {
 		_, _ = f.WriteString(msg + "\n")
 		_ = f.Close()

@@ -123,10 +123,14 @@ func TestTuiReadOnlyProfileRows(t *testing.T) {
 	cfg := config.Default(true)
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome"
 	m := tui.New(cfg, "/tmp/test-gentoo.toml")
+	// Wide terminal: row positions assume the two-column layout (narrow
+	// serial terminals stack the indicator above the path).
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(*tui.Model)
 
 	// Tab 5 (Packages).
-	mm, _ := m.Update(keyRunes('5'))
-	model := mm.(*tui.Model)
+	mm2, _ := m.Update(keyRunes('5'))
+	model := mm2.(*tui.Model)
 
 	view := model.View()
 	// The 'Selected profile' row shows the friendly description, not the path.

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"gentooinstall/internal/config"
 	"gentooinstall/internal/tui"
 )
@@ -15,6 +17,10 @@ func newInstallModel(t *testing.T) (*tui.Model, *[]tui.InstallDecision) {
 	t.Helper()
 	cfg := config.Default(true)
 	m := tui.New(cfg, "/tmp/test-gentoo.toml")
+	// Wide terminal: install-card tests assume the fixed 24-row card and
+	// 12-slot checklist window (narrow serial terminals shrink both).
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(*tui.Model)
 	decisions := &[]tui.InstallDecision{}
 	m.SetInstallFunc(func() error {
 		if len(*decisions) > 0 && (*decisions)[len(*decisions)-1] == tui.DecideAbort {

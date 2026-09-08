@@ -84,10 +84,8 @@ make vm-install # QEMU e2e: TestInstallInVM runs a FULL install for every
 - Commit messages: short imperative subject line, lowercase.
 
 ## Notes
-Interactive boot (keyboard + monitor, opens the TUI in the window). The grub
-menu defaults to the **terminal** entry (serial console), so for a graphical
-window you must pick the "(graphical)" entry: at the 3s menu press Down then
-Enter (or use the `qemu-system-x86_64` window and click). Steps marked UEFI
+Serial boot (the single grub entry maps the serial console, so the TUI
+opens over `-nographic -serial stdio`). Steps marked UEFI
 are required for the default EFI configs:
 
 ```sh
@@ -162,10 +160,12 @@ qemu-system-x86_64 \
 # targets reuse the same writable VARS file so the efibootmgr entry persists):
 qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
 
-# Dev/CI: boot headless into the TUI inside the terminal. The default grub
-# entry "Gentoo Install (terminal)" sets console=ttyS0 only, so /dev/console
+# Dev/CI: boot headless into the TUI inside the terminal. The single grub
+# entry "Gentoo Install" sets console=ttyS0 only, so /dev/console
 # IS the serial port: with -nographic -serial stdio the TUI renders directly
 # in the terminal that launched QEMU (no framebuffer window is created):
+make iso
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
 qemu-system-x86_64 \
   -cdrom bin/gentooinstall.iso \
   -drive file=bin/gentoo-disk.img,format=qcow2 \
@@ -183,9 +183,9 @@ qemu-system-x86_64 \
 # runs `gentooinstall install` non-interactively, prints
 # "gentooinstall install: success" on the serial console and powers off. The
 # VM install test (tests/install_vm_test.go) drives this for every template:
-GENTOOINSTALL_INSTALL_CFG=$PWD/builds/openrc.toml make iso
-qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,format=qcow2 \
-  -netdev user,id=net0 -device e1000,netdev=net0 -nographic -serial stdio -monitor none -m 1024
+# GENTOOINSTALL_INSTALL_CFG=$PWD/builds/openrc.toml make iso
+# qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,format=qcow2 \
+#   -netdev user,id=net0 -device e1000,netdev=net0 -nographic -serial stdio -monitor none -m 1024
 
 ```
 

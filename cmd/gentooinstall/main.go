@@ -253,7 +253,12 @@ func powerOff() {
 // serial consoles observe the boot even when /dev/console is a graphical tty0.
 // The initramfs ships no device nodes, so as PID 1 (root) we create a missing
 // /dev/ttyS0 on the fly (char major 4, minor 64); any failure is ignored.
+// Muted while the TUI owns a serial-only console (the single grub entry):
+// raw writes there would smear the alt-screen.
 func mirrorSerialBanner(msg string) {
+	if live.TuiActive() {
+		return
+	}
 	const path = "/dev/ttyS0"
 	if _, err := os.Stat(path); err != nil {
 		dev := uint32(4)<<8 | 64
@@ -457,7 +462,7 @@ func runTUI(cfgPath string) {
 	})
 
 	// The TUI always renders to the caller's terminal. As the live-ISO init
-	// that is /dev/console: the default grub entry (console=ttyS0) puts it on
+	// that is /dev/console: the single grub entry (console=ttyS0) puts it on
 	// the serial port, so under QEMU -nographic -serial stdio the TUI appears
 	// directly in the terminal that launched QEMU instead of a framebuffer VT.
 	opts := []tea.ProgramOption{tea.WithAltScreen()}
@@ -469,9 +474,12 @@ func runTUI(cfgPath string) {
 		// Serial-only: stdout is the TUI's terminal from here on.
 		mirrorSerialBanner("live: tui starting\n")
 	}
-	if _, err := p.Run(); err != nil {
-		mirrorSerialBanner(fmt.Sprintf("tui: error: %v\n", err))
-		fatal("tui: %v", err)
+	live.SetTuiActive(true)
+	_, runErr := p.Run()
+	live.SetTuiActive(false)
+	if runErr != nil {
+		mirrorSerialBanner(fmt.Sprintf("tui: error: %v\n", runErr))
+		fatal("tui: %v", runErr)
 	}
 }
 

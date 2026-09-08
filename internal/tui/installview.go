@@ -147,21 +147,27 @@ func (m *Model) appendInstLine(line string) {
 	if line == "" {
 		return
 	}
-	switch {
-	case strings.HasPrefix(line, "[+]"):
-		name := strings.TrimSpace(strings.TrimPrefix(line, "[+]"))
-		m.curStep = name
-		m.markCurrentStepDone()
-		if len(m.instSteps) == 0 || m.instSteps[len(m.instSteps)-1].name != name {
-			m.instSteps = append(m.instSteps, instStep{name: name})
+	// Command echo (Runner logs "$ cmd" via Log, arriving as "[+] $ cmd"):
+	// pin to the header line, never a checklist step. Otherwise every
+	// mount/emerge floods the card and pins progress at (n-1)/n.
+	if cmd, ok := strings.CutPrefix(line, "[+] $ "); ok {
+		m.curCmd = strings.TrimSpace(cmd)
+	} else if cmd, ok := strings.CutPrefix(line, "$ "); ok {
+		m.curCmd = strings.TrimSpace(cmd)
+	} else {
+		switch {
+		case strings.HasPrefix(line, "[+]"):
+			name := strings.TrimSpace(strings.TrimPrefix(line, "[+]"))
+			m.curStep = name
+			m.markCurrentStepDone()
+			if len(m.instSteps) == 0 || m.instSteps[len(m.instSteps)-1].name != name {
+				m.instSteps = append(m.instSteps, instStep{name: name})
+			}
+		case strings.HasPrefix(line, "[!]"):
+			if len(m.instSteps) > 0 {
+				m.instSteps[len(m.instSteps)-1].failed = true
+			}
 		}
-	case strings.HasPrefix(line, "[!]"):
-		if len(m.instSteps) > 0 {
-			m.instSteps[len(m.instSteps)-1].failed = true
-		}
-	}
-	if strings.HasPrefix(line, "$ ") {
-		m.curCmd = strings.TrimSpace(strings.TrimPrefix(line, "$ "))
 	}
 	m.instLines = append(m.instLines, line)
 	m.instRawLines = append(m.instRawLines, raw)
@@ -468,7 +474,7 @@ func (m *Model) renderFailPanel() string {
 func (m *Model) renderInstallView() string {
 	w, h := m.width, m.height
 	if w == 0 {
-		w, h = 100, 30
+		w, h = 80, 24
 	}
 
 	status, st := "running", helpStyle
@@ -510,7 +516,10 @@ func (m *Model) renderInstallView() string {
 
 	var cmdLine string
 	if m.curCmd != "" {
-		cmdLine = unsetStyle.Render("$ " + m.curCmd)
+		// Single line: long chroot paths (e.g. devpts on
+		// /tmp/gentoo-install/root/dev/pts) must ellipsize, never wrap
+		// and break the fixed card height.
+		cmdLine = truncateToWidth(unsetStyle.Render("$ "+m.curCmd), cardW-8)
 	}
 
 	bar := m.prog.ViewAs(m.stepProgress())
@@ -518,8 +527,14 @@ func (m *Model) renderInstallView() string {
 	// Data box: border 2 + padding 2 rows, then header (1), blank, cmd (1),
 	// blank, bar (1), blank, checklist (rest), blank, hint (1). The
 	// checklist window is bottom-anchored, so older steps scroll up under
-	// the loading bar as new ones stream in.
-	inner := installCardH - 4
+	// the loading bar as new ones stream in. On short serial terminals
+	// (e.g. 80x24 over -nographic) shrink to fit so lipgloss.Place can
+	// still center the card instead of overflowing top-aligned.
+	cardH := installCardH
+	if h > 0 {
+		cardH = minInt(installCardH, maxInt(14, h-2))
+	}
+	inner := cardH - 4
 	checklistSlots := maxInt(1, inner-8)
 	checklist := m.renderChecklist(cardW-8, checklistSlots)
 
@@ -533,7 +548,7 @@ func (m *Model) renderInstallView() string {
 
 	// lipgloss Height excludes the 2 border rows, so budget them out to hit
 	// the fixed outer size.
-	card := modalBoxStyle.Width(cardW - 6).Height(installCardH - 2).Render(body)
+	card := modalBoxStyle.Width(cardW - 6).Height(cardH - 2).Render(body)
 
 	stack := []string{card}
 	if m.fail != nil {
@@ -559,7 +574,7 @@ func (m *Model) renderChecklist(maxW, maxH int) string {
 		start = n - maxH
 	}
 	last := len(m.instSteps) - 1
-	trunc := lipgloss.NewStyle().MaxWidth(maxInt(24, maxW))
+	maxW = maxInt(24, maxW)
 	var b strings.Builder
 	if start > 0 {
 		b.WriteString(unsetStyle.Render("  ⋮") + "\n")
@@ -578,7 +593,8 @@ func (m *Model) renderChecklist(maxW, maxH int) string {
 		default:
 			line = unsetStyle.Render("· " + s.name)
 		}
-		b.WriteString(trunc.Render(line) + "\n")
+		// MaxWidth wraps; the fixed-height card needs one row per step.
+		b.WriteString(truncateToWidth(line, maxW) + "\n")
 	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
