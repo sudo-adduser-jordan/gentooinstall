@@ -17,6 +17,31 @@ func HasEFI() bool {
 	return err == nil
 }
 
+// SupportsFilesystemPath reports whether the kernel exposes fs in the
+// filesystems table at path (normally /proc/filesystems). It is split out
+// so tests can point it at fixture files.
+func SupportsFilesystemPath(path, fs string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if fields[len(fields)-1] == fs {
+			return true
+		}
+	}
+	return false
+}
+
+// SupportsFilesystem reports whether the running kernel supports fs.
+func SupportsFilesystem(fs string) bool {
+	return SupportsFilesystemPath("/proc/filesystems", fs)
+}
+
 // Devices lists the discoverable block devices, sorted. /dev/disk/by-id
 // entries (udev) are preferred when present; they are supplemented with raw
 // /dev/<name> paths enumerated from /sys/block so disks are still found

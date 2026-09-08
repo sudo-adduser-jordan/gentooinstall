@@ -65,6 +65,11 @@ type Context struct {
 	// machine running the suite.
 	Stat func(path string) (os.FileInfo, error)
 
+	// Filesystems, when non-nil, replaces the /proc/filesystems probe for
+	// kernel filesystem support (vfat). Production leaves it nil so the
+	// live kernel is probed; tests inject a stub.
+	Filesystems func(fs string) bool
+
 	// Root, when non-empty, is prefixed onto every static absolute path the
 	// installer writes or reads, so tests can run against a scratch
 	// directory without touching the real filesystem. Production builds

@@ -619,6 +619,9 @@ func runInstall(cfgPath string) {
 	if err := installer.CheckHostBootMode(c); err != nil {
 		fatal("%v", err)
 	}
+	if err := installer.CheckFilesystemSupport(c); err != nil {
+		fatal("%v", err)
+	}
 	if err := installer.PrepareEnvironment(c); err != nil {
 		fatal("%v", err)
 	}
@@ -890,6 +893,9 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 	t.logf("Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)",
 		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
 	if err := installer.CheckHostBootMode(c); err != nil {
+		return err
+	}
+	if err := installer.CheckFilesystemSupport(c); err != nil {
 		return err
 	}
 

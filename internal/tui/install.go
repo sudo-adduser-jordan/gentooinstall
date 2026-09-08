@@ -7,6 +7,7 @@ import (
 
 	"gentooinstall/internal/config"
 	"gentooinstall/internal/disklayout"
+	"gentooinstall/internal/sysinfo"
 )
 
 // FirmwareBlockError reports whether the configured boot type cannot run on
@@ -65,6 +66,24 @@ func (m *Model) confirmInstall() (tea.Model, tea.Cmd) {
 			kind:    ovButtons,
 			title:   eWarn + " Configuration mismatch",
 			body:    err.Error(),
+			buttons: []string{"Dismiss"},
+			btnCur:  0,
+			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },
+		}
+		return m, nil
+	}
+	if !sysinfo.SupportsFilesystem("vfat") {
+		mountpoint := "/boot/bios"
+		if m.cfg.Disk.BootType == "efi" {
+			mountpoint = "/boot/efi"
+		}
+		m.overlay = overlay{
+			kind:  ovButtons,
+			title: eWarn + " Missing vfat support",
+			body: "The live kernel has no vfat support so " + mountpoint +
+				" cannot be mounted (the boot partition is FAT32). Rebuild the live ISO " +
+				"on a host whose kernel provides vfat, then start a fresh install — " +
+				"retrying cannot help.",
 			buttons: []string{"Dismiss"},
 			btnCur:  0,
 			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },

@@ -156,6 +156,20 @@ if [[ -d "$MODDIR" ]]; then
 fi
 compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null || \
     echo "Warning: no module tree for $KERNEL_VER; disks may need built-in drivers" >&2
+# The ESP and the FAT32 bios_grub partition are mounted at /boot/efi and
+# /boot/bios, so an ISO without vfat (and its fat/nls dependencies) formats
+# fine but fails late at mount exit 32. Fail the build instead of shipping
+# an ISO that can never complete an install; override with ALLOW_NO_VFAT=1
+# only for throwaway boot-only smoke tests.
+for _mod in fat vfat nls_cp437 nls_ascii; do
+    if [[ ! -e "$ROOTFS/lib/modules/bundle/${_mod}.ko" ]]; then
+        if [[ "${ALLOW_NO_VFAT:-}" == "1" ]]; then
+            echo "Warning: ${_mod}.ko not bundled (ALLOW_NO_VFAT=1); /boot/efi and /boot/bios cannot mount" >&2
+        else
+            die "${_mod}.ko not bundled for $KERNEL_VER (need CONFIG_VFAT_FS=y or =m with installed modules); set ALLOW_NO_VFAT=1 to force a boot-only ISO"
+        fi
+    fi
+done
 
 echo "Building initramfs..."
 (cd "$ROOTFS" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$BUILD_DIR/boot/initrd.img"

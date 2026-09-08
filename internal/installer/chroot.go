@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gentooinstall/internal/disklayout"
+	"gentooinstall/internal/sysinfo"
 )
 
 // IsMountpoint reports whether path appears in /proc/mounts.
@@ -81,6 +82,39 @@ func CheckHostBootMode(c *Context) error {
 			"disk.boot_type = \"bios\" (e.g. builds/bios.toml)")
 	}
 	return nil
+}
+
+// SupportsFilesystem reports whether the running kernel supports fs,
+// honoring the Filesystems stub so tests stay host-independent.
+func (c *Context) SupportsFilesystem(fs string) bool {
+	if c.Filesystems != nil {
+		return c.Filesystems(fs)
+	}
+	return sysinfo.SupportsFilesystem(fs)
+}
+
+// CheckFilesystemSupport fails fast when the live kernel cannot mount the
+// FAT32 boot partition (/boot/efi for EFI layouts, /boot/bios for BIOS
+// layouts). Both are formatted with mkfs.fat, so without vfat every install
+// dies late at mount exit 32 after the stage3 download; reject it before
+// any destructive partitioning instead, with the rebuild-ISO remedy (a
+// retry can never fix a missing kernel driver).
+func CheckFilesystemSupport(c *Context) error {
+	if c.Layout == nil {
+		return nil
+	}
+	mountpoint := "/boot/bios"
+	if c.IsEFI() {
+		mountpoint = "/boot/efi"
+	}
+	if c.SupportsFilesystem("vfat") {
+		return nil
+	}
+	return fmt.Errorf("the live kernel has no vfat support so %s cannot be mounted "+
+		"(mkfs.fat formats the boot partition as FAT32); rebuild the live ISO on a host "+
+		"whose kernel provides vfat (CONFIG_VFAT_FS=y, or =m with the modules installed "+
+		"so release.sh can bundle vfat.ko and the live boot logs \"live: loaded module vfat\"); "+
+		"retrying this install cannot help", mountpoint)
 }
 
 // MountSource returns the source device currently mounted at path, or ""

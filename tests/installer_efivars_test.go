@@ -96,3 +96,50 @@ func TestCheckHostBootMode(t *testing.T) {
 		t.Fatalf("BIOS layout should pass even on a non-UEFI host, got %v", err)
 	}
 }
+
+func TestCheckFilesystemSupport(t *testing.T) {
+	withVfat := func(c *installer.Context) {
+		c.Filesystems = func(string) bool { return true }
+	}
+	withoutVfat := func(c *installer.Context) {
+		c.Filesystems = func(string) bool { return false }
+	}
+
+	efiCfg := classicCfg("/dev/sdX", false, false)
+	efiCtx, _ := testContext(t, efiCfg, classicSeeds())
+	withVfat(efiCtx)
+	if err := installer.CheckFilesystemSupport(efiCtx); err != nil {
+		t.Fatalf("EFI layout with vfat should pass, got %v", err)
+	}
+
+	biosCfg := classicCfg("/dev/sdX", false, false)
+	biosCfg.Disk.BootType = "bios"
+	biosCtx, _ := testContext(t, biosCfg,
+		map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	withVfat(biosCtx)
+	if err := installer.CheckFilesystemSupport(biosCtx); err != nil {
+		t.Fatalf("BIOS layout with vfat should pass, got %v", err)
+	}
+
+	withoutVfat(efiCtx)
+	if err := installer.CheckFilesystemSupport(efiCtx); err == nil {
+		t.Fatal("EFI layout without vfat should fail before partitioning")
+	} else {
+		for _, want := range []string{"vfat", "/boot/efi", "rebuild"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error should mention %q: %v", want, err)
+			}
+		}
+	}
+
+	withoutVfat(biosCtx)
+	if err := installer.CheckFilesystemSupport(biosCtx); err == nil {
+		t.Fatal("BIOS layout without vfat should fail before partitioning")
+	} else {
+		for _, want := range []string{"vfat", "/boot/bios", "retrying"} {
+			if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(want)) {
+				t.Fatalf("error should mention %q: %v", want, err)
+			}
+		}
+	}
+}

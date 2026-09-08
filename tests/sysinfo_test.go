@@ -2,6 +2,8 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,4 +57,28 @@ func TestFallbackKeymapsPresent(t *testing.T) {
 func TestEFIAndBootType(t *testing.T) {
 	// EFI detection must resolve to a boolean (either result is fine).
 	_ = sysinfo.HasEFI()
+}
+
+func TestSupportsFilesystemPath(t *testing.T) {
+	dir := t.TempDir()
+	withVfat := filepath.Join(dir, "filesystems")
+	if err := os.WriteFile(withVfat, []byte("nodev\tsysfs\nnodev\tbpf\n\tvfat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !sysinfo.SupportsFilesystemPath(withVfat, "vfat") {
+		t.Fatal("vfat should be detected")
+	}
+	if sysinfo.SupportsFilesystemPath(withVfat, "zfs") {
+		t.Fatal("zfs should not be detected")
+	}
+	without := filepath.Join(dir, "nofat")
+	if err := os.WriteFile(without, []byte("nodev\tsysfs\n\text4\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if sysinfo.SupportsFilesystemPath(without, "vfat") {
+		t.Fatal("vfat must be missing")
+	}
+	if sysinfo.SupportsFilesystemPath(filepath.Join(dir, "absent"), "vfat") {
+		t.Fatal("unreadable table must report unsupported")
+	}
 }
