@@ -134,25 +134,23 @@ bundle_mod() {
 }
 
 mkdir -p "$ROOTFS/lib/modules/bundle"
+# Direct file lookup across the whole module tree: modprobe cannot be relied
+# on to resolve the full curated list (multi-module --show-depends can emit a
+# single "builtin <name>" line and drop the rest), and some modules (fat/vfat)
+# live under kernel/fs, not kernel/drivers. Built-in drivers have no .ko and
+# are skipped; loadModules in internal/live ignores modules it cannot load.
 bundle_find() {
     local alt f
     for alt in "$1" "${1//_/-}"; do
-        f="$(find "$MODDIR/kernel/drivers" -name "$alt.ko*" 2>/dev/null | head -n1)"
+        f="$(find "$MODDIR" -name "$alt.ko*" 2>/dev/null | head -n1)"
         [[ -n "$f" ]] && { bundle_mod "$f"; return 0; }
     done
-    return 0
+    return 1
 }
 if [[ -d "$MODDIR" ]]; then
-    if command -v modprobe >/dev/null 2>&1; then
-        while read -r line; do
-            path="${line##* }"
-            [[ "$path" == *.ko* ]] || continue
-            bundle_mod "$path"
-        done < <(modprobe --show-depends "${MODULES[@]}" 2>/dev/null || true)
-    fi
-    if ! compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null; then
-        for m in "${MODULES[@]}"; do bundle_find "$m"; done
-    fi
+    for m in "${MODULES[@]}"; do
+        bundle_find "$m" || continue
+    done
 fi
 compgen -G "$ROOTFS/lib/modules/bundle/*.ko" >/dev/null || \
     echo "Warning: no module tree for $KERNEL_VER; disks may need built-in drivers" >&2

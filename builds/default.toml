@@ -4,10 +4,9 @@
 [disk]
     scheme = "classic_single_disk"
     boot_type = "efi"
-    device = "/dev/sda"
-    use_swap = true
-    swap_size = "8GiB"
-    use_luks = true
+    device = "/dev/vda"
+    use_swap = false
+    use_luks = false
     root_fs = "ext4"
     zfs_pool_type = "standard"
     zfs_compression = "zstd"
@@ -29,10 +28,18 @@
     mirror = "https://mirror.leaseweb.com/gentoo"
     arch = "amd64"
     stage3_variant = "systemd"
+    profile = "default/linux/amd64/23.0/systemd"
     portage_sync_type = "git"
     portage_git_mirror = "https://anongit.gentoo.org/git/repo/sync/gentoo.git"
     use_portage_testing = true
 
 [packages]
     enable_sshd = true
+    enable_binpkg = true
     kernel_type = "bin"
+
+[makeconf]
+    options = ["accept_license"]
+    extra = """
+PORTAGE_FETCH_JOBS=5
+"""

@@ -372,18 +372,37 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 	return info, nil
 }
 
+// digestsSectionHeader matches the "# <ALGORITHM> HASH" markers that delimit
+// the (equal-length) digest sections of a Gentoo .DIGESTS file, e.g.
+// "# BLAKE2B HASH" before "# SHA512 HASH". Blindly taking the first matching
+// line would pick BLAKE2B, which is also 128 hex chars; the section must be
+// honored so a real SHA512 is returned.
+var digestsSectionHeader = regexp.MustCompile(`^#\s*([0-9A-Za-z]+)\s*HASH\s*$`)
+
 // sha512FromDigests extracts the SHA512 line for basename from a .DIGESTS
-// file. The line naming our tarball is preferred; the first .tar.xz line is
-// kept as a fallback for listings that elide filenames, matching the old
-// behavior rather than failing outright.
+// file. The line naming our tarball is preferred; the first SHA512-grounded
+// .tar.xz line is kept as a fallback for listings that elide filenames,
+// matching the old behavior rather than failing outright. Only hashes under
+// a "# SHA512 HASH" section are accepted; files with no section markers at
+// all (ancient layout) fall back to their first 128-hex line.
 func sha512FromDigests(path, basename string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
 	var fallback string
+	section := ""
+	seenMarker := false
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimRight(line, "\r")
+		if m := digestsSectionHeader.FindStringSubmatch(line); m != nil {
+			seenMarker = true
+			section = strings.ToLower(m[1])
+			continue
+		}
+		if section != "" && section != "sha512" {
+			continue // BLAKE2B/SHA256/etc. hashes must never be returned as SHA512
+		}
 		if !strings.HasSuffix(line, ".tar.xz") && !strings.HasSuffix(line, ".tar.xz ") {
 			continue
 		}
@@ -402,7 +421,7 @@ func sha512FromDigests(path, basename string) (string, error) {
 			return fields[0], nil
 		}
 	}
-	if fallback != "" {
+	if fallback != "" && !seenMarker {
 		return fallback, nil
 	}
 	return "", fmt.Errorf("no SHA512 line found in %s", path)

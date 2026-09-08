@@ -198,6 +198,15 @@ type stage3Mirror struct {
 	// but foreign .tar.xz line first, so tests can prove the verifier
 	// picks the line naming our tarball instead of the first match.
 	digestsFirstIrrelevant bool
+	// digestsBlake2bFirst serves the current upstream layout: a "# BLAKE2B
+	// HASH" section (128-hex, same length as SHA512) naming our tarball
+	// before the real "# SHA512 HASH" section. Tests prove the verifier
+	// honors the section markers instead of returning the BLAKE2B digest.
+	digestsBlake2bFirst bool
+	// digestsBlake2bOnly serves a DIGESTS file with only a "# BLAKE2B
+	// HASH" section (no SHA512 at all), so tests can prove a listing
+	// without any SHA512 digest is rejected.
+	digestsBlake2bOnly bool
 }
 
 func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
@@ -214,9 +223,17 @@ func newStage3Mirror(t *testing.T, payload []byte) *stage3Mirror {
 		case strings.HasSuffix(r.URL.Path, basename+".DIGESTS"):
 			ours := m.hash + "  " + basename + "\n"
 			foreign := strings.Repeat("0", 128) + "  irrelevant.tar.xz\n"
-			if m.digestsFirstIrrelevant {
+			switch {
+			case m.digestsBlake2bFirst || m.digestsBlake2bOnly:
+				blake2b := strings.Repeat("a", 128) + "  " + basename + "\n"
+				if m.digestsBlake2bOnly {
+					fmt.Fprint(w, "# BLAKE2B HASH\n"+blake2b)
+					break
+				}
+				fmt.Fprint(w, "# BLAKE2B HASH\n"+blake2b+"# SHA512 HASH\n"+ours+foreign)
+			case m.digestsFirstIrrelevant:
 				fmt.Fprint(w, foreign+ours)
-			} else {
+			default:
 				fmt.Fprint(w, ours+foreign)
 			}
 		case strings.HasSuffix(r.URL.Path, basename):
@@ -415,6 +432,55 @@ func TestDownloadStage3PrefersBasenameDigest(t *testing.T) {
 	// the line naming our tarball instead of failing the checksum.
 	if _, err := installer.DownloadStage3(c); err != nil {
 		t.Fatalf("DownloadStage3 with reordered DIGESTS: %v", err)
+	}
+}
+
+func TestDownloadStage3SkipsBlake2bDigests(t *testing.T) {
+	payload := []byte("the tarball bytes")
+	mirror := newStage3Mirror(t, payload)
+	defer mirror.ts.Close()
+	mirror.digestsBlake2bFirst = true
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = mirror.ts.URL
+	c, s := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install")
+
+	// Current upstream DIGESTS files list a 128-hex BLAKE2B digest before
+	// the SHA512 digest for the same tarball; the verifier must pick the
+	// SHA512 section instead of failing the checksum against the BLAKE2B
+	// value (same length, same basename).
+	info, err := installer.DownloadStage3(c)
+	if err != nil {
+		t.Fatalf("DownloadStage3 with BLAKE2B-first DIGESTS: %v", err)
+	}
+	if got := readScratch(t, c, info.Path); got != string(payload) {
+		t.Fatalf("stored tarball = %q", got)
+	}
+	assertCmdContains(t, s, []string{
+		"gpg --quiet --verify " + filepath.Join(c.Root, info.Path+".DIGESTS"),
+	})
+}
+
+func TestDownloadStage3RejectsBlake2bOnlyDigests(t *testing.T) {
+	payload := []byte("the tarball bytes")
+	mirror := newStage3Mirror(t, payload)
+	defer mirror.ts.Close()
+	mirror.digestsBlake2bOnly = true
+
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Mirror = mirror.ts.URL
+	c, _ := testContext(t, cfg, nil)
+	mkScratchDir(t, c, "/tmp/gentoo-install")
+
+	// A listing with only a BLAKE2B section carries no SHA512 digest, so the
+	// verification must fail rather than trust a foreign algorithm's hash.
+	_, err := installer.DownloadStage3(c)
+	if err == nil {
+		t.Fatal("expected failure with BLAKE2B-only DIGESTS")
+	}
+	if !strings.Contains(err.Error(), "no SHA512 line found") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
