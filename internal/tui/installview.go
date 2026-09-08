@@ -1,9 +1,7 @@
 package tui
 
 import (
-	"errors"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -23,8 +21,6 @@ type InstallDecision int
 const (
 	// DecideRetry reruns the failed step.
 	DecideRetry InstallDecision = iota
-	// DecideEditor returns to the config tabs first.
-	DecideEditor
 	// DecideAbort aborts the installation.
 	DecideAbort
 )
@@ -32,12 +28,6 @@ const (
 // InstallFunc performs the entire installation, streaming progress via
 // EmitInstallLine and finishing with EmitInstallDone.
 type InstallFunc func() error
-
-// ErrEditAndReturn is returned by an InstallFunc when the user chose to
-// pause the installation and return to the config tabs. The install view
-// resets to idle so a fresh installation can be started again later
-// without leaving the program.
-var ErrEditAndReturn = errors.New("installation paused by user")
 
 // Messages driving the install view.
 type InstallStartMsg struct{}
@@ -52,13 +42,9 @@ type InstallDoneMsg struct{ Err error }
 type InstallFailedMsg struct {
 	Cmdline string
 	Err     string
-	// Decide is called with the user's choice; Shell builds an
-	// emergency shell command for tea.ExecProcess (may be nil).
+	// Decide is called with the user's choice.
 	Decide func(InstallDecision)
-	Shell  func() *exec.Cmd
 }
-
-type installShellDoneMsg struct{ err error }
 
 // Install states.
 const (
@@ -288,20 +274,6 @@ func (m *Model) updateInstallMsg(msg tea.Msg) {
 		m.instState = instWaiting
 		m.appendInstLine("[!] Command failed: " + msg.Cmdline + ": " + msg.Err)
 	case InstallDoneMsg:
-		if errors.Is(msg.Err, ErrEditAndReturn) {
-			// The user chose to return to the tabs; reset so a fresh
-			// installation can be started from the Install tab.
-			m.installing = false
-			m.instState = instIdle
-			m.instDemo = false
-			m.fail = nil
-			m.instSteps = nil
-			m.curStep = ""
-			m.curCmd = ""
-			m.appendInstLine("[+] Installation paused. Returned to the tabs; " +
-				"edit the config and restart from the Install tab.")
-			return
-		}
 		if msg.Err != nil {
 			m.instState = instAborted
 			m.appendInstLine("[!] Installation aborted: " + msg.Err.Error())
@@ -311,17 +283,11 @@ func (m *Model) updateInstallMsg(msg tea.Msg) {
 			m.appendInstLine("[+] Installation finished successfully " + eParty)
 		}
 		m.fail = nil
-	case installShellDoneMsg:
-		if msg.err != nil {
-			m.appendInstLine("[+] Emergency shell exited: " + msg.err.Error())
-		} else {
-			m.appendInstLine("[+] Emergency shell exited")
-		}
 	}
 }
 
 // failButtons are the choices offered while waiting after a failure.
-var failButtons = []string{"Retry", "Shell", "Editor", "Abort"}
+var failButtons = []string{"Retry", "Abort"}
 
 func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -344,11 +310,6 @@ func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			m.decideFail(DecideRetry)
-		case "s":
-			return m.runEmergencyShell()
-		case "e":
-			m.decideFail(DecideEditor)
-			m.installing = false
 		case "a":
 			m.decideFail(DecideAbort)
 		case "enter":
@@ -356,11 +317,6 @@ func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case 0:
 				m.decideFail(DecideRetry)
 			case 1:
-				return m.runEmergencyShell()
-			case 2:
-				m.decideFail(DecideEditor)
-				m.installing = false
-			case 3:
 				m.decideFail(DecideAbort)
 			}
 		}
@@ -371,18 +327,6 @@ func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch msg.String() {
-	case "c":
-		if m.instState == instDone {
-			return m, tea.ExecProcess(
-				exec.Command("sh", "-c", "cd /tmp/gentoo-install/root && chroot . /bin/bash"),
-				func(err error) tea.Msg {
-					if err != nil {
-						m.appendInstLine("[!] chroot failed: " + err.Error())
-					}
-					return installShellDoneMsg{err: err}
-				},
-			)
-		}
 	case "e", "esc":
 		if m.instState == instDone || m.instState == instAborted {
 			m.leaveInstallView()
@@ -395,8 +339,7 @@ func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // leaveInstallView returns to the tabs. A finished or failed installation is
 // reset to idle so a fresh installation can be started again without exiting
-// the program; only a run still waiting on the user's decision keeps its
-// state so it can be resumed with i.
+// the program.
 func (m *Model) leaveInstallView() {
 	m.installing = false
 	if m.instState == instDone || m.instState == instAborted {
@@ -421,17 +364,6 @@ func (m *Model) decideFail(d InstallDecision) {
 		}
 		fn(d)
 	}
-}
-
-func (m *Model) runEmergencyShell() (tea.Model, tea.Cmd) {
-	if m.fail == nil || m.fail.Shell == nil {
-		return m, nil
-	}
-	cmd := m.fail.Shell()
-	m.appendInstLine("[+] Opening emergency shell (exit to return)")
-	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return installShellDoneMsg{err: err}
-	})
 }
 
 // openLogOverlay shows the buffered raw output in a scrollable modal.
@@ -498,9 +430,9 @@ func (m *Model) renderInstallView() string {
 	case instRunning:
 		hint += "q quit (dangerous)"
 	case instWaiting:
-		hint += "←→ choose · Enter · r retry · s shell · e edit · a abort"
+		hint += "←→ choose · Enter · r retry · a abort"
 	case instDone:
-		hint += "c chroot · e back to tabs · q quit"
+		hint += "e back to tabs · q quit"
 	default:
 		hint += "e back to tabs · q quit"
 	}

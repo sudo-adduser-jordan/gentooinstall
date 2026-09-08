@@ -52,19 +52,17 @@ func PromptLine(r *Runner, prompt string) (string, error) {
 }
 
 // InteractiveOnFailure builds an OnFailure handler asking the user for
-// shell/retry/abort/continue/print (the try() prompt).
+// retry/abort/continue/print (the try() prompt).
 func InteractiveOnFailure(r *Runner) func(string, error) FailAction {
 	return func(cmdline string, err error) FailAction {
 		for {
 			ans, e := PromptLine(r,
-				"Specify next action ([1mS[mhell/[1mr[metry/[1ma[mbort/[1mc[montinue/[1mp[mrint) ")
+				"Specify next action ([1mr[metry/[1ma[mbort/[1mc[montinue/[1mp[mrint) ")
 			if e != nil && ans == "" {
 				return FailAbort
 			}
 			switch strings.ToLower(strings.TrimSpace(ans)) {
-			case "", "s", "shell":
-				return FailShell
-			case "r", "retry":
+			case "", "r", "retry":
 				return FailRetry
 			case "a", "abort":
 				return FailAbort

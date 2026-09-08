@@ -91,9 +91,14 @@ func TestTuiInstallFailureDecisions(t *testing.T) {
 		t.Fatalf("state = %s, want waiting", model.InstallState())
 	}
 	view := model.View()
-	for _, want := range []string{"Retry", "Shell", "Editor", "Abort", "dev-vcs/git"} {
+	for _, want := range []string{"Retry", "Abort", "dev-vcs/git"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("failure panel missing %q", want)
+		}
+	}
+	for _, gone := range []string{"Shell", "Editor"} {
+		if strings.Contains(view, gone) {
+			t.Fatalf("failure panel must not contain %q", gone)
 		}
 	}
 
@@ -107,29 +112,10 @@ func TestTuiInstallFailureDecisions(t *testing.T) {
 		t.Fatalf("state = %s, want running after retry", model.InstallState())
 	}
 
-	// e moves to editor mode without deciding.
+	// a aborts; the completion message marks failure.
 	got = -1
 	mm, _ = model.Update(tui.InstallFailedMsg{Cmdline: "x", Err: "y", Decide: decide})
 	model = mm.(*tui.Model)
-	mm, _ = model.Update(keyRunes('e'))
-	model = mm.(*tui.Model)
-	if model.InstallActive() {
-		t.Fatal("editor choice must show tabs")
-	}
-	if got != tui.DecideEditor {
-		t.Fatalf("decision = %v, want editor", got)
-	}
-	// i on the install tab returns to the waiting window.
-	mm, _ = model.Update(keyRunes('6'))
-	model = mm.(*tui.Model)
-	mm, _ = model.Update(keyRunes('i'))
-	model = mm.(*tui.Model)
-	if !model.InstallActive() || model.InstallState() != "waiting" {
-		t.Fatalf("return to install view failed: active=%v state=%s",
-			model.InstallActive(), model.InstallState())
-	}
-
-	// a aborts; the completion message marks failure.
 	mm, _ = model.Update(keyRunes('a'))
 	model = mm.(*tui.Model)
 	if got != tui.DecideAbort {
@@ -185,25 +171,28 @@ func TestTuiInstallConfirmation(t *testing.T) {
 	}
 }
 
-func TestTuiInstallPauseResetsToIdle(t *testing.T) {
+func TestTuiInstallAbortedResetsToIdle(t *testing.T) {
 	m, _ := newInstallModel(t)
 	mm, _ := m.Update(tui.InstallStartMsg{})
 	model := mm.(*tui.Model)
 
-	// The install routine returns ErrEditAndReturn when the user chose to
-	// return to the config tabs; the install view must reset to idle so a
-	// fresh installation can be started again without exiting the program.
-	mm, _ = model.Update(tui.InstallDoneMsg{Err: tui.ErrEditAndReturn})
+	// A failed installation marks the view aborted; leaving it with e
+	// resets to idle so a fresh installation can start from the Install tab.
+	mm, _ = model.Update(tui.InstallDoneMsg{Err: errors.New("command failed")})
+	model = mm.(*tui.Model)
+	if model.InstallState() != "aborted" {
+		t.Fatalf("state = %s, want aborted", model.InstallState())
+	}
+	mm, _ = model.Update(keyRunes('e'))
 	model = mm.(*tui.Model)
 	if model.InstallActive() {
-		t.Fatal("pausing must leave the install view")
+		t.Fatal("e must leave the install view")
 	}
 	if model.InstallState() != "idle" {
 		t.Fatalf("state = %s, want idle", model.InstallState())
 	}
 
-	// i on the Install tab now opens the fresh-start confirmation instead of
-	// re-showing the paused run.
+	// i on the Install tab opens the fresh-start confirmation.
 	mm, _ = model.Update(keyRunes('6'))
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyRunes('i'))

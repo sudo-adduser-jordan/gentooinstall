@@ -342,8 +342,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateInstallMsg(msg)
 	case InstallDoneMsg:
 		m.updateInstallMsg(msg)
-	case installShellDoneMsg:
-		m.updateInstallMsg(msg)
 
 	case savedClearMsg:
 		m.savedFlash = false

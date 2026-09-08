@@ -187,8 +187,7 @@ func TestInteractiveOnFailureMapping(t *testing.T) {
 		input string
 		want  installer.FailAction
 	}{
-		{"s\n", installer.FailShell},
-		{"shell\n", installer.FailShell},
+		{"\n", installer.FailRetry},
 		{"r\n", installer.FailRetry},
 		{"retry\n", installer.FailRetry},
 		{"a\n", installer.FailAbort},

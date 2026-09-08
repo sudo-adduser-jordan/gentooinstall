@@ -188,11 +188,10 @@ func emitDemoFailure(ph demoPhase) bool {
 		Decide:  func(d InstallDecision) { decide <- d },
 	})
 	switch d := <-decide; d {
-	case DecideAbort:
+	case DecideRetry:
+		return true
+	default:
 		EmitInstallDone(errors.New("aborted by user"))
 		return false
-	default:
-		// Retry (and Editor, after saving) resumes the demo.
-		return true
 	}
 }

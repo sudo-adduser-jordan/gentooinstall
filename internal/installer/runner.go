@@ -18,8 +18,6 @@ type FailAction int
 const (
 	// FailRetry reruns the failed command.
 	FailRetry FailAction = iota
-	// FailShell drops into an emergency shell before re-prompting.
-	FailShell
 	// FailAbort aborts the installation.
 	FailAbort
 	// FailContinue ignores the failure and continues.
@@ -205,9 +203,6 @@ func (r *Runner) Try(name string, args ...string) error {
 		switch onFail(line, err) {
 		case FailRetry:
 			continue
-		case FailShell:
-			_ = r.SpawnShell()
-			goto prompt
 		case FailPrint:
 			fmt.Fprintf(r.stderr(), "\x1b[1;33m$\x1b[m %s\n", line)
 			goto prompt
@@ -217,27 +212,6 @@ func (r *Runner) Try(name string, args ...string) error {
 			return fmt.Errorf("command failed: %s: %w", line, err)
 		}
 	}
-}
-
-// ShellCmd builds the emergency-shell command (not yet started).
-func (r *Runner) ShellCmd() *exec.Cmd {
-	sh := os.Getenv("SHELL")
-	if sh == "" {
-		sh = "/bin/bash"
-	}
-	cmd := exec.Command(sh)
-	cmd.Env = append(os.Environ(), "PS1=(gentooinstall emergency) \\w \\$ ")
-	return cmd
-}
-
-// SpawnShell drops the user into an interactive shell.
-func (r *Runner) SpawnShell() error {
-	fmt.Fprintln(r.stderr(), "You will be prompted for action again after exiting this shell.")
-	cmd := r.ShellCmd()
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 // HasProgram reports whether an executable is on PATH.

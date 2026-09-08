@@ -167,12 +167,23 @@ qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
 make iso
 qemu-img create -f qcow2 bin/gentoo-disk.img 20G
 qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 4G \
   -cdrom bin/gentooinstall.iso \
-  -drive file=bin/gentoo-disk.img,format=qcow2 \
+  -boot d \
+  -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
   -netdev user,id=net0 \
   -device e1000,netdev=net0 \
-  -nographic -serial stdio -monitor none \
-  -m 1024
+  -nographic -serial stdio -monitor none
+  
+  
+  
+cd ~/Documents/GitHub/gentooinstall; make build; ./bin/gentooinstall
+
+
+
 
 # make vm-test covers this path headlessly (TestISOBoots asserts the PID 1
 # banner and the "live: tui starting" marker appear on the serial console).

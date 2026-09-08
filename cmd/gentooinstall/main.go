@@ -793,47 +793,29 @@ type tuiInstaller struct {
 }
 
 // awaitDecision reports a failure to the install window and blocks
-// until the user answers. Choosing Editor saves the (validated) config
-// and keeps waiting, so edits apply to subsequent steps that the
-// install routine re-runs after returning here.
+// until the user answers with Retry or Abort.
 func (t *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecision {
-	return t.awaitDecisionCore(cmdline, err, false)
+	return t.awaitDecisionCore(cmdline, err)
 }
 
 // awaitPhaseDecision reports a phase-level failure and blocks until the
-// user answers. Unlike awaitDecision, choosing Editor saves the config
-// and returns DecideEditor so the installation can be restarted from the
-// configurator rather than looping on the same phase.
+// user answers with Retry or Abort.
 func (t *tuiInstaller) awaitPhaseDecision(cmdline string, err error) tui.InstallDecision {
-	return t.awaitDecisionCore(cmdline, err, true)
+	return t.awaitDecisionCore(cmdline, err)
 }
 
 // awaitDecisionCore implements the shared decision loop.
-func (t *tuiInstaller) awaitDecisionCore(cmdline string, err error, editorReturns bool) tui.InstallDecision {
+func (t *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.InstallDecision {
 	t.decided = true
 	for {
 		tui.EmitInstallFailed(tui.InstallFailedMsg{
 			Cmdline: cmdline,
 			Err:     err.Error(),
 			Decide:  func(d tui.InstallDecision) { t.decide <- d },
-			Shell:   func() *exec.Cmd { return t.r.ShellCmd() },
 		})
 		switch d := <-t.decide; d {
 		case tui.DecideRetry, tui.DecideAbort:
 			return d
-		case tui.DecideEditor:
-			if errs := t.cfg.Validate(); len(errs) > 0 {
-				tui.EmitInstallLine("[!] Configuration is invalid; edits not saved.")
-				continue
-			}
-			if e := t.cfg.Save(config.ResolveSavePath(t.path)); e != nil {
-				tui.EmitInstallLine("[!] Could not save configuration: " + e.Error())
-				continue
-			}
-			tui.EmitInstallLine("[+] Configuration saved; retry when ready.")
-			if editorReturns {
-				return d
-			}
 		default:
 			return tui.DecideAbort
 		}
@@ -933,8 +915,7 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 	}
 
 	// The remaining host-side steps run as decidable phases: any failure
-	// pauses the install and lets the user Retry the phase, open the
-	// emergency shell, return to the config tabs (DecideEditor) or abort.
+	// pauses the install and lets the user Retry the phase or abort.
 	// Retries only re-run the failed phase; it must remain safe to repeat
 	// without re-partitioning already-handled disks.
 	phases := []struct {
@@ -972,9 +953,6 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 			continue
 		}
 		if err := t.runPhase(c, ph.name, ph.cleanRoot, ph.fn); err != nil {
-			if errors.Is(err, tui.ErrEditAndReturn) {
-				return tui.ErrEditAndReturn
-			}
 			return err
 		}
 	}
@@ -986,18 +964,14 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		switch t.awaitPhaseDecision("gentooinstall --in-chroot (chroot phase)", err) {
 		case tui.DecideRetry:
 			tui.EmitInstallLine("Re-entering chroot phase…")
-		case tui.DecideAbort:
-			return fmt.Errorf("aborted after chroot phase failure: %w", err)
 		default:
-			return tui.ErrEditAndReturn
+			return fmt.Errorf("aborted after chroot phase failure: %w", err)
 		}
 	}
 }
 
 // runPhase runs one installation phase, pausing on failure so the user can
-// decide how to proceed. A nil return means the phase succeeded; returning
-// tui.ErrEditAndReturn means the user chose to edit the config and the
-// install should hand control back to the configurator.
+// decide how to proceed. A nil return means the phase succeeded.
 func (t *tuiInstaller) runPhase(c *installer.Context, name string, cleanRoot bool, fn func() error) error {
 	t.decided = false
 	t.logf(name)
@@ -1025,7 +999,7 @@ func (t *tuiInstaller) runPhase(c *installer.Context, name string, cleanRoot boo
 		case tui.DecideAbort:
 			return fmt.Errorf("%s failed: %w", name, err)
 		default:
-			return tui.ErrEditAndReturn
+			return fmt.Errorf("%s failed: %w", name, err)
 		}
 	}
 }
