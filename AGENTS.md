@@ -90,82 +90,28 @@ are required for the default EFI configs:
 
 ```sh
 make iso
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+
 # UEFI boot (required for the default EFI configs: disk.boot_type = "efi"):
+# VARS must be a writable copy.
 cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
-qemu-system-x86_64 -cdrom bin/gentooinstall.iso \
+qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 4G \
+  -cdrom bin/gentooinstall.iso \
+  -boot d \
+  -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
-  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -nographic -serial stdio -monitor none
 # Legacy-BIOS boot (use with builds/bios.toml: disk.boot_type = "bios"):
-qemu-system-x86_64 -cdrom bin/gentooinstall.iso
-```
-
-The live ISO is hybrid BIOS+UEFI (`grub-mkrescue` El Torito BIOS +
-`/efi.img` UEFI). Booting it without OVMF lands in legacy BIOS mode, so
-`/sys/firmware/efi` is missing and any EFI config fails fast in
-`CheckHostBootMode`/`MountEfiVars` ("live system was not booted in UEFI
-mode"). Either reboot under UEFI or switch the config to
-`disk.boot_type = "bios"`.
-
-Full install loop: create a drive image, boot the ISO with it attached to
-install onto, then boot the installed OS from the drive (both with keyboard +
-monitor). Without a NIC (and the DHCP/DNS it brings up) the tarball/mirror
-fetches fail, so always attach a user-mode NIC:
-
-```sh
-make iso
-qemu-img create -f qcow2 bin/gentoo-disk.img 20G
-
-# UEFI install (default EFI configs, disk.boot_type = "efi"):
-# attach OVMF firmware + NIC. VARS must be a writable copy.
-cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
-qemu-system-x86_64 \
-  -cdrom bin/gentooinstall.iso \
-  -drive file=bin/gentoo-disk.img,format=qcow2 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
-  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
-  -netdev user,id=net0 \
-  -device e1000,netdev=net0 -m 4096
-
-# UEFI install, accelerated (same as above with KVM/q35 tuning):
-make iso
-qemu-img create -f qcow2 bin/gentoo-disk.img 20G
-cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
-qemu-system-x86_64 \
-  -cdrom bin/gentooinstall.iso \
-  -drive file=bin/gentoo-disk.img,format=qcow2,cache=writeback,aio=threads,discard=unmap \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
-  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
-  -netdev user,id=net0 \
-  -device e1000,netdev=net0 \
-  -machine q35,accel=kvm \
-  -cpu host \
-  -smp 3 \
-  -m 4096
-
-# BIOS install, accelerated (ONLY with builds/bios.toml, disk.boot_type = "bios"):
 # no OVMF -> SeaBIOS -> no /sys/firmware/efi; an EFI config fails here.
-make iso
-qemu-img create -f qcow2 bin/gentoo-disk.img 20G
-qemu-system-x86_64 \
-  -cdrom bin/gentooinstall.iso \
-  -drive file=bin/gentoo-disk.img,format=qcow2,cache=writeback,aio=threads,discard=unmap \
-  -netdev user,id=net0 \
-  -device e1000,netdev=net0 \
-  -machine q35,accel=kvm \
-  -cpu host \
-  -smp 3 \
-  -m 4096
-
-# Boot the installed OS (firmware must match the installed boot type; for EFI
-# targets reuse the same writable VARS file so the efibootmgr entry persists):
-qemu-system-x86_64 -drive file=bin/gentoo-disk.img,format=qcow2 -m 1024
-
-# Dev/CI: boot headless into the TUI inside the terminal. The single grub
-# entry "Gentoo Install" sets console=ttyS0 only, so /dev/console
-# IS the serial port: with -nographic -serial stdio the TUI renders directly
-# in the terminal that launched QEMU (no framebuffer window is created):
-make iso
-qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+# NOTE: if=virtio shows up as /dev/vda (use that for Disk > Device);
+# if your config expects /dev/sda, use if=ide instead of if=virtio.
 qemu-system-x86_64 \
   -enable-kvm \
   -cpu host \
@@ -177,26 +123,99 @@ qemu-system-x86_64 \
   -netdev user,id=net0 \
   -device e1000,netdev=net0 \
   -nographic -serial stdio -monitor none
-  
-  
-  
-cd ~/Documents/GitHub/gentooinstall; make build; ./bin/gentooinstall
+```
 
+The live ISO is hybrid BIOS+UEFI (`grub-mkrescue` El Torito BIOS +
+`/efi.img` UEFI). Booting it without OVMF lands in legacy BIOS mode, so
+`/sys/firmware/efi` is missing and any EFI config fails fast in
+`CheckHostBootMode`/`MountEfiVars` ("live system was not booted in UEFI
+mode"). Either reboot under UEFI or switch the config to
+`disk.boot_type = "bios"`.
 
+Full install loop: create a drive image, boot the ISO with it attached to
+install onto, then boot the installed OS from the drive (all over the serial
+console with `-nographic -serial stdio`, no framebuffer window).
+Without a NIC (and the DHCP/DNS it brings up) the tarball/mirror
+fetches fail, so always attach a user-mode NIC:
 
+```sh
+make iso
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
 
+# UEFI install (default EFI configs, disk.boot_type = "efi"):
+# attach OVMF firmware + NIC + disk. VARS must be a writable copy.
+cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
+qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 4G \
+  -cdrom bin/gentooinstall.iso \
+  -boot d \
+  -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -nographic -serial stdio -monitor none
+
+# BIOS install (ONLY with builds/bios.toml, disk.boot_type = "bios"):
+# no OVMF -> SeaBIOS -> no /sys/firmware/efi; an EFI config fails here.
+# NOTE: if=virtio shows up as /dev/vda (use that for Disk > Device);
+# if your config expects /dev/sda, use if=ide instead of if=virtio.
+qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 4G \
+  -cdrom bin/gentooinstall.iso \
+  -boot d \
+  -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -nographic -serial stdio -monitor none
+
+# Boot the installed OS (firmware must match the installed boot type; for EFI
+# targets reuse the same writable VARS file so the efibootmgr entry persists):
+# BIOS:
+qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 4G \
+  -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -nographic -serial stdio -monitor none
+# UEFI: same as above plus the two pflash drives:
+# -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
+# -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
+
+# Dev/CI: same BIOS fast command boots headless into the TUI inside the
+# terminal. The single grub entry "Gentoo Install" sets console=ttyS0 only,
+# so /dev/console IS the serial port: with -nographic -serial stdio the TUI
+# renders directly in the terminal that launched QEMU.
 # make vm-test covers this path headlessly (TestISOBoots asserts the PID 1
 # banner and the "live: tui starting" marker appear on the serial console).
-
 
 # Headless full install (the o/vm-install driver): stage a config as
 # builds/custom.toml and add the gentooinstall.install kernel flag so PID 1
 # runs `gentooinstall install` non-interactively, prints
 # "gentooinstall install: success" on the serial console and powers off. The
 # VM install test (tests/install_vm_test.go) drives this for every template:
-# GENTOOINSTALL_INSTALL_CFG=$PWD/builds/openrc.toml make iso
-# qemu-system-x86_64 -cdrom bin/gentooinstall.iso -drive file=bin/gentoo-disk.img,format=qcow2 \
-#   -netdev user,id=net0 -device e1000,netdev=net0 -nographic -serial stdio -monitor none -m 1024
+# GENTOOINSTALL_INSTALL_CFG=$PWD/builds/bios.toml make iso
+# qemu-img create -f qcow2 bin/gentoo-disk.img 20G
+# qemu-system-x86_64 \
+#   -enable-kvm \
+#   -cpu host \
+#   -smp $(nproc) \
+#   -m 4G \
+#   -cdrom bin/gentooinstall.iso \
+#   -boot d \
+#   -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
+#   -netdev user,id=net0 \
+#   -device e1000,netdev=net0 \
+#   -nographic -serial stdio -monitor none
 
 ```
 

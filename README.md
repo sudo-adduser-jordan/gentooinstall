@@ -153,9 +153,19 @@ The ISO is hybrid BIOS+UEFI. The default configs use
 
 ```sh
 cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.fd
-qemu-system-x86_64 -cdrom bin/gentooinstall.iso \
+qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 4G \
+  -cdrom bin/gentooinstall.iso \
+  -boot d \
+  -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
-  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd
+  -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
+  -netdev user,id=net0 \
+  -device e1000,netdev=net0 \
+  -nographic -serial stdio -monitor none
 ```
 
 The single grub entry maps the serial port to `/dev/console` (so the TUI
