@@ -169,7 +169,7 @@ qemu-system-x86_64 \
   -enable-kvm \
   -cpu host \
   -smp $(nproc) \
-  -m 4G \
+  -m 8G \
   -cdrom bin/gentooinstall.iso \
   -boot d \
   -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
