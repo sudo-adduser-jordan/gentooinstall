@@ -508,9 +508,6 @@ func (m *Model) renderChecklist(maxW, maxH int) string {
 	last := len(m.instSteps) - 1
 	maxW = maxInt(24, maxW)
 	var b strings.Builder
-	if start > 0 {
-		b.WriteString(unsetStyle.Render("  ⋮") + "\n")
-	}
 	for i, s := range m.instSteps[start:] {
 		idx := start + i
 		var line string

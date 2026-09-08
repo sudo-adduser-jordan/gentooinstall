@@ -224,8 +224,8 @@ func TestTuiInstallStepsScrollUnderBar(t *testing.T) {
 	if strings.Contains(view, "Step 4") {
 		t.Fatal("step scrolled off under the loading bar")
 	}
-	if !strings.Contains(view, "⋮") {
-		t.Fatal("overflow marker missing from the step window")
+	if strings.Contains(view, "⋮") {
+		t.Fatal("overflow marker should not be rendered in the step window")
 	}
 }
 

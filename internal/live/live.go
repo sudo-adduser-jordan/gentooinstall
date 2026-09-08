@@ -38,7 +38,9 @@ var NeedModules = []string{
 	// FAT/VFAT so the ESP and the (FAT32-formatted) bios_grub partition mount
 	// at /boot/efi and /boot/bios. Modprobe resolves the fat/vfat dependency at
 	// bundle time on the build host; kept in sync with scripts/release.sh.
-	"fat", "vfat", "nls_cp437", "nls_ascii",
+	// Order matters: loadModules uses init_module directly with no dependency
+	// resolution, so fat and the nls helpers come before vfat.
+	"fat", "nls_cp437", "nls_ascii", "vfat",
 }
 
 // ModuleDir is where release.sh stores the decompressed module files that
