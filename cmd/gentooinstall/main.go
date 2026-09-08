@@ -465,6 +465,12 @@ func runTUI(cfgPath string) {
 	// that is /dev/console: the single grub entry (console=ttyS0) puts it on
 	// the serial port, so under QEMU -nographic -serial stdio the TUI appears
 	// directly in the terminal that launched QEMU instead of a framebuffer VT.
+	// The guest kernel reports a 0x0 winsize there (QEMU forwards no
+	// resizes), so detect the real host window now — before the alt-screen
+	// owns stdin — and publish it for bubbletea and the TUI size poll.
+	if cols, rows, ok := live.DetectWinsize(); ok {
+		live.ApplyWinsize(cols, rows)
+	}
 	opts := []tea.ProgramOption{tea.WithAltScreen()}
 	p := tea.NewProgram(model, opts...)
 	tui.SetProgram(p)

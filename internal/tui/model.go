@@ -30,11 +30,10 @@ const (
 	minHeight = 24
 )
 
-// wideLayoutWidth is the terminal width at which the full two-column layout
-// (logo/hint sidebar + divider + main pane) is used. Below it the sidebar
-// is hidden and the main pane takes the full window width so tabs and
-// fields fit 80-column serial terminals.
-const wideLayoutWidth = 100
+// minMainWidth is the smallest main-pane width worth showing beside the
+// logo/hint sidebar. Below it the sidebar is hidden and the main pane
+// takes the full window width (e.g. 80-column serial terminals).
+const minMainWidth = 40
 
 // tabDef is one numbered tab.
 type tabDef struct {
@@ -59,6 +58,10 @@ type Model struct {
 	status        string
 	statusKind    int // stOK, stErr
 	savedFlash    bool
+
+	// winsizeStable counts consecutive size polls without change; the
+	// poll stops after winsizeStableTicks to avoid repaint churn.
+	winsizeStable int
 
 	// Mirror reachability indicator (bordered box left of the config path).
 	mirrorState int    // mirrorUnknown, mirrorChecking, mirrorOK, mirrorDown
@@ -136,6 +139,16 @@ const (
 // mirrorPollInterval is how often the indicator re-probes the selected mirror
 // so it recovers automatically once the live ISO's background DHCP comes up.
 const mirrorPollInterval = 10 * time.Second
+
+// winsizePollInterval is how often the TUI re-reads the kernel winsize.
+// QEMU -serial stdio never forwards host resizes, so this only picks up
+// sizes that appear late (or are re-applied); it stops after a few stable
+// reads to avoid repaint churn.
+const winsizePollInterval = 2 * time.Second
+
+// winsizeStableTicks bounds the size poll: stop ticking after this many
+// consecutive reads without change (or without a readable size).
+const winsizeStableTicks = 4
 
 const (
 	ovNone = iota
@@ -233,7 +246,27 @@ func (m *Model) markDirty() { m.dirty = true }
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return m.probeMirror()
+	return tea.Batch(m.probeMirror(), winsizeTickCmd())
+}
+
+type WinsizeTickMsg struct{}
+
+// winsizeTickCmd re-reads the kernel winsize; the guest serial port
+// reports 0x0 until detection publishes the host size, which can land
+// after the first frames.
+func winsizeTickCmd() tea.Cmd {
+	return tea.Tick(winsizePollInterval, func(time.Time) tea.Msg { return WinsizeTickMsg{} })
+}
+
+// syncWinsizeFromKernel applies the kernel-known size when it is valid
+// and differs; it reports whether the model changed.
+func (m *Model) syncWinsizeFromKernel() bool {
+	cols, rows, ok := live.GetWinsize()
+	if !ok || (cols == m.width && rows == m.height) {
+		return false
+	}
+	m.width, m.height = cols, rows
+	return true
 }
 
 // visibleRows returns indexes of visible fields for a tab.
@@ -277,6 +310,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.winsizeStable = 0
+
+	case WinsizeTickMsg:
+		if m.syncWinsizeFromKernel() {
+			m.winsizeStable = 0
+		} else {
+			m.winsizeStable++
+		}
+		if m.winsizeStable < winsizeStableTicks {
+			return m, winsizeTickCmd()
+		}
+		return m, nil
 
 	case spinner.TickMsg:
 		if m.instState == instRunning {
@@ -612,20 +657,23 @@ func (m *Model) View() string {
 		return out
 	}
 
-	inner := maxInt(1, m.width-8) // frameWindow budget: border + padding
+	// One layout, live or not: every element is budgeted off measured
+	// chrome (frame + optional sidebar), never off width brackets.
+	// The tab strip keeps the full frame budget (it centers the header);
+	// fields and rules use the pane budget below.
+	inner := maxInt(1, m.width-8)
 	tabs := m.renderTabBarMax(inner)
+	cw := m.contentWidth()
+	mirror, path := m.mirrorLine(), m.pathLine()
 	var pathBox string
-	if m.width < wideLayoutWidth {
-		// Narrow serial terminals: stack indicator above path so neither
-		// is clipped by the horizontal join.
-		pathBox = lipgloss.JoinVertical(lipgloss.Left, m.mirrorLine(), m.pathLine())
+	if lipgloss.Width(mirror)+1+lipgloss.Width(path) <= cw {
+		pathBox = lipgloss.JoinHorizontal(lipgloss.Top, mirror, " ", path)
 	} else {
-		pathBox = lipgloss.JoinHorizontal(lipgloss.Top, m.mirrorLine(), " ", m.pathLine())
+		pathBox = lipgloss.JoinVertical(lipgloss.Left, mirror, path)
 	}
-	logo := renderLogo()
-	left := lipgloss.JoinVertical(lipgloss.Top, logo, "", m.renderHints())
 
-	// Render the status message to the right of the path box.
+	// Render the status message to the right of the path box when it
+	// fits, otherwise on its own row.
 	pathLine := pathBox
 	if m.status != "" {
 		st := helpStyle
@@ -636,7 +684,12 @@ func (m *Model) View() string {
 			st = errorStyle
 		}
 		statusText := st.Render(truncateRunes(m.status, maxInt(12, m.width/4)))
-		pathLine = lipgloss.JoinHorizontal(lipgloss.Top, pathBox, "  ", statusText)
+		joined := lipgloss.JoinHorizontal(lipgloss.Top, pathBox, "  ", statusText)
+		if lipgloss.Width(joined) <= cw {
+			pathLine = joined
+		} else {
+			pathLine = lipgloss.JoinVertical(lipgloss.Left, pathBox, statusText)
+		}
 	}
 
 	var b strings.Builder
@@ -661,37 +714,31 @@ func (m *Model) View() string {
 
 	right := lipgloss.JoinVertical(lipgloss.Top, header, "", main)
 
-	if m.width < wideLayoutWidth {
-		// Narrow path: single column, no logo sidebar or divider.
-		out := m.frameWindow(right)
-		if m.overlay.kind != ovNone {
-			box := m.renderOverlay()
-			out = lipgloss.Place(m.width, m.height,
-				lipgloss.Center, lipgloss.Center, box)
+	var out string
+	if left, ok := m.sidebar(); ok {
+		// Static divider height: the full terminal (or more if content
+		// overflows), so it does not change size when switching tabs.
+		H := maxInt(m.height,
+			maxInt(lipgloss.Height(left), lipgloss.Height(right)))
+		padTo := func(s string, n int) string {
+			lines := strings.Split(s, "\n")
+			for len(lines) < n {
+				lines = append(lines, "")
+			}
+			return strings.Join(lines, "\n")
 		}
-		return out
+		left = padTo(left, H)
+		right = padTo(right, H)
+		divider := helpStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", H), "\n"))
+		cols := lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().PaddingRight(1).Render(left),
+			divider,
+			lipgloss.NewStyle().PaddingLeft(1).Render(right))
+		out = m.frameWindow(cols)
+	} else {
+		// Single column: sidebar hidden, main pane spans the window.
+		out = m.frameWindow(right)
 	}
-
-	// Static divider height: the full terminal (or more if content
-	// overflows), so it does not change size when switching tabs.
-	H := maxInt(m.height,
-		maxInt(lipgloss.Height(left), lipgloss.Height(right)))
-	padTo := func(s string, n int) string {
-		lines := strings.Split(s, "\n")
-		for len(lines) < n {
-			lines = append(lines, "")
-		}
-		return strings.Join(lines, "\n")
-	}
-	left = padTo(left, H)
-	right = padTo(right, H)
-	divider := helpStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", H), "\n"))
-	cols := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().PaddingRight(1).Render(left),
-		divider,
-		lipgloss.NewStyle().PaddingLeft(1).Render(right))
-
-	out := m.frameWindow(cols)
 
 	if m.overlay.kind != ovNone {
 		box := m.renderOverlay()
@@ -699,6 +746,30 @@ func (m *Model) View() string {
 			lipgloss.Center, lipgloss.Center, box)
 	}
 	return out
+}
+
+// sidebar returns the logo/hint column when it fits alongside a usable
+// main pane, and reports whether it does. The layout measures chrome
+// instead of branching on width brackets, so live serial and normal
+// binary renders share one path.
+func (m *Model) sidebar() (string, bool) {
+	inner := maxInt(1, m.width-8) // frameWindow budget: border + padding
+	left := lipgloss.JoinVertical(lipgloss.Top, renderLogo(), "", m.renderHints())
+	// Sidebar + divider + side paddings must leave minMainWidth for content.
+	if lipgloss.Width(left)+3+minMainWidth > inner {
+		return "", false
+	}
+	return left, true
+}
+
+// contentWidth is the usable width of the main pane: the frame budget
+// minus the sidebar when shown.
+func (m *Model) contentWidth() int {
+	inner := maxInt(1, m.width-8)
+	if left, ok := m.sidebar(); ok {
+		return maxInt(1, inner-lipgloss.Width(left)-3)
+	}
+	return inner
 }
 
 // frameWindow draws the outer window border around content, sizing the
@@ -798,28 +869,43 @@ func (m *Model) renderTabBar() string {
 	return m.renderTabBarMax(maxInt(1, m.width-8))
 }
 
-// renderTabBarMax renders the tab strip constrained to maxW visible columns.
-// The full strip is returned when it fits; otherwise a window around the
-// active tab is shown with ellipsis markers so the active tab is never the
-// part clipped off (80-column serial terminals fit ~5 of 6 tabs).
-func (m *Model) renderTabBarMax(maxW int) string {
+// tabStripParts renders one tab box per tab. Compact drops the emoji and
+// box padding so all six tabs fit narrow windows (numbered labels keep
+// the 1-6 keyboard mapping visible).
+func (m *Model) tabStripParts(compact bool) []string {
 	parts := make([]string, len(m.tabs))
-	widths := make([]int, len(m.tabs))
 	for i, t := range m.tabs {
 		label := tabEmoji(t.name) + " " + t.name
-		if i == m.active {
-			parts[i] = tabActiveBorderStyle.Render(label)
-		} else {
-			parts[i] = tabInactiveBorderStyle.Render(label)
+		active, inactive := tabActiveBorderStyle, tabInactiveBorderStyle
+		if compact {
+			label = fmt.Sprintf("%d %s", i+1, t.name)
+			active, inactive = active.Padding(0, 0), inactive.Padding(0, 0)
 		}
-		widths[i] = lipgloss.Width(parts[i])
+		if i == m.active {
+			parts[i] = active.Render(label)
+		} else {
+			parts[i] = inactive.Render(label)
+		}
 	}
-	total := 0
-	for _, w := range widths {
-		total += w
-	}
-	if total <= maxW {
+	return parts
+}
+
+// renderTabBarMax renders the tab strip constrained to maxW visible columns.
+// The full strip is returned when it fits, else the compact strip (all six
+// tabs, no emoji), else a window around the active tab with ellipsis
+// markers so the active tab is never the part clipped off.
+func (m *Model) renderTabBarMax(maxW int) string {
+	parts := m.tabStripParts(false)
+	if stripWidth(parts) <= maxW {
 		return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+	}
+	parts = m.tabStripParts(true)
+	if stripWidth(parts) <= maxW {
+		return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+	}
+	widths := make([]int, len(parts))
+	for i := range parts {
+		widths[i] = lipgloss.Width(parts[i])
 	}
 	ellipsisL := unsetStyle.Render("…")
 	ellipsisR := unsetStyle.Render("…")
@@ -862,10 +948,18 @@ func (m *Model) renderTabBarMax(maxW int) string {
 	return strings.Join(lines, "\n")
 }
 
-// bodyWidth is the usable width of the main pane (sidebar, divider, window
-// frame and padding are subtracted); used for rules and value truncation.
+func stripWidth(parts []string) int {
+	total := 0
+	for _, p := range parts {
+		total += lipgloss.Width(p)
+	}
+	return total
+}
+
+// bodyWidth is the usable width of the main pane (contentWidth, capped);
+// used for rules and value truncation.
 func (m *Model) bodyWidth() int {
-	return maxInt(40, minInt(90, m.width-20))
+	return maxInt(40, minInt(90, m.contentWidth()))
 }
 
 // labelWidth computes the padded label column width for the active tab's

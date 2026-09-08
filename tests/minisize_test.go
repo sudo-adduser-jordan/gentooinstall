@@ -66,7 +66,29 @@ func TestTuiNarrowSerialFits(t *testing.T) {
 		} else {
 			model = m
 		}
-		// Walk every tab; each must fit and keep its own label visible.
+		// The compact strip fits all six tabs (numbered labels keep the
+		// 1-6 mapping visible); no tab may be replaced by an ellipsis.
+		out := model.View()
+		for _, want := range []string{"1 Disk", "6 Install"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("size %+v compact tab strip missing %q:\n%s", size, want, out)
+			}
+		}
+		// Rules and rows span the pane instead of leaving the window blank.
+		ruled := false
+		for _, ln := range strings.Split(out, "\n") {
+			if strings.Contains(ln, "Partitioning") && strings.Contains(ln, "─") {
+				if w := runewidthWidth(ln); w < 68 {
+					t.Fatalf("size %+v rule does not span the window (width %d): %q",
+						size, w, ln)
+				}
+				ruled = true
+			}
+		}
+		if !ruled {
+			t.Fatalf("size %+v: no spanning Partitioning rule found", size)
+		}
+		// Walk every tab; each must fit the terminal.
 		for tab := 0; tab < 6; tab++ {
 			mm, _ := model.Update(keyRunes(rune('1' + tab)))
 			model, _ = mm.(*tui.Model)
