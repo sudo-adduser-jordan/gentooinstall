@@ -394,3 +394,41 @@ func TestSummaryTree(t *testing.T) {
 		}
 	}
 }
+
+func TestBootTypeConsistency(t *testing.T) {
+	efiCfg := classicCfg("/dev/sdX", false, false)
+	efiLayout, err := disklayout.BuildFromConfig(efiCfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := disklayout.CheckBootTypeConsistency(efiCfg, efiLayout); err != nil {
+		t.Fatalf("matching efi should pass: %v", err)
+	}
+
+	biosCfg := classicCfg("/dev/sdX", false, false)
+	biosCfg.Disk.BootType = "bios"
+	biosLayout, err := disklayout.BuildFromConfig(biosCfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := disklayout.CheckBootTypeConsistency(biosCfg, biosLayout); err != nil {
+		t.Fatalf("matching bios should pass: %v", err)
+	}
+
+	// Stale EFI layout reused after switching the TUI to bios must be
+	// rejected instead of failing late at MountEfiVars on a BIOS boot.
+	if err := disklayout.CheckBootTypeConsistency(biosCfg, efiLayout); err == nil {
+		t.Fatal("stale EFI layout with bios config should fail")
+	} else if !strings.Contains(err.Error(), "EFIID") {
+		t.Fatalf("stale error should name EFIID, got: %v", err)
+	}
+	if err := disklayout.CheckBootTypeConsistency(efiCfg, biosLayout); err == nil {
+		t.Fatal("stale BIOS layout with efi config should fail")
+	}
+
+	custom := classicCfg("/dev/sdX", false, false)
+	custom.Disk.Scheme = config.SchemeCustom
+	if err := disklayout.CheckBootTypeConsistency(custom, biosLayout); err != nil {
+		t.Fatalf("custom schemes are exempt: %v", err)
+	}
+}

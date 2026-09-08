@@ -163,6 +163,8 @@ qemu-system-x86_64 \
 # no OVMF -> SeaBIOS -> no /sys/firmware/efi; an EFI config fails here.
 # NOTE: if=virtio shows up as /dev/vda (use that for Disk > Device);
 # if your config expects /dev/sda, use if=ide instead of if=virtio.
+make iso
+qemu-img create -f qcow2 bin/gentoo-disk.img 20G
 qemu-system-x86_64 \
   -enable-kvm \
   -cpu host \

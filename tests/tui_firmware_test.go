@@ -91,6 +91,9 @@ func TestTuiFirmwareAllowsBIOSOnNoneFIHost(t *testing.T) {
 			t.Fatalf("confirm modal missing %q:\n%s", want, view)
 		}
 	}
+	if !strings.Contains(view, "Effective boot mode: bios") {
+		t.Fatalf("confirm modal should show effective boot mode:\n%s", view)
+	}
 	if m.InstallActive() {
 		t.Fatal("i must not start before explicit confirmation")
 	}

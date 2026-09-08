@@ -60,6 +60,17 @@ func (m *Model) confirmInstall() (tea.Model, tea.Cmd) {
 		m.setStatusErr("configuration is invalid")
 		return m, nil
 	}
+	if err := disklayout.CheckBootTypeConsistency(m.cfg, l); err != nil {
+		m.overlay = overlay{
+			kind:    ovButtons,
+			title:   eWarn + " Configuration mismatch",
+			body:    err.Error(),
+			buttons: []string{"Dismiss"},
+			btnCur:  0,
+			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },
+		}
+		return m, nil
+	}
 
 	var targets []string
 	if l.Flags.NoPartitioningOrFormatting {
@@ -69,7 +80,9 @@ func (m *Model) confirmInstall() (tea.Model, tea.Cmd) {
 		targets = append(targets, m.cfg.Disk.Devices...)
 	}
 	body := "This will DESTROY all data on:\n  " + joinNonEmpty(targets, "\n  ") +
-		"\n\nThe partitioning step cannot be undone. Continue?"
+		"\n\nEffective boot mode: " + m.cfg.Disk.BootType +
+		" (EFIID=" + l.EFIID + " BIOSID=" + l.BIOSID + ")" +
+		"\nThe partitioning step cannot be undone. Continue?"
 
 	m.overlay = overlay{
 		kind:    ovButtons,

@@ -627,6 +627,38 @@ func BuildFromConfig(cfg *config.Config, uuidDir string) (*Layout, error) {
 	return &b.layout, nil
 }
 
+// CheckBootTypeConsistency verifies the built layout roles agree with the
+// configured boot type. Preset schemes derive EFIID/BIOSID directly from
+// Disk.BootType, so any disagreement means the install would run with a
+// different firmware path than the UI shows (e.g. a stale EFI layout after
+// the user switched the TUI to bios and hit Retry instead of starting a
+// fresh install). Custom schemes replay raw actions and never consult
+// BootType, so they are exempt here and validated by their actions.
+func CheckBootTypeConsistency(cfg *config.Config, l *Layout) error {
+	if cfg.Disk.Scheme == config.SchemeCustom {
+		return nil
+	}
+	switch cfg.Disk.BootType {
+	case "efi":
+		if l.EFIID == "" {
+			return fmt.Errorf("disk.boot_type = \"efi\" but the layout has no EFI partition (BIOSID=%q); rebuild the layout from the current configuration instead of retrying a stale run", l.BIOSID)
+		}
+		if l.BIOSID != "" {
+			return fmt.Errorf("disk.boot_type = \"efi\" but the layout also has BIOS partition %q; rebuild the layout from the current configuration", l.BIOSID)
+		}
+	case "bios":
+		if l.BIOSID == "" {
+			return fmt.Errorf("disk.boot_type = \"bios\" but the layout has no BIOS partition (EFIID=%q); it was built from a stale EFI configuration — abort and start a fresh install instead of retrying", l.EFIID)
+		}
+		if l.EFIID != "" {
+			return fmt.Errorf("disk.boot_type = \"bios\" but the layout still has EFI partition %q; it was built from a stale EFI configuration — abort and start a fresh install instead of retrying", l.EFIID)
+		}
+	default:
+		return fmt.Errorf("invalid boot type %q (want \"efi\" or \"bios\")", cfg.Disk.BootType)
+	}
+	return nil
+}
+
 func buildCustom(b *Builder, actions []config.CustomAction) error {
 	for i, ca := range actions {
 		var err error

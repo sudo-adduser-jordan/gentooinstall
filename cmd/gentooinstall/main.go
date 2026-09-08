@@ -552,6 +552,9 @@ func buildLayoutE(cfg *config.Config) (*disklayout.Layout, error) {
 	if l.EFIID == "" && l.BIOSID == "" {
 		return nil, errors.New("you must assign DISK_ID_EFI or DISK_ID_BIOS")
 	}
+	if err := disklayout.CheckBootTypeConsistency(cfg, l); err != nil {
+		return nil, err
+	}
 	return l, nil
 }
 
@@ -611,8 +614,8 @@ func runInstall(cfgPath string) {
 	// (port of gentoo_umount); best effort, never prompts.
 	unmountStale(c, installer.RootMountpoint)
 
-	fmt.Printf("[+] Live firmware: %s; configured boot type: %s\n",
-		c.HostBootMode(), c.Cfg.Disk.BootType)
+	fmt.Printf("[+] Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)\n",
+		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
 	if err := installer.CheckHostBootMode(c); err != nil {
 		fatal("%v", err)
 	}
@@ -675,8 +678,8 @@ func summarizeAndConfirm(c *installer.Context) {
 	fmt.Println("[+] \x1b[1mCurrent lsblk output:\x1b[m")
 	fmt.Println(out)
 	fmt.Println()
-	fmt.Printf("[+] Live firmware: %s; configured boot type: %s\n",
-		c.HostBootMode(), c.Cfg.Disk.BootType)
+	fmt.Printf("[+] Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)\n",
+		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
 	fmt.Println("[+] \x1b[1mConfigured disk layout:\x1b[m")
 	fmt.Println(c.Layout.SummaryPlain())
 	fmt.Println()
@@ -854,7 +857,8 @@ func (t *tuiInstaller) newRunner() *installer.Runner {
 // runInstallTUI performs the host-side installation while the TUI stays
 // alive, mirroring runInstall but without any terminal interactivity.
 func runInstallTUI(cfg *config.Config, cfgPath string) error {
-	if err := cfg.Save(config.ResolveSavePath(cfgPath)); err != nil {
+	resolved := config.ResolveSavePath(cfgPath)
+	if err := cfg.Save(resolved); err != nil {
 		return fmt.Errorf("save config before install: %w", err)
 	}
 	if err := installer.EnsureTmpDirs(); err != nil {
@@ -880,11 +884,11 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		Cfg:          cfg,
 		Layout:       layout,
 		Resolver:     &disklayout.Resolver{Layout: layout},
-		SourceConfig: cfgPath,
+		SourceConfig: resolved,
 	}
 
-	t.logf("Live firmware: %s; configured boot type: %s",
-		c.HostBootMode(), c.Cfg.Disk.BootType)
+	t.logf("Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)",
+		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
 	if err := installer.CheckHostBootMode(c); err != nil {
 		return err
 	}
@@ -990,6 +994,26 @@ func (t *tuiInstaller) runPhase(c *installer.Context, name string, cleanRoot boo
 		switch t.awaitPhaseDecision(name, err) {
 		case tui.DecideRetry:
 			t.decided = false // the retried phase may fail again; re-prompt then
+			// Rebuild the layout from the current config so a Retry never
+			// reuses a stale EFI/BIOS role set (e.g. user fixed BootType
+			// to bios but retried an EFI-built run). A rebuild failure
+			// aborts instead of retrying with known-stale roles.
+			if fresh, ferr := buildLayoutE(c.Cfg); ferr != nil {
+				return fmt.Errorf("%s: refreshed layout invalid, abort instead of retrying stale layout: %w", name, ferr)
+			} else {
+				c.Layout = fresh
+				if c.Resolver != nil {
+					c.Resolver.Layout = fresh
+				} else {
+					c.Resolver = &disklayout.Resolver{Layout: fresh}
+				}
+				t.logf("Refreshed layout: boot type %s (EFIID=%s BIOSID=%s)",
+					c.Cfg.Disk.BootType, fresh.EFIID, fresh.BIOSID)
+			}
+			if name == "Mounting efivars" && !c.IsEFI() {
+				tui.EmitInstallLine("Skipping Mounting efivars (BIOS layout) …")
+				return nil
+			}
 			if cleanRoot {
 				if ce := installer.ClearRoot(c); ce != nil {
 					return fmt.Errorf("%s: could not clean root: %w", name, ce)
