@@ -102,7 +102,7 @@ func runInstallInVM(t *testing.T, root string, tc vmInstallCase) {
 		prePrepareExisting(t, disks[0])
 	}
 
-	serial := bootInstallVM(t, iso, fw, disks)
+	serial := bootInstallVM(t, iso, fw, disks, diskBuses(cfg))
 	t.Logf("QEMU serial output:\n%s", serial)
 
 	if !strings.Contains(serial, "gentooinstall install: success") {
@@ -136,6 +136,64 @@ func stageConfig(t *testing.T, root, name, out string) *config.Config {
 		t.Fatalf("%s: stage save: %v", name, err)
 	}
 	return c
+}
+
+// diskBuses returns the QEMU disk bus to attach each disk image on, derived
+// from the configured device paths in attach order (multi-device schemes use
+// Disk.Devices, everything else Disk.Device, with partition suffixes stripped
+// to reach the whole disk). A configured /dev/vd* device needs virtio-blk to
+// show up at that path; /dev/sd* maps to the IDE bus QEMU presents by default.
+func diskBuses(cfg *config.Config) []string {
+	names := cfg.Disk.Devices
+	if len(names) == 0 {
+		names = []string{cfg.Disk.Device}
+	}
+	buses := make([]string, len(names))
+	for i, d := range names {
+		if strings.HasPrefix(strings.TrimRight(d, "0123456789"), "/dev/vd") {
+			buses[i] = "virtio"
+		} else {
+			buses[i] = "ide"
+		}
+	}
+	return buses
+}
+
+// TestDiskBuses pins the bus mapping used by runInstallInVM so a build that
+// targets /dev/vd* gets a virtio-blk disk and /dev/sd* an IDE one.
+func TestDiskBuses(t *testing.T) {
+	cases := []struct {
+		name  string
+		cfg   *config.Config
+		wants []string
+	}{
+		{name: "single sda", cfg: &config.Config{Disk: config.Disk{Device: "/dev/sda"}}, wants: []string{"ide"}},
+		{name: "single vda", cfg: &config.Config{Disk: config.Disk{Device: "/dev/vda"}}, wants: []string{"virtio"}},
+		{name: "partition device", cfg: &config.Config{Disk: config.Disk{Device: "/dev/sdX3"}}, wants: []string{"ide"}},
+		{
+			name:  "two disks",
+			cfg:   &config.Config{Disk: config.Disk{Devices: []string{"/dev/sda", "/dev/sdb"}}},
+			wants: []string{"ide", "ide"},
+		},
+		{
+			name:  "non-virtio device",
+			cfg:   &config.Config{Disk: config.Disk{Device: "/dev/nvme0n1"}},
+			wants: []string{"ide"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := diskBuses(tc.cfg)
+			if len(got) != len(tc.wants) {
+				t.Fatalf("diskBuses() = %v, want %v", got, tc.wants)
+			}
+			for i := range got {
+				if got[i] != tc.wants[i] {
+					t.Fatalf("diskBuses() = %v, want %v", got, tc.wants)
+				}
+			}
+		})
+	}
 }
 
 // prePrepareExisting partitions and formats the first (raw) disk for the
@@ -193,12 +251,16 @@ func buildInstallISO(t *testing.T, root, out, cfg string) {
 }
 
 // bootInstallVM boots the ISO under QEMU with the firmware matching the staged
-// config (OVMF for efi, SeaBIOS for bios), attaches the raw disk images, and
-// captures the serial console until the guest powers off (or the watchdog
-// fires). -no-reboot makes QEMU exit when the install init powers the guest
-// down, which is how the test knows the install completed.
-func bootInstallVM(t *testing.T, iso, fw string, disks []string) string {
+// config (OVMF for efi, SeaBIOS for bios), attaches the raw disk images on the
+// bus each configured device expects, and captures the serial console until
+// the guest powers off (or the watchdog fires). -no-reboot makes QEMU exit
+// when the install init powers the guest down, which is how the test knows the
+// install completed.
+func bootInstallVM(t *testing.T, iso, fw string, disks, buses []string) string {
 	t.Helper()
+	if len(disks) != len(buses) {
+		t.Fatalf("got %d disks but %d buses; diskBuses must match disk count", len(disks), len(buses))
+	}
 	args := []string{
 		"-cdrom", iso,
 		"-m", "2048",
@@ -216,8 +278,8 @@ func bootInstallVM(t *testing.T, iso, fw string, disks []string) string {
 			"-drive", "if=pflash,format=raw,readonly=on,file="+code,
 			"-drive", "if=pflash,format=raw,file="+vars)
 	}
-	for _, d := range disks {
-		args = append(args, "-drive", "file="+d+",format=raw,if=ide")
+	for i, d := range disks {
+		args = append(args, "-drive", "file="+d+",format=raw,if="+buses[i])
 	}
 	args = append(args,
 		"-netdev", "user,id=net0,dns=10.0.2.3",
