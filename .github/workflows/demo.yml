@@ -49,7 +49,7 @@ jobs:
       - name: Record demo.gif
         env:
           CI: ""
-        run: ./bin/gentooinstall gif
+        run: ./bin/gentooinstall demo
 
       - name: Commit updated demo.gif
         run: |

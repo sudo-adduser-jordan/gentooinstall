@@ -11,7 +11,7 @@ import (
 
 // Parsed is the result of parsing os.Args[1:].
 type Parsed struct {
-	Mode        string // "", "install", "gif", "chroot", "in-chroot"
+	Mode        string // "", "install", "demo", "chroot", "in-chroot"
 	CfgPath     string // -c/--config value or positional config path
 	Rest        []string
 	ShowHelp    bool
@@ -38,18 +38,18 @@ func ParseArgs(args []string) (Parsed, error) {
 			}
 			index++
 			parsed.CfgPath = args[index]
-		case "install":
-			if parsed.Mode == "gif" {
-				return parsed, fmt.Errorf("invalid argument '%s'", arg)
-			}
-			parsed.Mode = "install"
-		case "gif":
-			if parsed.Mode == "install" {
-				return parsed, fmt.Errorf("invalid argument '%s'", arg)
-			}
-			parsed.Mode = "gif"
-			parsed.Rest = args[index+1:]
-			index = len(args)
+case "install":
+		if parsed.Mode == "demo" {
+			return parsed, fmt.Errorf("invalid argument '%s'", arg)
+		}
+		parsed.Mode = "install"
+	case "demo":
+		if parsed.Mode == "install" {
+			return parsed, fmt.Errorf("invalid argument '%s'", arg)
+		}
+		parsed.Mode = "demo"
+		parsed.Rest = args[index+1:]
+		index = len(args)
 		case "chroot":
 			parsed.Mode = "chroot"
 			parsed.Rest = args[index+1:]

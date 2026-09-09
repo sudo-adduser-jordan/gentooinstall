@@ -81,7 +81,7 @@ Usage:
                                    output to the terminal (no TUI). CONFIG defaults to
                                    builds/custom.toml, falling back to builds/default.toml.
                                    Example: gentooinstall install builds/desktop-systemd.toml
-  gentooinstall gif [OUT]          Record the simulated install demo into the given file
+  gentooinstall demo [OUT]         Record the simulated install demo into the given file
                                    as an animated GIF (default ./demo.gif) using the
                                    external charmbracelet/vhs CLI (must be installed:
                                    go install github.com/charmbracelet/vhs@latest).
@@ -120,8 +120,8 @@ func main() {
 	mode := parsed.Mode
 	rest := parsed.Rest
 
-	if mode == "gif" {
-		runGIF(rest)
+	if mode == "demo" {
+		runDemo(rest)
 		return
 	}
 	if cfgPath == "" {
@@ -287,11 +287,11 @@ func noteToSerial(st sysinfo.MirrorStatus) string {
 	return "fail: " + st.Note
 }
 
-// runGIF records the simulated install demo as an animated GIF by driving
+// runDemo records the simulated install demo as an animated GIF by driving
 // the real TUI inside the external charmbracelet/vhs virtual terminal. The
 // demo is non-destructive (it never touches disks), so it is safe for any
 // user. The `vhs` binary must be installed separately.
-func runGIF(args []string) {
+func runDemo(args []string) {
 	out := "demo.gif"
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
@@ -321,7 +321,7 @@ func runGIF(args []string) {
 	tapePath := tape.Name()
 	defer os.Remove(tapePath)
 
-	if _, err := tape.WriteString(gifTape(out)); err != nil {
+	if _, err := tape.WriteString(demoTape(out)); err != nil {
 		tape.Close()
 		fatal("tape: %v", err)
 	}
@@ -339,7 +339,7 @@ func runGIF(args []string) {
 	fmt.Println("[+] wrote", out)
 }
 
-// gifTape returns a VHS tape that boots the gentooinstall configurator, walks
+// demoTape returns a VHS tape that boots the gentooinstall configurator, walks
 // the numbered tabs, starts the simulated install demo on the Install tab,
 // lets it run to completion (retrying the single simulated failure), then
 // quits. We spawn the real binary (this process's own argv[0]) so the
@@ -350,7 +350,7 @@ func runGIF(args []string) {
 // terminal rows, so the retry and quit presses land exactly when the
 // corresponding screens are visible (line-scoped `Wait` sees no output from
 // full-screen TUIs); `Set WaitTimeout 30s` covers the whole demo.
-func gifTape(out string) string {
+func demoTape(out string) string {
 	binPath := argv0()
 	return strings.Join([]string{
 		`Output "` + out + `"`,

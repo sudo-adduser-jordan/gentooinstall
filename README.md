@@ -7,79 +7,20 @@
 
 ![gentooinstall demo](demo.gif)
 
-## Build
+## Install
 
 ```sh
-make build        # -> ./bin/gentooinstall
-make test         # go vet ./... && go test ./...
-make fmt          # gofmt -l -w .
+# make install
+# go install
+# curl binary
 ```
-
-## End-to-end tests (QEMU)
-
-Two opt-in test suites drive the real installer inside QEMU. Both are
-local-only (never run in CI) and need host `qemu-system-x86_64`, `qemu-img`,
-`grub-mkrescue`/`xorriso`, a build-host kernel and outbound access to the
-Gentoo mirror:
-
-```sh
-make vm-test       # boots the live ISO to the TUI on the serial console.
-make vm-install    # runs a FULL install for every builds/*.toml template.
-```
-
-`make vm-test` covers the boot path headlessly: the grub entry
-"Gentoo Install" maps the serial port to `/dev/console`, so with
-`-nographic -serial stdio` the TUI renders straight into the launching
-terminal and `TestISOBoots` asserts the PID 1 banner and the
-`live: tui starting` marker appear on the serial console.
-
-`make vm-install` (`TestInstallInVM`) executes a real installation for each
-shipped template. It stages the config (rewriting placeholder device paths to
-the VM's disks), builds the ISO with `release.sh`'s
-`GENTOOINSTALL_INSTALL_CFG` hook so the default grub entry passes a
-`gentooinstall.install=builds/custom.toml` kernel flag, boots the ISO under
-the config's firmware (OVMF for `efi`, SeaBIOS for `bios`) with user-mode NIC
-and raw disks, and passes when the headless PID 1 install prints
-`gentooinstall install: success` and powers the guest down. The
-`existing-efi.toml` case pre-partitions its first disk (GPT ESP + swap + ext4)
-and skips cleanly when the `losetup`/mkfs tools need root that isn't
-available.
 
 ## Usage
 
 ```sh
-make build
-./bin/gentooinstall                    # interactive configurator (builds/custom.toml,
-./bin/gentooinstall install            # install using builds/custom.toml (destructive!)
-./bin/gentooinstall gif                # record ./demo.gif of the simulated install demo
-./bin/gentooinstall -c myconf.toml     # alternate config path
-./bin/gentooinstall chroot /mnt        # chroot into an existing system
-```
-
-### The TUI
-
-| Key | Action |
-|---|---|
-| `1`–`6` | Switch tab: Disk · System · Network · Gentoo · Packages · Install |
-| `↑/k ↓/j` | Navigate options |
-| `Enter` | Edit option |
-| `Space` | Toggle checkboxes / multi-select entries |
-| `?` | Help text for the selected option |
-| `s` / `S` | Save / Save as |
-| `i` | Start the installation (asks for confirmation) |
-| `d` | Run the installation demo (simulated, touches no disks) |
-| `q` | Quit (prompts when unsaved) |
-
-The **Install** tab shows a summary of the current configuration plus the
-exact disk layout tree that would be applied. `gentooinstall gif` drives the real
-TUI demo inside the external [charmbracelet/vhs](https://github.com/charmbracelet/vhs)
-virtual terminal (no TTY, no disks) and records the frames into an animated
-GIF:
-
-```sh
-go install github.com/charmbracelet/vhs@latest   # one-time setup
-./bin/gentooinstall gif                                  # writes ./demo.gif
-./bin/gentooinstall gif path/to/demo.gif
+gentooinstall
+gentooinstall builds/custom.toml
+gentooinstall demo demo.gif
 ```
 
 ## Configuration
@@ -140,8 +81,7 @@ scripts/release.sh
 ```
 
 The rootfs is a trimmed-down Alpine userland (busybox + util-linux + gptfdisk +
-parted + gnupg + GNU tar, installed via apk), so the ISO can partition, format
-and install for real — no separate live stick required. Storage and network
+parted + gnupg + GNU tar, installed via apk), so the ISO can partition. Storage and network
 kernel modules are bundled alongside. ZFS schemes are not usable from the ISO
 (the Alpine ZFS module cannot match the bundled build-host kernel). Building the
 ISO fetches the Alpine base from dl-cdn.alpinelinux.org, so it needs network
@@ -173,37 +113,6 @@ renders over `-nographic -serial stdio`, no framebuffer window).
 
 Booting the same ISO without OVMF (plain SeaBIOS) is a legacy-BIOS boot —
 pair it with `builds/bios.toml` (`disk.boot_type = "bios"`).
-
-## Releases
-
-Versioned releases are built with [GoReleaser](https://goreleaser.com) and
-published to GitHub Releases on `v*` tags (`.goreleaser.yml` + `.github/workflows/release.yml`).
-Every release ships three artifact kinds:
-
-- **source** — the full source archive,
-- **binary** — statically linked `gentooinstall` for linux/amd64 and linux/arm64,
-- **live ISO** — the bootable `gentooinstall-live-*.iso` described above.
-
-```sh
-goreleaser release                # create a release for the current tag
-goreleaser release --snapshot    # dry run into dist/ without publishing
-```
-
-## Project overview
-
-The installer performs the following main steps (in roughly this order),
-with some parts depending on the chosen configuration:
-
-1. Partition disks (highly dependent on configuration)
-2. Download and extract stage3 tarball (with cryptographic verification)
-   \[Continues in chroot from here\]
-3. Setup portage (initial rsync/git sync, run mirrorselect, create zz-autounmask files)
-4. Base system configuration (hostname, timezone, keymap, locales)
-5. Install required packages (git, kernel, ...)
-6. Make system bootable (generate fstab, build initramfs, create efibootmgr/syslinux boot entry)
-7. Ensure minimal working system (automatic wired networking, install eix, set root password)
-   - (Optional) Install sshd with secure config (no password logins)
-   - (Optional) Install additional packages provided in config
 
 ## Recommendations
 

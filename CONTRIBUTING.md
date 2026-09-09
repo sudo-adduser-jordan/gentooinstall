@@ -49,9 +49,9 @@ The model API is exported (`tui.New`, `Update`, `View`, `Config`,
 go test ./tests/ -run Tui -v
 ```
 
-`./bin/gentooinstall gif` renders a recording of the simulated install demo into an
+`./bin/gentooinstall demo` renders a recording of the simulated install demo into an
 animated GIF without a TTY or any disk access. Changing the demo steps or the
-captured layout is done in the gif tape code (`main.go`),
+captured layout is done in the demo tape code (`main.go`),
 not in the interactive flow.
 
 To *see* rendered frames while developing, drop a throwaway test in

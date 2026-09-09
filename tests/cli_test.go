@@ -41,9 +41,9 @@ func TestParseArgsModes(testingT *testing.T) {
 	if err != nil || parsed.Mode != "install" || parsed.CfgPath != "my.toml" {
 		testingT.Fatalf("-c install parse = %+v, %v", parsed, err)
 	}
-	parsed, err = cli.ParseArgs([]string{"gif", "out.gif"})
-	if err != nil || parsed.Mode != "gif" || len(parsed.Rest) != 1 || parsed.Rest[0] != "out.gif" {
-		testingT.Fatalf("gif parse = %+v, %v", parsed, err)
+	parsed, err = cli.ParseArgs([]string{"demo", "out.gif"})
+	if err != nil || parsed.Mode != "demo" || len(parsed.Rest) != 1 || parsed.Rest[0] != "out.gif" {
+		testingT.Fatalf("demo parse = %+v, %v", parsed, err)
 	}
 	parsed, err = cli.ParseArgs([]string{"chroot", "/mnt/gentoo", "bash"})
 	if err != nil || parsed.Mode != "chroot" || len(parsed.Rest) != 2 {
@@ -64,7 +64,7 @@ func TestParseArgsErrors(testingT *testing.T) {
 		{"-c"},
 		{"--config"},
 		{"--bogus"},
-		{"install", "gif"},
+		{"install", "demo"},
 		{"a.toml", "b.toml"},
 	} {
 		if _, err := cli.ParseArgs(args); err == nil {

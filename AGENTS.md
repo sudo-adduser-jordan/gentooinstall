@@ -6,7 +6,7 @@ Guidance for AI coding agents working in this repository.
 
 ```
 .
-├── main.go                 # entrypoint & CLI modes (install, gif, chroot)
+├── main.go                 # entrypoint & CLI modes (install, demo, chroot)
 ├── assets/               # embedded static files (fstab, sshd_config, locales)
 ├── builds/               # shipped config templates (default/openrc/musl/…)
 ├── data/                 # static per-repo package lists (data/repos/*.packages)
@@ -46,9 +46,9 @@ Guidance for AI coding agents working in this repository.
 - External commands are executed through `lib/installer` helpers that
   log every invocation; never use `os/exec` ad hoc from other packages.
 - The TUI can be driven headlessly through exported `Update`/`View`
-  (`lib/tui` model). `gentooinstall gif` records the interactive demo by
+  (`lib/tui` model). `gentooinstall demo` records the interactive demo by
   generating a VHS tape and running the external `charmbracelet/vhs` CLI
-  (see `gifTape` in `main.go`); install vhs with
+  (see `demoTape` in `main.go`); install vhs with
   `go install github.com/charmbracelet/vhs@latest`.
 
 ## Build & test
