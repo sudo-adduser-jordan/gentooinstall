@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "internal/**"
-      - "cmd/**"
+      - "lib/**"
+      - "main.go"
       - "tests/**"
       - "scripts/release.sh"
       - "go.mod"
@@ -14,8 +14,8 @@ on:
       - ".github/workflows/iso-test.yml"
   pull_request:
     paths:
-      - "internal/**"
-      - "cmd/**"
+      - "lib/**"
+      - "main.go"
       - "tests/**"
       - "scripts/release.sh"
       - "go.mod"

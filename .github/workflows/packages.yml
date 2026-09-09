@@ -21,10 +21,10 @@ jobs:
         run: |
           git config user.name "gentooinstall bot"
           git config user.email "noreply@gentooinstall.local"
-          if git diff --quiet internal/pkglists/data/repos; then
+          if git diff --quiet data/repos; then
             echo "No changes to package lists."
             exit 0
           fi
-          git add internal/pkglists/data/repos
+          git add data/repos
           git commit -m "chore: update embedded package lists"
           git push

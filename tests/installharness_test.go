@@ -12,9 +12,9 @@ import (
 	"sync"
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
+	"gentooinstall/lib/installer"
 )
 
 // discardWriter satisfies io.Writer while surfacing unexpected writes.

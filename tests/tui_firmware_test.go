@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/tui"
 )
 
 func TestFirmwareBlockError(t *testing.T) {

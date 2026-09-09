@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 // kernelAndBootScaffold plants the /boot, /usr/src/linux symlink and the

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 func containsAll(hay []string, needles ...string) bool {

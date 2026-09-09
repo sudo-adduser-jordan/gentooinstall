@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
 )
 
 // Standard locations (port of scripts/config.sh constants).

@@ -13,7 +13,7 @@ before:
 
 builds:
   - id: gentooinstall
-    main: ./cmd/gentooinstall
+    main: .
     binary: gentooinstall
     env:
       - CGO_ENABLED=0

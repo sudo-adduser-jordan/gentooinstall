@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"gentooinstall/internal/disklayout"
+	"gentooinstall/lib/disklayout"
 )
 
 // resolveID resolves a layout id, returning a canonicalized device path.

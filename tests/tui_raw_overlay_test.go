@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/tui"
 )
 
 func openRawOverlay(t *testing.T, m *tui.Model) *tui.Model {

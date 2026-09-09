@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"gentooinstall/assets"
-	"gentooinstall/internal/disklayout"
+	"gentooinstall/lib/disklayout"
 )
 
 // BlkidUUIDForID resolves id and returns its filesystem UUID.

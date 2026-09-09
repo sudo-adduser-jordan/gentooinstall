@@ -5,9 +5,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
+	"gentooinstall/lib/sysinfo"
 )
 
 // FirmwareBlockError reports whether the configured boot type cannot run on

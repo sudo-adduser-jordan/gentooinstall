@@ -59,7 +59,7 @@ func (c *Context) hostHasEFI() bool {
 }
 
 // HostHasEFI is the exported form of hostHasEFI for preflight logging in
-// cmd/gentooinstall: it honors the Stat stub so tests stay host-independent.
+// main.go: it honors the Stat stub so tests stay host-independent.
 func (c *Context) HostHasEFI() bool { return c.hostHasEFI() }
 
 // HostBootMode renders the running firmware as "UEFI" or "BIOS/legacy" for

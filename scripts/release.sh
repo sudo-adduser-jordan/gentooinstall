@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_SRC="./cmd/gentooinstall"
+APP_SRC="."
 ISO_OUTPUT="${1:-bin/gentooinstall.iso}"
 BUILD_DIR="$PWD/iso_build"
 ROOTFS="$PWD/rootfs"
@@ -11,7 +11,7 @@ die()   { echo "Error: $*" >&2; exit 1; }
 latest(){ curl -fsSL "$1/" | sed -n "s#.*href=\"\\($2\\)\".*#\\1#p" | sort -V | tail -n1; }
 
 # Live rootfs = minimal Alpine so the ISO can actually install Gentoo (mirrors
-# internal/live/live.go NeedModules and installer/prepare.go WantedPrograms).
+# lib/live/live.go NeedModules and installer/prepare.go WantedPrograms).
 # Building needs network to dl-cdn.alpinelinux.org; ZFS stays excluded (alpine
 # zfs kmod cannot match the bundled build-host kernel).
 ALPINE_BRANCH=v3.21
@@ -138,7 +138,7 @@ mkdir -p "$ROOTFS/lib/modules/bundle"
 # on to resolve the full curated list (multi-module --show-depends can emit a
 # single "builtin <name>" line and drop the rest), and some modules (fat/vfat)
 # live under kernel/fs, not kernel/drivers. Built-in drivers have no .ko and
-# are skipped; loadModules in internal/live ignores modules it cannot load.
+# are skipped; loadModules in lib/live ignores modules it cannot load.
 bundle_find() {
     local alt f
     for alt in "$1" "${1//_/-}"; do

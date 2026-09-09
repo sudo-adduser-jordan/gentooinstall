@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/sysinfo"
 )
 
 // DefaultPath is the PATH exported by the live init before any command runs.

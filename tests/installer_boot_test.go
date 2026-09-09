@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 func TestVersionLess(t *testing.T) {

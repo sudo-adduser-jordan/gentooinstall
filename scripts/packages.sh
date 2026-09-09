@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-REPO_DIR="internal/pkglists/data/repos"
+REPO_DIR="data/repos"
 REPOS=(
   "gentoo:https://mirrors.kernel.org/gentoo-portage"
   "guru:https://github.com/gentoo-mirror/guru"

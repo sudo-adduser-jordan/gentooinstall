@@ -4,7 +4,7 @@ package tests
 import (
 	"testing"
 
-	"gentooinstall/internal/disklayout"
+	"gentooinstall/lib/disklayout"
 )
 
 func TestResolverCanonicalizeFallback(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/tui"
 )
 
 // estGiB parses "~1.6 GiB" into 1.6 for ordering assertions.

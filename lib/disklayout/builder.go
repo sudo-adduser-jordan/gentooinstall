@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gentooinstall/internal/config"
+	"gentooinstall/lib/config"
 )
 
 // UUIDStore generates stable uuids per id, persisted below Dir.

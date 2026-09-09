@@ -1,10 +1,10 @@
-// Command-line argument parsing (internal/cli).
+// Command-line argument parsing (lib/cli).
 package tests
 
 import (
 	"testing"
 
-	"gentooinstall/internal/cli"
+	"gentooinstall/lib/cli"
 )
 
 func TestParseArgsEmpty(t *testing.T) {

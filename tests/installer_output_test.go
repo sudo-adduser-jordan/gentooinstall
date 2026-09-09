@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 func TestLineTeeSplitsLines(t *testing.T) {

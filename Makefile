@@ -12,7 +12,7 @@ GOTESTSUM_FLAGS ?= --format pkgname --hide-summary skipped
 
 build: vet
 	mkdir -p $(BIN_DIR)
-	go build -trimpath -ldflags "-s -w" -o $(BIN_DIR)/$(BINARY) ./cmd/gentooinstall
+	go build -trimpath -ldflags "-s -w" -o $(BIN_DIR)/$(BINARY) .
 
 iso:
 	scripts/release.sh

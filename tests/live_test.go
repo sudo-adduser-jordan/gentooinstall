@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/live"
+	"gentooinstall/lib/live"
 )
 
 func TestLiveMountTable(t *testing.T) {

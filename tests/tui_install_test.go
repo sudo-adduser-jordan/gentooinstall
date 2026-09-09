@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/tui"
 )
 
 func newInstallModel(t *testing.T) (*tui.Model, *[]tui.InstallDecision) {

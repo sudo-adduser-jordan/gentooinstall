@@ -19,8 +19,7 @@ type Parsed struct {
 }
 
 // ParseArgs parses args (typically os.Args[1:]) without side effects:
-// no printing, no os.Exit. Errors mirror the fatal messages in
-// cmd/gentooinstall/main.go.
+// no printing, no os.Exit. Errors mirror the fatal messages in main.go.
 func ParseArgs(args []string) (Parsed, error) {
 	var p Parsed
 	i := 0

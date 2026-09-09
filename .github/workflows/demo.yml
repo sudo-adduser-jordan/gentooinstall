@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "cmd/gentooinstall/**"
-      - "internal/tui/**"
+      - "main.go"
+      - "lib/tui/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/demo-gif.yml"
@@ -25,7 +25,7 @@ jobs:
           cache: true
 
       - name: Build gentooinstall
-        run: go build -o bin/gentooinstall ./cmd/gentooinstall
+        run: go build -o bin/gentooinstall .
 
       - name: Install vhs
         # Pinned for reproducible recordings; vhs ships its own Chromium and

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/sysinfo"
 )
 
 func TestMirrorHostCases(t *testing.T) {

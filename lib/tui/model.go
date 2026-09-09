@@ -16,9 +16,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/live"
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/live"
+	"gentooinstall/lib/sysinfo"
 )
 
 // Minimum terminal size for the TUI; below it only the resize notice is

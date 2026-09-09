@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gentooinstall/internal/disklayout"
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/disklayout"
+	"gentooinstall/lib/sysinfo"
 )
 
 // IsMountpoint reports whether path appears in /proc/mounts.

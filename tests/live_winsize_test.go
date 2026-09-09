@@ -4,9 +4,9 @@ package tests
 import (
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/live"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/live"
+	"gentooinstall/lib/tui"
 )
 
 func TestParseCSITextAreaReply(t *testing.T) {

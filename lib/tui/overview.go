@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
 )
 
 func osStat(p string) (os.FileInfo, error) { return os.Stat(p) }

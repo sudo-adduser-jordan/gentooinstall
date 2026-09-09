@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"gentooinstall/assets"
-	"gentooinstall/internal/config"
+	"gentooinstall/lib/config"
 
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/sysinfo"
 )
 
 const customDeviceMarker = "<enter custom path>"

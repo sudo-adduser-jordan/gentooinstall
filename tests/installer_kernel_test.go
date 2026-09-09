@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/installer"
 )
 
 func TestFindNewestKernel(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/tui"
 )
 
 func runewidthWidth(s string) int { return lipgloss.Width(s) }

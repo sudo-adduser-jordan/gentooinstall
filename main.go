@@ -18,13 +18,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"gentooinstall/internal/cli"
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
-	"gentooinstall/internal/installer"
-	"gentooinstall/internal/live"
-	"gentooinstall/internal/sysinfo"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/cli"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
+	"gentooinstall/lib/installer"
+	"gentooinstall/lib/live"
+	"gentooinstall/lib/sysinfo"
+	"gentooinstall/lib/tui"
 )
 
 var version = "0.1.0"

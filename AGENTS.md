@@ -6,10 +6,11 @@ Guidance for AI coding agents working in this repository.
 
 ```
 .
-├── cmd/gentooinstall/            # entrypoint & CLI modes (install, gif, chroot)
+├── main.go                 # entrypoint & CLI modes (install, gif, chroot)
 ├── assets/               # embedded static files (fstab, sshd_config, locales)
 ├── builds/               # shipped config templates (default/openrc/musl/…)
-├── internal/
+├── data/                 # static per-repo package lists (data/repos/*.packages)
+├── lib/
 │   ├── config/           # TOML model, defaults, validation, template paths
 │   ├── sysinfo/          # devices, keymaps, timezones, locales, EFI detection
 │   ├── disklayout/       # declarative disk actions, presets, id->device resolver
@@ -28,7 +29,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Conventions
 
-- **Go entrypoint lives in `cmd/gentooinstall`**, library code under `internal/` and
+- **Go entrypoint is `main.go`** at the repo root, library code under `lib/` and
   all tests in `tests/`. Do not modify anything in `example/` except to fix
   factual comments; it is a frozen reference of the legacy bash behavior used
   to verify the port.
@@ -42,12 +43,12 @@ Guidance for AI coding agents working in this repository.
 - Disk layouts are built via `disklayout.BuildFromConfig`; presets must stay
   byte-compatible with the bash behavior in
   `example/scripts/config.sh` (same action order, same ids).
-- External commands are executed through `internal/installer` helpers that
+- External commands are executed through `lib/installer` helpers that
   log every invocation; never use `os/exec` ad hoc from other packages.
 - The TUI can be driven headlessly through exported `Update`/`View`
-  (`internal/tui` model). `gentooinstall gif` records the interactive demo by
+  (`lib/tui` model). `gentooinstall gif` records the interactive demo by
   generating a VHS tape and running the external `charmbracelet/vhs` CLI
-  (see `gifTape` in `cmd/gentooinstall/main.go`); install vhs with
+  (see `gifTape` in `main.go`); install vhs with
   `go install github.com/charmbracelet/vhs@latest`.
 
 ## Build & test
@@ -71,11 +72,11 @@ make vm-install # QEMU e2e: TestInstallInVM runs a FULL install for every
 
 | Bash source | Go counterpart |
 |---|---|
-| `example/scripts/config.sh` | `internal/disklayout/builder.go` |
-| `example/scripts/utils.sh` (device resolution) | `internal/disklayout/resolver.go` |
-| `example/scripts/functions.sh` | `internal/installer/*.go` |
-| `example/scripts/main.sh` | `internal/installer/inchroot.go`, `kernel.go`, `network.go` |
-| `example/configure` | `internal/tui/` |
+| `example/scripts/config.sh` | `lib/disklayout/builder.go` |
+| `example/scripts/utils.sh` (device resolution) | `lib/disklayout/resolver.go` |
+| `example/scripts/functions.sh` | `lib/installer/*.go` |
+| `example/scripts/main.sh` | `lib/installer/inchroot.go`, `kernel.go`, `network.go` |
+| `example/configure` | `lib/tui/` |
 
 ## Notes for agents
 

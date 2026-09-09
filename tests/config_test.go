@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/pkglists"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/pkglists"
 )
 
 func classicCfg(dev string, luks, btrfs bool) *config.Config {

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
+	"gentooinstall/lib/installer"
 )
 
 const (

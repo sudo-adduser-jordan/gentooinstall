@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 // nonEFIHost makes the context report a host that was not booted under UEFI.

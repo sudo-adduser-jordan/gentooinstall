@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 func TestSHA512File(t *testing.T) {

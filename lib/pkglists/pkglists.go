@@ -3,27 +3,25 @@
 package pkglists
 
 import (
-	"embed"
 	"sort"
 	"strings"
-)
 
-//go:embed data/repos/*.packages
-var files embed.FS
+	"gentooinstall/data/repos"
+)
 
 // Has reports whether a static package list exists for the given repo name.
 func Has(name string) bool {
 	if name == "" {
 		return false
 	}
-	_, err := files.ReadFile("data/repos/" + name + ".packages")
+	_, err := repos.ReadFile(name)
 	return err == nil
 }
 
 // Atoms returns the complete, deduplicated, sorted list of package atoms for
 // a repo, or nil if no static list exists for it.
 func Atoms(name string) []string {
-	b, err := files.ReadFile("data/repos/" + name + ".packages")
+	b, err := repos.ReadFile(name)
 	if err != nil {
 		return nil
 	}

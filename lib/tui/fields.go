@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"gentooinstall/internal/config"
+	"gentooinstall/lib/config"
 )
 
 // field is one editable row inside a tab.

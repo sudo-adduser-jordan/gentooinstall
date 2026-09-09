@@ -1,7 +1,7 @@
 # Contributing
 
-Entrypoint and library code live under `cmd/` and `internal/` (the Go/Bubble
-Tea implementation). Read [AGENTS.md](AGENTS.md) for repository conventions
+The Go entrypoint and library code live in `main.go` and `lib/` (the
+Bubble Tea implementation). Read [AGENTS.md](AGENTS.md) for repository conventions
 before your first change; this document covers day-to-day workflow and how
 to develop against the terminal UI.
 
@@ -51,7 +51,7 @@ go test ./tests/ -run Tui -v
 
 `./bin/gentooinstall gif` renders a recording of the simulated install demo into an
 animated GIF without a TTY or any disk access. Changing the demo steps or the
-captured layout is done in the gif tape code (`cmd/gentooinstall/main.go`),
+captured layout is done in the gif tape code (`main.go`),
 not in the interactive flow.
 
 To *see* rendered frames while developing, drop a throwaway test in

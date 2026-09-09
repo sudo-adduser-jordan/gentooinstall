@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"gentooinstall/internal/config"
+	"gentooinstall/lib/config"
 )
 
 // installWatchdog bounds one full VM install. A full install includes the

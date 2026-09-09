@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/installer"
+	"gentooinstall/lib/installer"
 )
 
 func requireLsblk(t *testing.T) {

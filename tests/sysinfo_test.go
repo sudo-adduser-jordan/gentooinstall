@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"gentooinstall/assets"
-	"gentooinstall/internal/sysinfo"
+	"gentooinstall/lib/sysinfo"
 )
 
 func TestCanonicalizePassthrough(t *testing.T) {

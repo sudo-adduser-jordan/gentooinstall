@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"gentooinstall/internal/config"
+	"gentooinstall/lib/config"
 )
 
 // SetupChrootEnv applies the environment from dispatch_chroot.sh.

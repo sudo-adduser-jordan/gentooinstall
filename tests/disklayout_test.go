@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/disklayout"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/disklayout"
 )
 
 func kinds(l *disklayout.Layout) []string {

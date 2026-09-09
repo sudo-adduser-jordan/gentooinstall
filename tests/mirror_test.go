@@ -10,9 +10,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"gentooinstall/internal/config"
-	"gentooinstall/internal/sysinfo"
-	"gentooinstall/internal/tui"
+	"gentooinstall/lib/config"
+	"gentooinstall/lib/sysinfo"
+	"gentooinstall/lib/tui"
 )
 
 func TestMirrorProbe(t *testing.T) {
