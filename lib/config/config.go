@@ -351,8 +351,9 @@ func Default(hasEFI bool) *Config {
 			UsePortageTesting:  true,
 		},
 		Packages: Packages{
-			EnableSSHD: true,
-			KernelType: "bin",
+			EnableSSHD:   true,
+			EnableBinpkg: true,
+			KernelType:   "bin",
 		},
 	}
 }

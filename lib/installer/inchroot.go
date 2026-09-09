@@ -174,6 +174,11 @@ func ConfigurePortage(ctx *Context) error {
 		return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
 	}
 
+	if err := ctx.appendFile("/etc/portage/make.conf",
+		`FEATURES="parallel-fetch"`); err != nil {
+		return fmt.Errorf("could not modify /etc/portage/make.conf: %w", err)
+	}
+
 	gentoo := &ctx.Cfg.Gentoo
 	if gentoo.SelectMirrors {
 		ctx.Runner.log("Temporarily installing mirrorselect")

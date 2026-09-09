@@ -79,6 +79,8 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		"systemd-machine-id-setup",
 		"ln -sfn ../usr/share/zoneinfo/UTC /etc/localtime",
 		"env-update",
+		"getuto",
+		"chmod 644 /etc/portage/gnupg/pubring.kbx",
 		"emerge --verbose dev-vcs/git",
 		"emerge --sync",
 		"ssh-keygen -A",
@@ -90,7 +92,7 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		"dracut --kver 6.6.13-gentoo --zstd --no-hostonly --ro-mnt --add bash crypt crypt-gpg --force /boot/efi/initramfs.img",
 		"mdadm --detail --scan /dev/fake-part_efi",
 		"efibootmgr --verbose --create --disk /dev/fake-gpt --part 3 --label gentoo --loader \\vmlinuz.efi --unicode initrd=\\initramfs.img "+cmdline,
-		"emerge --verbose linux-firmware",
+		"emerge --verbose --getbinpkg linux-firmware",
 		"emerge --verbose app-portage/gentoolkit",
 		"systemctl enable systemd-networkd",
 		"systemctl enable systemd-resolved",
@@ -129,9 +131,11 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		}
 	}
 
-	// make.conf accumulates MAKEOPTS + ACCEPT_KEYWORDS.
+	// make.conf accumulates MAKEOPTS + parallel-fetch + binpkg FEATURES +
+	// ACCEPT_KEYWORDS.
 	makeConf := readScratch(testingT, ctx, "/etc/portage/make.conf")
-	for _, want := range []string{"MAKEOPTS=\"-j8\"", "ACCEPT_KEYWORDS=\"~amd64\""} {
+	for _, want := range []string{"MAKEOPTS=\"-j8\"", "ACCEPT_KEYWORDS=\"~amd64\"",
+		"FEATURES=\"parallel-fetch\"", "FEATURES=\"getbinpkg binpkg-request-signature\""} {
 		if !strings.Contains(makeConf, want) {
 			testingT.Fatalf("/etc/portage/make.conf missing %q:\n%s", want, makeConf)
 		}
@@ -204,6 +208,8 @@ func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 		"emerge -v --config sys-libs/timezone-data",
 		"eselect locale set C.UTF-8",
 		"env-update",
+		"getuto",
+		"chmod 644 /etc/portage/gnupg/pubring.kbx",
 		"emerge --verbose dev-vcs/git",
 		"emerge --sync",
 		"ssh-keygen -A",
@@ -214,7 +220,7 @@ func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 		"dracut --kver 6.8.11-gentoo-dist --zstd --no-hostonly --ro-mnt --add bash btrfs --force /boot/bios/initramfs.img",
 		"syslinux --directory syslinux --install /dev/fake-part_bios",
 		"dd bs=440 conv=notrunc count=1 if=/usr/share/syslinux/gptmbr.bin of=/dev/fake-gpt",
-		"emerge --verbose linux-firmware",
+		"emerge --verbose --getbinpkg linux-firmware",
 		"emerge --verbose app-portage/gentoolkit",
 		"emerge --verbose net-misc/dhcpcd",
 		"rc-update add dhcpcd default",

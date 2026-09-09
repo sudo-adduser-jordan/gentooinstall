@@ -137,6 +137,9 @@ func TestConfigurePortageBinpkg(testingT *testing.T) {
 	if !strings.Contains(makeConf, "FEATURES=\"getbinpkg binpkg-request-signature\"") {
 		testingT.Fatalf("make.conf missing binpkg FEATURES:\n%s", makeConf)
 	}
+	if !strings.Contains(makeConf, "FEATURES=\"parallel-fetch\"") {
+		testingT.Fatalf("make.conf missing parallel-fetch:\n%s", makeConf)
+	}
 }
 
 func TestConfigurePortageMirrorselect(testingT *testing.T) {

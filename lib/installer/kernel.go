@@ -399,7 +399,7 @@ func InstallKernel(ctx *Context) error {
 		"sys-kernel/linux-firmware linux-fw-redistributable no-source-code"); err != nil {
 		return err
 	}
-	return ctx.Runner.Try("emerge", "--verbose", "linux-firmware")
+	return ctx.Runner.Try("emerge", "--verbose", "--getbinpkg", "linux-firmware")
 }
 
 // addFstabEntry appends one formatted fstab row.
