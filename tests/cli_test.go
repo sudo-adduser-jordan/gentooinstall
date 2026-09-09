@@ -7,68 +7,68 @@ import (
 	"gentooinstall/lib/cli"
 )
 
-func TestParseArgsEmpty(t *testing.T) {
-	p, err := cli.ParseArgs(nil)
+func TestParseArgsEmpty(testingT *testing.T) {
+	parsed, err := cli.ParseArgs(nil)
 	if err != nil {
-		t.Fatalf("ParseArgs(nil): %v", err)
+		testingT.Fatalf("ParseArgs(nil): %v", err)
 	}
-	if p.Mode != "" || p.CfgPath != "" || p.ShowHelp || p.ShowVersion {
-		t.Fatalf("unexpected parse: %+v", p)
+	if parsed.Mode != "" || parsed.CfgPath != "" || parsed.ShowHelp || parsed.ShowVersion {
+		testingT.Fatalf("unexpected parse: %+v", parsed)
 	}
 }
 
-func TestParseArgsHelpVersion(t *testing.T) {
-	for _, a := range [][]string{{"-h"}, {"--help"}, {"help"}} {
-		p, err := cli.ParseArgs(a)
-		if err != nil || !p.ShowHelp {
-			t.Fatalf("ParseArgs(%v) = %+v, %v", a, p, err)
+func TestParseArgsHelpVersion(testingT *testing.T) {
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"help"}} {
+		parsed, err := cli.ParseArgs(args)
+		if err != nil || !parsed.ShowHelp {
+			testingT.Fatalf("ParseArgs(%v) = %+v, %v", args, parsed, err)
 		}
 	}
-	for _, a := range [][]string{{"-v"}, {"--version"}} {
-		p, err := cli.ParseArgs(a)
-		if err != nil || !p.ShowVersion {
-			t.Fatalf("ParseArgs(%v) = %+v, %v", a, p, err)
+	for _, args := range [][]string{{"-v"}, {"--version"}} {
+		parsed, err := cli.ParseArgs(args)
+		if err != nil || !parsed.ShowVersion {
+			testingT.Fatalf("ParseArgs(%v) = %+v, %v", args, parsed, err)
 		}
 	}
 }
 
-func TestParseArgsModes(t *testing.T) {
-	p, err := cli.ParseArgs([]string{"install", "builds/desktop-systemd.toml"})
-	if err != nil || p.Mode != "install" || p.CfgPath != "builds/desktop-systemd.toml" {
-		t.Fatalf("install parse = %+v, %v", p, err)
+func TestParseArgsModes(testingT *testing.T) {
+	parsed, err := cli.ParseArgs([]string{"install", "builds/desktop-systemd.toml"})
+	if err != nil || parsed.Mode != "install" || parsed.CfgPath != "builds/desktop-systemd.toml" {
+		testingT.Fatalf("install parse = %+v, %v", parsed, err)
 	}
-	p, err = cli.ParseArgs([]string{"-c", "my.toml", "install"})
-	if err != nil || p.Mode != "install" || p.CfgPath != "my.toml" {
-		t.Fatalf("-c install parse = %+v, %v", p, err)
+	parsed, err = cli.ParseArgs([]string{"-c", "my.toml", "install"})
+	if err != nil || parsed.Mode != "install" || parsed.CfgPath != "my.toml" {
+		testingT.Fatalf("-c install parse = %+v, %v", parsed, err)
 	}
-	p, err = cli.ParseArgs([]string{"gif", "out.gif"})
-	if err != nil || p.Mode != "gif" || len(p.Rest) != 1 || p.Rest[0] != "out.gif" {
-		t.Fatalf("gif parse = %+v, %v", p, err)
+	parsed, err = cli.ParseArgs([]string{"gif", "out.gif"})
+	if err != nil || parsed.Mode != "gif" || len(parsed.Rest) != 1 || parsed.Rest[0] != "out.gif" {
+		testingT.Fatalf("gif parse = %+v, %v", parsed, err)
 	}
-	p, err = cli.ParseArgs([]string{"chroot", "/mnt/gentoo", "bash"})
-	if err != nil || p.Mode != "chroot" || len(p.Rest) != 2 {
-		t.Fatalf("chroot parse = %+v, %v", p, err)
+	parsed, err = cli.ParseArgs([]string{"chroot", "/mnt/gentoo", "bash"})
+	if err != nil || parsed.Mode != "chroot" || len(parsed.Rest) != 2 {
+		testingT.Fatalf("chroot parse = %+v, %v", parsed, err)
 	}
-	p, err = cli.ParseArgs([]string{"--in-chroot"})
-	if err != nil || p.Mode != "in-chroot" {
-		t.Fatalf("in-chroot parse = %+v, %v", p, err)
+	parsed, err = cli.ParseArgs([]string{"--in-chroot"})
+	if err != nil || parsed.Mode != "in-chroot" {
+		testingT.Fatalf("in-chroot parse = %+v, %v", parsed, err)
 	}
-	p, err = cli.ParseArgs([]string{"custom.toml"})
-	if err != nil || p.CfgPath != "custom.toml" {
-		t.Fatalf("positional parse = %+v, %v", p, err)
+	parsed, err = cli.ParseArgs([]string{"custom.toml"})
+	if err != nil || parsed.CfgPath != "custom.toml" {
+		testingT.Fatalf("positional parse = %+v, %v", parsed, err)
 	}
 }
 
-func TestParseArgsErrors(t *testing.T) {
-	for _, a := range [][]string{
+func TestParseArgsErrors(testingT *testing.T) {
+	for _, args := range [][]string{
 		{"-c"},
 		{"--config"},
 		{"--bogus"},
 		{"install", "gif"},
 		{"a.toml", "b.toml"},
 	} {
-		if _, err := cli.ParseArgs(a); err == nil {
-			t.Fatalf("ParseArgs(%v) expected error", a)
+		if _, err := cli.ParseArgs(args); err == nil {
+			testingT.Fatalf("ParseArgs(%v) expected error", args)
 		}
 	}
 }

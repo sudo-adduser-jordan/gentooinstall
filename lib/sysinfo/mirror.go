@@ -32,21 +32,21 @@ const probePath = "/"
 // "" when the value is not a parseable URL. The TUI shows this next to the
 // mirror reachability indicator.
 func MirrorHost(mirrorURL string) string {
-	u, err := url.Parse(mirrorURL)
-	if err != nil || u.Host == "" {
+	parsedURL, err := url.Parse(mirrorURL)
+	if err != nil || parsedURL.Host == "" {
 		return ""
 	}
-	return u.Host
+	return parsedURL.Host
 }
 
 // mirrorOrigin strips scheme and any path/query from a mirror URL, returning
 // just "scheme://host" (the endpoint the probe targets).
 func mirrorOrigin(mirrorURL string) string {
-	u, err := url.Parse(mirrorURL)
-	if err != nil || u.Host == "" {
+	parsedURL, err := url.Parse(mirrorURL)
+	if err != nil || parsedURL.Host == "" {
 		return ""
 	}
-	return (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
+	return (&url.URL{Scheme: parsedURL.Scheme, Host: parsedURL.Host}).String()
 }
 
 // MirrorProbe checks whether the host named by the given Gentoo mirror URL is
@@ -94,8 +94,8 @@ func MirrorProbe(ctx context.Context, mirrorURL string) MirrorStatus {
 // next to the shield. Unreachable is the main live-ISO case, where DHCP is
 // still coming up or a proxy is required.
 func probeErrNote(err error) string {
-	for _, e := range unwrapAll(err) {
-		if _, ok := e.(*net.DNSError); ok {
+	for _, wrapped := range unwrapAll(err) {
+		if _, ok := wrapped.(*net.DNSError); ok {
 			return "dns failed"
 		}
 	}
@@ -119,11 +119,11 @@ func unwrapAll(err error) []error {
 	var out []error
 	for err != nil {
 		out = append(out, err)
-		u, ok := err.(interface{ Unwrap() error })
+		unwrapped, ok := err.(interface{ Unwrap() error })
 		if !ok {
 			break
 		}
-		err = u.Unwrap()
+		err = unwrapped.Unwrap()
 	}
 	return out
 }

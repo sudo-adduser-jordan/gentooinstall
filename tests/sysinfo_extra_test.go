@@ -8,7 +8,7 @@ import (
 	"gentooinstall/lib/sysinfo"
 )
 
-func TestMirrorHostCases(t *testing.T) {
+func TestMirrorHostCases(testingT *testing.T) {
 	cases := map[string]string{
 		"https://mirror.example.com/gentoo": "mirror.example.com",
 		"http://10.0.2.2:8080/x":            "10.0.2.2:8080",
@@ -18,50 +18,50 @@ func TestMirrorHostCases(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := sysinfo.MirrorHost(in); got != want {
-			t.Fatalf("MirrorHost(%q) = %q, want %q", in, got, want)
+			testingT.Fatalf("MirrorHost(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
-func TestDevicesSkipsPseudo(t *testing.T) {
-	for _, d := range sysinfo.Devices() {
-		base := d[strings.LastIndex(d, "/")+1:]
+func TestDevicesSkipsPseudo(testingT *testing.T) {
+	for _, dev := range sysinfo.Devices() {
+		base := dev[strings.LastIndex(dev, "/")+1:]
 		for _, prefix := range []string{"loop", "ram", "sr", "zram"} {
 			if strings.HasPrefix(base, prefix) {
-				t.Fatalf("Devices leaked pseudo-device %q", d)
+				testingT.Fatalf("Devices leaked pseudo-device %q", dev)
 			}
 		}
 	}
 }
 
-func TestSystemLocalesErrorWithoutPath(t *testing.T) {
-	t.Setenv("PATH", "")
+func TestSystemLocalesErrorWithoutPath(testingT *testing.T) {
+	testingT.Setenv("PATH", "")
 	if _, err := sysinfo.SystemLocales(); err == nil {
-		t.Skip("locale unexpectedly succeeded without PATH")
+		testingT.Skip("locale unexpectedly succeeded without PATH")
 	}
 }
 
-func TestDefaultKeymapValidation(t *testing.T) {
-	if k := sysinfo.DefaultKeymap(nil); k != "us" {
-		t.Fatalf("nil known = %q, want us", k)
+func TestDefaultKeymapValidation(testingT *testing.T) {
+	if keymap := sysinfo.DefaultKeymap(nil); keymap != "us" {
+		testingT.Fatalf("nil known = %q, want us", keymap)
 	}
-	if k := sysinfo.DefaultKeymap([]string{}); k != "us" {
-		t.Fatalf("empty known = %q, want us", k)
+	if keymap := sysinfo.DefaultKeymap([]string{}); keymap != "us" {
+		testingT.Fatalf("empty known = %q, want us", keymap)
 	}
 }
 
-func TestTimezonesKeymapsDoNotFail(t *testing.T) {
+func TestTimezonesKeymapsDoNotFail(testingT *testing.T) {
 	// Host-dependent enumeration; only assert it never panics and stays sorted.
 	tz := sysinfo.Timezones()
-	for i := 1; i < len(tz); i++ {
-		if tz[i-1] > tz[i] {
-			t.Fatal("Timezones not sorted")
+	for idx := 1; idx < len(tz); idx++ {
+		if tz[idx-1] > tz[idx] {
+			testingT.Fatal("Timezones not sorted")
 		}
 	}
 	km := sysinfo.Keymaps()
-	for i := 1; i < len(km); i++ {
-		if km[i-1] > km[i] {
-			t.Fatal("Keymaps not sorted")
+	for idx := 1; idx < len(km); idx++ {
+		if km[idx-1] > km[idx] {
+			testingT.Fatal("Keymaps not sorted")
 		}
 	}
 }

@@ -27,16 +27,16 @@ var (
 )
 
 // startDemo launches the simulated installation from the Install tab.
-func (m *Model) startDemo() (tea.Model, tea.Cmd) {
-	if m.instState != instIdle {
-		return m, nil
+func (model *Model) startDemo() (tea.Model, tea.Cmd) {
+	if model.instState != instIdle {
+		return model, nil
 	}
-	m.installing = true
-	m.instState = instRunning
-	m.instDemo = true
-	m.vpInitReset()
+	model.installing = true
+	model.instState = instRunning
+	model.instDemo = true
+	model.vpInitReset()
 	go runDemoInstall()
-	return m, m.startSpinner()
+	return model, model.startSpinner()
 }
 
 type demoPhase struct {
@@ -124,11 +124,11 @@ func colorCmd(line string) string {
 // colorPackages highlights space-separated package atoms in green.
 func colorPackages(args string) string {
 	parts := strings.Split(args, " ")
-	for i, p := range parts {
-		if strings.Contains(p, "/") || strings.HasPrefix(p, "sys-") ||
-			strings.HasPrefix(p, "dev-") || strings.HasPrefix(p, "virtual") ||
-			strings.HasPrefix(p, ">=<") {
-			parts[i] = demoGreen + p + demoReset
+	for idx, pkg := range parts {
+		if strings.Contains(pkg, "/") || strings.HasPrefix(pkg, "sys-") ||
+			strings.HasPrefix(pkg, "dev-") || strings.HasPrefix(pkg, "virtual") ||
+			strings.HasPrefix(pkg, ">=<") {
+			parts[idx] = demoGreen + pkg + demoReset
 		}
 	}
 	return strings.Join(parts, " ")
@@ -150,8 +150,8 @@ func emitEmerge(atoms ...string) {
 	EmitInstallLine(colorCmd("$ emerge --verbose --autounmask-continue=y -- " +
 		strings.Join(atoms, " ")))
 	time.Sleep(demoCmdDelay)
-	for _, a := range atoms {
-		EmitInstallLine("  " + colorPkgAtom(a))
+	for _, atom := range atoms {
+		EmitInstallLine("  " + colorPkgAtom(atom))
 		time.Sleep(demoCmdDelay)
 	}
 }
@@ -160,14 +160,14 @@ func emitEmerge(atoms ...string) {
 // of lines a real install emits, fails exactly once so the recovery panel
 // can be exercised, then finishes successfully.
 func runDemoInstall() {
-	for i, ph := range demoPhases {
+	for idx, ph := range demoPhases {
 		EmitInstallLine(colorStep(ph.name))
 		time.Sleep(demoStepDelay)
-		if i == demoFailAfter && !emitDemoFailure(ph) {
+		if idx == demoFailAfter && !emitDemoFailure(ph) {
 			return
 		}
-		for _, c := range ph.cmds {
-			EmitInstallLine(colorCmd(c))
+		for _, cmd := range ph.cmds {
+			EmitInstallLine(colorCmd(cmd))
 			time.Sleep(demoCmdDelay)
 		}
 		for _, group := range ph.emerge {
@@ -185,9 +185,9 @@ func emitDemoFailure(ph demoPhase) bool {
 	EmitInstallFailed(InstallFailedMsg{
 		Cmdline: "wget https://distfiles.gentoo.org/releases/stage3.tar.xz",
 		Err:     colorErr("simulated network failure (demo)"),
-		Decide:  func(d InstallDecision) { decide <- d },
+		Decide:  func(decision InstallDecision) { decide <- decision },
 	})
-	switch d := <-decide; d {
+	switch decision := <-decide; decision {
 	case DecideRetry:
 		return true
 	default:

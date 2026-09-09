@@ -11,16 +11,16 @@ import (
 
 // kernelAndBootScaffold plants the /boot, /usr/src/linux symlink and the
 // /sys/class/block partition info InstallKernelEFI/BIOS needs.
-func kernelAndBootScaffold(t *testing.T, c *installer.Context, kver string, partNum string) {
-	t.Helper()
-	mkScratchDir(t, c, "/boot")
-	writeScratch(t, c, "/boot/vmlinuz-"+kver, "kernel image\n")
-	mkScratchDir(t, c, "/boot/efi")
-	mkScratchDir(t, c, "/boot/bios")
-	symlinkScratch(t, c, "linux-"+kver, "/usr/src/linux")
+func kernelAndBootScaffold(testingT *testing.T, ctx *installer.Context, kver string, partNum string) {
+	testingT.Helper()
+	mkScratchDir(testingT, ctx, "/boot")
+	writeScratch(testingT, ctx, "/boot/vmlinuz-"+kver, "kernel image\n")
+	mkScratchDir(testingT, ctx, "/boot/efi")
+	mkScratchDir(testingT, ctx, "/boot/bios")
+	symlinkScratch(testingT, ctx, "linux-"+kver, "/usr/src/linux")
 	if partNum != "" {
-		mkScratchDir(t, c, "/sys/class/block/fake-part_efi")
-		writeScratch(t, c, "/sys/class/block/fake-part_efi/partition", partNum+"\n")
+		mkScratchDir(testingT, ctx, "/sys/class/block/fake-part_efi")
+		writeScratch(testingT, ctx, "/sys/class/block/fake-part_efi/partition", partNum+"\n")
 	}
 }
 
@@ -31,19 +31,19 @@ func fstabRow(fs, mountpoint, typ, opts, dumpPass string) string {
 		fs, mountpoint, typ, opts, dumpPass)
 }
 
-func TestMainInstallGentooInChrootSystemdEFILuks(t *testing.T) {
+func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", true, false)
 	cfg.System.Timezone = "UTC"
 	cfg.System.Keymap = "us"
 	cfg.System.KeymapInitramfs = "us"
-	c, s := testContext(t, cfg, classicSeeds())
-	mkScratchDir(t, c, "/etc")
+	ctx, stub := testContext(testingT, cfg, classicSeeds())
+	mkScratchDir(testingT, ctx, "/etc")
 
 	rootUUID, efiUUID, swapUUID :=
 		"aaaaaaa1-0000-0000-0000-000000000001",
 		"aaaaaaa1-0000-0000-0000-000000000002",
 		"aaaaaaa1-0000-0000-0000-000000000003"
-	c.BlkidUUID = func(dev string) (string, error) {
+	ctx.BlkidUUID = func(dev string) (string, error) {
 		switch dev {
 		case "/dev/fake-part_luks_root":
 			return rootUUID, nil
@@ -54,23 +54,23 @@ func TestMainInstallGentooInChrootSystemdEFILuks(t *testing.T) {
 		}
 		return "", fmt.Errorf("unexpected device for blkid: %s", dev)
 	}
-	c.EvalSymlinks = func(p string) (string, error) {
+	ctx.EvalSymlinks = func(path string) (string, error) {
 		// Fakes the realpath of the EFI partition's sysfs parent so
 		// InstallKernelEFI falls back to the registered GPT table.
-		if p == "/sys/class/block/fake-part_efi/.." {
+		if path == "/sys/class/block/fake-part_efi/.." {
 			return "/sys/class/block/fake-part_efi", nil
 		}
-		return p, nil
+		return path, nil
 	}
-	kernelAndBootScaffold(t, c, "6.6.13-gentoo", "3")
+	kernelAndBootScaffold(testingT, ctx, "6.6.13-gentoo", "3")
 
-	if err := installer.MainInstallGentooInChroot(c); err != nil {
-		t.Fatal(err)
+	if err := installer.MainInstallGentooInChroot(ctx); err != nil {
+		testingT.Fatal(err)
 	}
 
 	cmdline := "rd.vconsole.keymap=us rd.luks.uuid=" + uLuksRoot +
 		" root=UUID=" + rootUUID
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"passwd -d root",
 		"emerge-webrsync",
 		"mount -t efivarfs efivarfs /sys/firmware/efi/efivars",
@@ -101,78 +101,78 @@ func TestMainInstallGentooInChrootSystemdEFILuks(t *testing.T) {
 	)
 
 	// Files produced in the scratch root.
-	if got := readScratch(t, c, "/etc/hostname"); got != "gentoo\n" {
-		t.Fatalf("/etc/hostname = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/hostname"); got != "gentoo\n" {
+		testingT.Fatalf("/etc/hostname = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/vconsole.conf"); got != "KEYMAP=us\n" {
-		t.Fatalf("/etc/vconsole.conf = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/vconsole.conf"); got != "KEYMAP=us\n" {
+		testingT.Fatalf("/etc/vconsole.conf = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/locale.conf"); got != "LANG=C.UTF-8\n" {
-		t.Fatalf("/etc/locale.conf = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/locale.conf"); got != "LANG=C.UTF-8\n" {
+		testingT.Fatalf("/etc/locale.conf = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/locale.gen"); got != "C.UTF-8 UTF-8\n" {
-		t.Fatalf("/etc/locale.gen = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/locale.gen"); got != "C.UTF-8 UTF-8\n" {
+		testingT.Fatalf("/etc/locale.gen = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/portage/package.use/installkernel"); got != "sys-kernel/installkernel dracut\n" {
-		t.Fatalf("/etc/portage/package.use/installkernel = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/portage/package.use/installkernel"); got != "sys-kernel/installkernel dracut\n" {
+		testingT.Fatalf("/etc/portage/package.use/installkernel = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/portage/package.use/systemd"); got != "sys-apps/systemd cryptsetup\n" {
-		t.Fatalf("/etc/portage/package.use/systemd = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/portage/package.use/systemd"); got != "sys-apps/systemd cryptsetup\n" {
+		testingT.Fatalf("/etc/portage/package.use/systemd = %q", got)
 	}
 
 	// repos.conf written for git sync.
-	repos := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	repos := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf")
 	for _, want := range []string{"main-repo = gentoo", "sync-type = git",
 		"sync-depth = 1", "sync-uri = https://anongit.gentoo.org/git/repo/sync/gentoo.git"} {
 		if !strings.Contains(repos, want) {
-			t.Fatalf("gentoo.conf missing %q:\n%s", want, repos)
+			testingT.Fatalf("gentoo.conf missing %q:\n%s", want, repos)
 		}
 	}
 
 	// make.conf accumulates MAKEOPTS + ACCEPT_KEYWORDS.
-	makeConf := readScratch(t, c, "/etc/portage/make.conf")
+	makeConf := readScratch(testingT, ctx, "/etc/portage/make.conf")
 	for _, want := range []string{"MAKEOPTS=\"-j8\"", "ACCEPT_KEYWORDS=\"~amd64\""} {
 		if !strings.Contains(makeConf, want) {
-			t.Fatalf("/etc/portage/make.conf missing %q:\n%s", want, makeConf)
+			testingT.Fatalf("/etc/portage/make.conf missing %q:\n%s", want, makeConf)
 		}
 	}
 
 	// networkd unit.
-	net := readScratch(t, c, "/etc/systemd/network/20-wired.network")
+	net := readScratch(testingT, ctx, "/etc/systemd/network/20-wired.network")
 	if !strings.Contains(net, "DHCP=yes") {
-		t.Fatalf("networkd unit missing DHCP:\n%s", net)
+		testingT.Fatalf("networkd unit missing DHCP:\n%s", net)
 	}
 
 	// sshd configuration present.
-	if got := readScratch(t, c, "/etc/ssh/sshd_config"); !strings.Contains(got, "PermitRootLogin") {
-		t.Fatalf("sshd_config looks wrong:\n%s", got)
+	if got := readScratch(testingT, ctx, "/etc/ssh/sshd_config"); !strings.Contains(got, "PermitRootLogin") {
+		testingT.Fatalf("sshd_config looks wrong:\n%s", got)
 	}
 
 	// fstab rows from the layout + blkid stub.
-	fstab := readScratch(t, c, "/etc/fstab")
+	fstab := readScratch(testingT, ctx, "/etc/fstab")
 	for _, row := range []string{
 		fstabRow("UUID="+rootUUID, "/", "ext4", "defaults,noatime,errors=remount-ro,discard", "0 1"),
 		fstabRow("UUID="+efiUUID, "/boot/efi", "vfat", "defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid,discard", "0 2"),
 		fstabRow("UUID="+swapUUID, "none", "swap", "defaults,discard", "0 0"),
 	} {
 		if !strings.Contains(fstab, row) {
-			t.Fatalf("/etc/fstab missing row %q:\n%s", row, fstab)
+			testingT.Fatalf("/etc/fstab missing row %q:\n%s", row, fstab)
 		}
 	}
 
 	// efibootmgr re-run script recorded the same entry.
-	script := readScratch(t, c, "/boot/efi/efibootmgr_add_entry.sh")
+	script := readScratch(testingT, ctx, "/boot/efi/efibootmgr_add_entry.sh")
 	if !strings.Contains(script, "efibootmgr --verbose --create --disk /dev/fake-gpt --part 3") {
-		t.Fatalf("efibootmgr_add_entry.sh:\n%s", script)
+		testingT.Fatalf("efibootmgr_add_entry.sh:\n%s", script)
 	}
 	// initramfs regenerator helper carries the initramfs path.
-	helper := readScratch(t, c, "/boot/efi/generate_initramfs.sh")
+	helper := readScratch(testingT, ctx, "/boot/efi/generate_initramfs.sh")
 	if !strings.Contains(helper, "/boot/efi/initramfs.img") {
-		t.Fatalf("generate_initramfs.sh:\n%s", helper)
+		testingT.Fatalf("generate_initramfs.sh:\n%s", helper)
 	}
 }
 
-func TestMainInstallGentooInChrootOpenRCBIOS(t *testing.T) {
+func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, true)
 	cfg.Gentoo.Stage3Variant = "openrc"
 	cfg.Disk.BootType = "bios"
@@ -180,23 +180,23 @@ func TestMainInstallGentooInChrootOpenRCBIOS(t *testing.T) {
 	cfg.System.Timezone = "UTC"
 	cfg.System.Keymap = "de"
 	cfg.System.KeymapInitramfs = "us"
-	c, s := testContext(t, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
-	mkScratchDir(t, c, "/etc")
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	mkScratchDir(testingT, ctx, "/etc")
 
 	// OpenRC configurators rewrite existing conf.d files in place.
-	writeScratch(t, c, "/etc/conf.d/hostname", "hostname=\"gentoo\"\n")
-	writeScratch(t, c, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
-	c.BlkidUUID = func(dev string) (string, error) {
+	writeScratch(testingT, ctx, "/etc/conf.d/hostname", "hostname=\"gentoo\"\n")
+	writeScratch(testingT, ctx, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
+	ctx.BlkidUUID = func(dev string) (string, error) {
 		return "aaaaaaa1-0000-0000-0000-000000000005", nil
 	}
-	c.EvalSymlinks = func(p string) (string, error) { return p, nil }
-	kernelAndBootScaffold(t, c, "6.8.11-gentoo-dist", "")
+	ctx.EvalSymlinks = func(path string) (string, error) { return path, nil }
+	kernelAndBootScaffold(testingT, ctx, "6.8.11-gentoo-dist", "")
 
-	if err := installer.MainInstallGentooInChroot(c); err != nil {
-		t.Fatal(err)
+	if err := installer.MainInstallGentooInChroot(ctx); err != nil {
+		testingT.Fatal(err)
 	}
 
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"passwd -d root",
 		"emerge-webrsync",
 		"mount /dev/fake-part_bios /boot/bios",
@@ -223,81 +223,81 @@ func TestMainInstallGentooInChrootOpenRCBIOS(t *testing.T) {
 	)
 
 	// conf.d rewrites.
-	if got := readScratch(t, c, "/etc/conf.d/hostname"); got != "hostname=\"gentoo\"\n" {
-		t.Fatalf("/etc/conf.d/hostname = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/conf.d/hostname"); got != "hostname=\"gentoo\"\n" {
+		testingT.Fatalf("/etc/conf.d/hostname = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/conf.d/keymaps"); got != "keymap=\"de\"\n" {
-		t.Fatalf("/etc/conf.d/keymaps = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/conf.d/keymaps"); got != "keymap=\"de\"\n" {
+		testingT.Fatalf("/etc/conf.d/keymaps = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/timezone"); got != "UTC\n" {
-		t.Fatalf("/etc/timezone = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/timezone"); got != "UTC\n" {
+		testingT.Fatalf("/etc/timezone = %q", got)
 	}
 
 	// syslinux.cfg embeds the root UUID in the APPEND line.
-	cfgContent := readScratch(t, c, "/boot/bios/syslinux/syslinux.cfg")
+	cfgContent := readScratch(testingT, ctx, "/boot/bios/syslinux/syslinux.cfg")
 	if !strings.Contains(cfgContent, "root=UUID=aaaaaaa1-0000-0000-0000-000000000005") {
-		t.Fatalf("syslinux.cfg missing root=UUID line:\n%s", cfgContent)
+		testingT.Fatalf("syslinux.cfg missing root=UUID line:\n%s", cfgContent)
 	}
 
 	// No EFI partition rows in fstab for BIOS installs.
-	fstab := readScratch(t, c, "/etc/fstab")
+	fstab := readScratch(testingT, ctx, "/etc/fstab")
 	if strings.Contains(fstab, "/boot/efi") {
-		t.Fatalf("/etc/fstab mentions /boot/efi on a BIOS install:\n%s", fstab)
+		testingT.Fatalf("/etc/fstab mentions /boot/efi on a BIOS install:\n%s", fstab)
 	}
 }
 
-func TestMainInstallGentooInChrootPropagatesEmergeError(t *testing.T) {
+func TestMainInstallGentooInChrootPropagatesEmergeError(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
 	cfg.Disk.BootType = "bios"
-	c, s := testContext(t, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
-	s.FailOn = []string{"emerge-webrsync"}
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	stub.FailOn = []string{"emerge-webrsync"}
 
-	err := installer.MainInstallGentooInChroot(c)
+	err := installer.MainInstallGentooInChroot(ctx)
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		testingT.Fatal("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "emerge-webrsync") {
-		t.Fatalf("error should mention emerge-webrsync: %v", err)
+		testingT.Fatalf("error should mention emerge-webrsync: %v", err)
 	}
 }
 
-func TestAskYesNoNonInteractiveUsesDefault(t *testing.T) {
+func TestAskYesNoNonInteractiveUsesDefault(testingT *testing.T) {
 	stub := NewExecStub()
-	r := installer.NewRunner(discardWriter{t}, discardWriter{t})
-	r.Exec = stub
-	r.NonInteractive = true
+	runner := installer.NewRunner(discardWriter{testingT}, discardWriter{testingT})
+	runner.Exec = stub
+	runner.NonInteractive = true
 
-	yes, err := installer.AskYesNo(r, "Proceed?", true)
+	yes, err := installer.AskYesNo(runner, "Proceed?", true)
 	if err != nil || !yes {
-		t.Fatalf("expected default yes, got %v err %v", yes, err)
+		testingT.Fatalf("expected default yes, got %v err %v", yes, err)
 	}
-	no, err := installer.AskYesNo(r, "Proceed?", false)
+	no, err := installer.AskYesNo(runner, "Proceed?", false)
 	if err != nil || no {
-		t.Fatalf("expected default no, got %v err %v", no, err)
+		testingT.Fatalf("expected default no, got %v err %v", no, err)
 	}
 }
 
-func TestConfigProfilePackagesSelected(t *testing.T) {
+func TestConfigProfilePackagesSelected(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/desktop"
 	cfg.System.Timezone = "UTC"
 	cfg.System.Keymap = "us"
 	cfg.Disk.BootType = "bios"
 	cfg.Disk.UseSwap = false
-	c, s := testContext(t, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
-	mkScratchDir(t, c, "/etc")
-	kernelAndBootScaffold(t, c, "6.8.11-gentoo-dist", "")
-	c.EvalSymlinks = func(p string) (string, error) { return p, nil }
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	mkScratchDir(testingT, ctx, "/etc")
+	kernelAndBootScaffold(testingT, ctx, "6.8.11-gentoo-dist", "")
+	ctx.EvalSymlinks = func(path string) (string, error) { return path, nil }
 
-	if err := installer.MainInstallGentooInChroot(c); err != nil {
-		t.Fatal(err)
+	if err := installer.MainInstallGentooInChroot(ctx); err != nil {
+		testingT.Fatal(err)
 	}
 	pkgs := cfg.ProfilePackages()
 	if len(pkgs) == 0 {
-		t.Fatal("workstation profile should add packages")
+		testingT.Fatal("workstation profile should add packages")
 	}
 	want := append([]string{"emerge", "--verbose",
 		"--autounmask-continue=y", "--"}, pkgs...)
-	assertCmdContains(t, s, []string{installer.CommandLine(want[0], want[1:]...)})
+	assertCmdContains(testingT, stub, []string{installer.CommandLine(want[0], want[1:]...)})
 }

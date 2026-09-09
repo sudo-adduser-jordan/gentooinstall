@@ -50,26 +50,26 @@ func SupportsFilesystem(fs string) bool {
 func Devices() []string {
 	seen := map[string]bool{}
 	var out []string
-	add := func(p string, real string) {
-		if p == "" || seen[real] {
+	add := func(path string, real string) {
+		if path == "" || seen[real] {
 			return
 		}
 		seen[real] = true
-		out = append(out, p)
+		out = append(out, path)
 	}
-	for _, p := range byIDDevices() {
-		real, err := filepath.EvalSymlinks(p)
+	for _, path := range byIDDevices() {
+		real, err := filepath.EvalSymlinks(path)
 		if err != nil {
-			real = p
+			real = path
 		}
-		add(p, real)
+		add(path, real)
 	}
-	for _, p := range sysBlockDevices() {
-		real, err := filepath.EvalSymlinks(p)
+	for _, path := range sysBlockDevices() {
+		real, err := filepath.EvalSymlinks(path)
 		if err != nil {
-			real = p
+			real = path
 		}
-		add(p, real)
+		add(path, real)
 	}
 	sort.Strings(out)
 	return out
@@ -82,8 +82,8 @@ func byIDDevices() []string {
 		return nil
 	}
 	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, filepath.Join("/dev/disk/by-id", e.Name()))
+	for _, entry := range entries {
+		out = append(out, filepath.Join("/dev/disk/by-id", entry.Name()))
 	}
 	return out
 }
@@ -97,8 +97,8 @@ func sysBlockDevices() []string {
 		return nil
 	}
 	var out []string
-	for _, e := range entries {
-		name := e.Name()
+	for _, entry := range entries {
+		name := entry.Name()
 		if pseudoBlockDevice(name) {
 			continue
 		}
@@ -136,11 +136,11 @@ func CanonicalizeDevice(dev string) string {
 	if err != nil {
 		return dev
 	}
-	for _, e := range entries {
-		p := filepath.Join("/dev/disk/by-id", e.Name())
-		real, err := filepath.EvalSymlinks(p)
+	for _, entry := range entries {
+		path := filepath.Join("/dev/disk/by-id", entry.Name())
+		real, err := filepath.EvalSymlinks(path)
 		if err == nil && real == given {
-			return p
+			return path
 		}
 	}
 	return dev
@@ -154,8 +154,8 @@ func CurrentTimezone() string {
 		return compareTimezone()
 	}
 	const marker = "zoneinfo/"
-	if i := strings.LastIndex(link, marker); i >= 0 {
-		return link[i+len(marker):]
+	if index := strings.LastIndex(link, marker); index >= 0 {
+		return link[index+len(marker):]
 	}
 	return "Europe/London"
 }
@@ -167,7 +167,7 @@ func compareTimezone() string {
 	}
 	var found string
 	root := "/usr/share/zoneinfo"
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || found != "" {
 			if found != "" {
 				return filepath.SkipAll
@@ -192,14 +192,14 @@ func compareTimezone() string {
 func Timezones() []string {
 	root := "/usr/share/zoneinfo"
 	var out []string
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if d.IsDir() {
+		if entry.IsDir() {
 			return nil
 		}
-		if !d.Type().IsRegular() {
+		if !entry.Type().IsRegular() {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
@@ -218,18 +218,18 @@ func Keymaps() []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, root := range []string{"/usr/share/keymaps", "/usr/share/kbd/keymaps"} {
-		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
 				return nil
 			}
-			name := d.Name()
+			name := entry.Name()
 			if !strings.HasSuffix(name, ".map.gz") {
 				return nil
 			}
-			m := strings.TrimSuffix(name, ".map.gz")
-			if !seen[m] {
-				seen[m] = true
-				out = append(out, m)
+			keymapName := strings.TrimSuffix(name, ".map.gz")
+			if !seen[keymapName] {
+				seen[keymapName] = true
+				out = append(out, keymapName)
 			}
 			return nil
 		})
@@ -253,10 +253,10 @@ func DefaultKeymap(known []string) string {
 		for _, line := range strings.Split(string(data), "\n") {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "KEYMAP=") {
-				k := strings.Trim(line[len("KEYMAP="):], `"'`)
+				keymap := strings.Trim(line[len("KEYMAP="):], `"'`)
 				for _, cand := range known {
-					if cand == k {
-						return k
+					if cand == keymap {
+						return keymap
 					}
 				}
 			}
@@ -271,12 +271,12 @@ func SystemLocales() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.FieldsFunc(string(out), func(r rune) bool { return r == '\n' })
+	lines := strings.FieldsFunc(string(out), func(ch rune) bool { return ch == '\n' })
 	res := make([]string, 0, len(lines))
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if l != "" {
-			res = append(res, l)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			res = append(res, line)
 		}
 	}
 	sort.Strings(res)

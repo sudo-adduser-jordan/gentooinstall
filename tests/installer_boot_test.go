@@ -8,7 +8,7 @@ import (
 	"gentooinstall/lib/installer"
 )
 
-func TestVersionLess(t *testing.T) {
+func TestVersionLess(testingT *testing.T) {
 	cases := []struct {
 		a, b string
 		want bool
@@ -25,12 +25,12 @@ func TestVersionLess(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if got := installer.VersionLess(tc.a, tc.b); got != tc.want {
-			t.Fatalf("VersionLess(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+			testingT.Fatalf("VersionLess(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
 		}
 	}
 }
 
-func TestEfiBootmgrArgs(t *testing.T) {
+func TestEfiBootmgrArgs(testingT *testing.T) {
 	got := installer.EfiBootmgrArgs("/dev/sda", "1", "root=UUID=abc rd.vconsole.keymap=us")
 	want := []string{
 		"--verbose", "--create",
@@ -40,11 +40,11 @@ func TestEfiBootmgrArgs(t *testing.T) {
 		"--unicode", `initrd=\initramfs.img root=UUID=abc rd.vconsole.keymap=us`,
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("EfiBootmgrArgs = %#v, want %#v", got, want)
+		testingT.Fatalf("EfiBootmgrArgs = %#v, want %#v", got, want)
 	}
 }
 
-func TestDiskNames(t *testing.T) {
+func TestDiskNames(testingT *testing.T) {
 	cases := []struct {
 		name    string
 		entries []installer.RaidMember
@@ -55,9 +55,9 @@ func TestDiskNames(t *testing.T) {
 		{"multiple", []installer.RaidMember{{Disk: "/dev/sdb"}, {Disk: "/dev/sdc"}}, "/dev/sdb /dev/sdc"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+		testingT.Run(tc.name, func(testingT *testing.T) {
 			if got := installer.DiskNames(tc.entries); got != tc.want {
-				t.Fatalf("DiskNames = %q, want %q", got, tc.want)
+				testingT.Fatalf("DiskNames = %q, want %q", got, tc.want)
 			}
 		})
 	}

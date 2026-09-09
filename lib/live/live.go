@@ -60,8 +60,8 @@ func Interfaces() []string {
 		return nil
 	}
 	var out []string
-	for _, e := range entries {
-		name := e.Name()
+	for _, entry := range entries {
+		name := entry.Name()
 		if skipIfaces[name] || strings.HasPrefix(name, "veth") {
 			continue
 		}

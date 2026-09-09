@@ -85,14 +85,14 @@ func NewRunner(stdout, stderr io.Writer) *Runner {
 	}
 }
 
-func (r *Runner) logf(format string, args ...any) {
-	if r.Log != nil {
-		r.Log(format, args...)
+func (runner *Runner) logf(format string, args ...any) {
+	if runner.Log != nil {
+		runner.Log(format, args...)
 	}
 }
 
 // log is an alias used across the package.
-func (r *Runner) log(format string, args ...any) { r.logf(format, args...) }
+func (runner *Runner) log(format string, args ...any) { runner.logf(format, args...) }
 
 // DefaultOnFailure aborts unconditionally (non-interactive mode).
 func DefaultOnFailure(cmdline string, err error) FailAction { return FailAbort }
@@ -102,63 +102,63 @@ func CommandLine(name string, args ...string) string {
 	return strings.TrimSpace(name + " " + strings.Join(args, " "))
 }
 
-func (r *Runner) cmd(name string, args []string, stdin io.Reader, stream bool) *exec.Cmd {
+func (runner *Runner) cmd(name string, args []string, stdin io.Reader, stream bool) *exec.Cmd {
 	cmd := exec.Command(name, args...)
-	if r.Dir != "" {
-		cmd.Dir = r.Dir
+	if runner.Dir != "" {
+		cmd.Dir = runner.Dir
 	}
 	if stream {
-		cmd.Stdout = r.stdout()
-		cmd.Stderr = r.stderr()
+		cmd.Stdout = runner.stdout()
+		cmd.Stderr = runner.stderr()
 	}
-	cmd.Stdin = r.stdinOr(stdin)
+	cmd.Stdin = runner.stdinOr(stdin)
 	return cmd
 }
 
-func (r *Runner) stdout() io.Writer {
-	if r.Stdout != nil {
-		return r.Stdout
+func (runner *Runner) stdout() io.Writer {
+	if runner.Stdout != nil {
+		return runner.Stdout
 	}
 	return os.Stdout
 }
 
-func (r *Runner) stderr() io.Writer {
-	if r.Stderr != nil {
-		return r.Stderr
+func (runner *Runner) stderr() io.Writer {
+	if runner.Stderr != nil {
+		return runner.Stderr
 	}
 	return os.Stderr
 }
 
-func (r *Runner) stdinOr(fallback io.Reader) io.Reader {
+func (runner *Runner) stdinOr(fallback io.Reader) io.Reader {
 	if fallback != nil {
 		return fallback
 	}
-	if r.NonInteractive {
+	if runner.NonInteractive {
 		return nil // exec.Cmd: null device
 	}
-	if r.Stdin != nil {
-		return r.Stdin
+	if runner.Stdin != nil {
+		return runner.Stdin
 	}
 	return os.Stdin
 }
 
 // Run executes a command, streaming its output to the runner's writers.
-func (r *Runner) Run(name string, args ...string) error {
-	if r.Exec != nil {
-		return r.Exec.Run(name, args...)
+func (runner *Runner) Run(name string, args ...string) error {
+	if runner.Exec != nil {
+		return runner.Exec.Run(name, args...)
 	}
-	r.logf("$ %s", CommandLine(name, args...))
-	return r.cmd(name, args, nil, true).Run()
+	runner.logf("$ %s", CommandLine(name, args...))
+	return runner.cmd(name, args, nil, true).Run()
 }
 
 // QuietRun captures output without streaming it.
-func (r *Runner) QuietRun(name string, args ...string) (string, error) {
-	if r.Exec != nil {
-		return r.Exec.QuietRun(name, args...)
+func (runner *Runner) QuietRun(name string, args ...string) (string, error) {
+	if runner.Exec != nil {
+		return runner.Exec.QuietRun(name, args...)
 	}
-	r.logf("$ %s", CommandLine(name, args...))
+	runner.logf("$ %s", CommandLine(name, args...))
 	var buf bytes.Buffer
-	cmd := r.cmd(name, args, nil, false)
+	cmd := runner.cmd(name, args, nil, false)
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	err := cmd.Run()
@@ -166,36 +166,36 @@ func (r *Runner) QuietRun(name string, args ...string) (string, error) {
 }
 
 // RunWithStdin feeds stdin to the command.
-func (r *Runner) RunWithStdin(stdin string, name string, args ...string) error {
-	if r.Exec != nil {
-		return r.Exec.RunWithStdin(stdin, name, args...)
+func (runner *Runner) RunWithStdin(stdin string, name string, args ...string) error {
+	if runner.Exec != nil {
+		return runner.Exec.RunWithStdin(stdin, name, args...)
 	}
-	r.logf("$ %s  (stdin)", CommandLine(name, args...))
-	return r.cmd(name, args, strings.NewReader(stdin), true).Run()
+	runner.logf("$ %s  (stdin)", CommandLine(name, args...))
+	return runner.cmd(name, args, strings.NewReader(stdin), true).Run()
 }
 
 // Try runs a command with interactive failure handling (port of try()).
-func (r *Runner) Try(name string, args ...string) error {
-	if r.Exec != nil {
-		return r.Exec.Try(name, args...)
+func (runner *Runner) Try(name string, args ...string) error {
+	if runner.Exec != nil {
+		return runner.Exec.Try(name, args...)
 	}
 	line := CommandLine(name, args...)
 	for {
-		r.logf("$ %s", line)
-		cmd := r.cmd(name, args, nil, true)
+		runner.logf("$ %s", line)
+		cmd := runner.cmd(name, args, nil, true)
 		err := cmd.Run()
 		if err == nil {
 			return nil
 		}
 
-		fmt.Fprintf(r.stderr(), " * Command failed: \x1b[1;33m$\x1b[m %s\n", line)
+		fmt.Fprintf(runner.stderr(), " * Command failed: \x1b[1;33m$\x1b[m %s\n", line)
 		var code any = "?"
 		if ee, ok := err.(*exec.ExitError); ok {
 			code = ee.ExitCode()
 		}
-		fmt.Fprintln(r.stderr(), "Last command failed with exit code", code)
+		fmt.Fprintln(runner.stderr(), "Last command failed with exit code", code)
 
-		onFail := r.OnFailure
+		onFail := runner.OnFailure
 		if onFail == nil {
 			onFail = DefaultOnFailure
 		}
@@ -204,7 +204,7 @@ func (r *Runner) Try(name string, args ...string) error {
 		case FailRetry:
 			continue
 		case FailPrint:
-			fmt.Fprintf(r.stderr(), "\x1b[1;33m$\x1b[m %s\n", line)
+			fmt.Fprintf(runner.stderr(), "\x1b[1;33m$\x1b[m %s\n", line)
 			goto prompt
 		case FailContinue:
 			return nil
@@ -223,9 +223,9 @@ func HasProgram(name string) bool {
 // HasProgram reports whether a program is available, using LookPath when
 // set (so tests can control host-dependent availability) and otherwise
 // falling back to the package-level HasProgram.
-func (r *Runner) HasProgram(name string) bool {
-	if r.LookPath != nil {
-		return r.LookPath(name)
+func (runner *Runner) HasProgram(name string) bool {
+	if runner.LookPath != nil {
+		return runner.LookPath(name)
 	}
 	return HasProgram(name)
 }

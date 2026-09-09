@@ -29,32 +29,32 @@ const (
 
 // EstimateInstallSize returns a human-readable approximation of the total
 // installed size for the current configuration.
-func (c *Config) EstimateInstallSize() string {
+func (cfg *Config) EstimateInstallSize() string {
 	var giB float64
-	if strings.Contains(c.Gentoo.Stage3Variant, "desktop") {
+	if strings.Contains(cfg.Gentoo.Stage3Variant, "desktop") {
 		giB += baseInstalledDesktopGiB
 	} else {
 		giB += baseInstalledMinimalGiB
 	}
 
-	switch c.Gentoo.PortageSyncType {
+	switch cfg.Gentoo.PortageSyncType {
 	case "rsync":
 		giB += portageTreeGiB
 	default:
 		giB += portageTreeGiB
-		if c.Gentoo.PortageGitFullHistory {
+		if cfg.Gentoo.PortageGitFullHistory {
 			giB += portageGitFullHistoryGiB
 		}
 	}
 
-	if c.Packages.KernelType == "source" {
+	if cfg.Packages.KernelType == "source" {
 		giB += kernelSourceGiB
 	} else {
 		giB += kernelBinGiB
 	}
 
-	pkgs := len(c.ProfilePackages()) + len(c.Packages.Additional) +
-		len(c.Packages.CustomPackages)
+	pkgs := len(cfg.ProfilePackages()) + len(cfg.Packages.Additional) +
+		len(cfg.Packages.CustomPackages)
 	giB += float64(pkgs) * perPackageGiB
 
 	return fmt.Sprintf("~%.1f GiB", giB)
@@ -63,19 +63,19 @@ func (c *Config) EstimateInstallSize() string {
 // EstimatePackageCount returns an approximation of the total number of
 // packages installed on the new system: the stage3 base for the selected
 // variant, the profile set, user-selected packages and fixed system pieces.
-func (c *Config) EstimatePackageCount() int {
+func (cfg *Config) EstimatePackageCount() int {
 	base := basePackagesMinimal
-	if strings.Contains(c.Gentoo.Stage3Variant, "desktop") {
+	if strings.Contains(cfg.Gentoo.Stage3Variant, "desktop") {
 		base = basePackagesDesktop
 	}
-	n := base + len(c.ProfilePackages()) + len(c.Packages.Additional) +
-		len(c.Packages.CustomPackages)
-	n++ // kernel
-	if c.Packages.EnableSSHD {
-		n++
+	count := base + len(cfg.ProfilePackages()) + len(cfg.Packages.Additional) +
+		len(cfg.Packages.CustomPackages)
+	count++ // kernel
+	if cfg.Packages.EnableSSHD {
+		count++
 	}
-	if c.System.InitramfsSSHD {
-		n++
+	if cfg.System.InitramfsSSHD {
+		count++
 	}
-	return n
+	return count
 }

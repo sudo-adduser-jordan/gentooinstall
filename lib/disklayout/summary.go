@@ -17,7 +17,7 @@ type SummaryNode struct {
 
 // Summary builds the configured-disk-layout tree shown before applying
 // (port of summarize_disk_actions / print_summary_tree).
-func (l *Layout) Summary() []*SummaryNode {
+func (layout *Layout) Summary() []*SummaryNode {
 	type nodeInfo struct {
 		node     *SummaryNode
 		children []string
@@ -25,10 +25,10 @@ func (l *Layout) Summary() []*SummaryNode {
 	nodes := map[string]*nodeInfo{}
 	var order []string
 
-	add := func(parent string, n *SummaryNode) {
-		if _, ok := nodes[n.ID]; !ok {
-			order = append(order, n.ID)
-			nodes[n.ID] = &nodeInfo{node: n}
+	add := func(parent string, node *SummaryNode) {
+		if _, ok := nodes[node.ID]; !ok {
+			order = append(order, node.ID)
+			nodes[node.ID] = &nodeInfo{node: node}
 		}
 		if _, ok := nodes[parent]; !ok && parent != "__root__" {
 			nodes[parent] = &nodeInfo{node: &SummaryNode{ID: parent}}
@@ -37,63 +37,63 @@ func (l *Layout) Summary() []*SummaryNode {
 		if nodes[parent] == nil {
 			nodes[parent] = &nodeInfo{}
 		}
-		nodes[parent].children = append(nodes[parent].children, n.ID)
+		nodes[parent].children = append(nodes[parent].children, node.ID)
 	}
 
-	for _, a := range l.Actions {
-		switch a.Action {
+	for _, action := range layout.Actions {
+		switch action.Action {
 		case ActExisting:
-			add("__root__", &SummaryNode{ID: a.NewID, Name: a.Device, Hint: "(no-format, existing)"})
+			add("__root__", &SummaryNode{ID: action.NewID, Name: action.Device, Hint: "(no-format, existing)"})
 		case ActCreateGPT:
-			if a.ID != "" {
-				add(a.ID, &SummaryNode{ID: a.NewID, Name: "gpt"})
+			if action.ID != "" {
+				add(action.ID, &SummaryNode{ID: action.NewID, Name: "gpt"})
 			} else {
-				add("__root__", &SummaryNode{ID: a.NewID, Name: a.Device, Desc: "(gpt)"})
+				add("__root__", &SummaryNode{ID: action.NewID, Name: action.Device, Desc: "(gpt)"})
 			}
 		case ActCreatePartition:
-			add(a.ID, &SummaryNode{ID: a.NewID, Name: "part",
-				Hint: "(" + a.Type + ")", Desc: fmt.Sprintf("size=%s", a.Size)})
+			add(action.ID, &SummaryNode{ID: action.NewID, Name: "part",
+				Hint: "(" + action.Type + ")", Desc: fmt.Sprintf("size=%s", action.Size)})
 		case ActCreateRaid:
-			for _, m := range a.IDs {
-				add(m, &SummaryNode{ID: "_" + a.NewID,
-					Name: fmt.Sprintf("raid%d", a.Level),
-					Desc: fmt.Sprintf("name=%s", a.Name)})
+			for _, member := range action.IDs {
+				add(member, &SummaryNode{ID: "_" + action.NewID,
+					Name: fmt.Sprintf("raid%d", action.Level),
+					Desc: fmt.Sprintf("name=%s", action.Name)})
 			}
-			add("__root__", &SummaryNode{ID: a.NewID,
-				Name: fmt.Sprintf("raid%d", a.Level),
-				Desc: fmt.Sprintf("name=%s", a.Name)})
+			add("__root__", &SummaryNode{ID: action.NewID,
+				Name: fmt.Sprintf("raid%d", action.Level),
+				Desc: fmt.Sprintf("name=%s", action.Name)})
 		case ActCreateLuks:
-			if a.ID != "" {
-				add(a.ID, &SummaryNode{ID: a.NewID, Name: "luks"})
+			if action.ID != "" {
+				add(action.ID, &SummaryNode{ID: action.NewID, Name: "luks"})
 			} else {
-				add("__root__", &SummaryNode{ID: a.NewID, Name: a.Device, Desc: "(luks)"})
+				add("__root__", &SummaryNode{ID: action.NewID, Name: action.Device, Desc: "(luks)"})
 			}
 		case ActCreateDummy:
-			add("__root__", &SummaryNode{ID: a.NewID, Name: a.Device})
+			add("__root__", &SummaryNode{ID: action.NewID, Name: action.Device})
 		case ActFormat:
-			add(a.ID, &SummaryNode{ID: "__fs__" + a.ID, Name: a.Type, Hint: "(fs)",
-				Desc: labelDesc(a.Label)})
+			add(action.ID, &SummaryNode{ID: "__fs__" + action.ID, Name: action.Type, Hint: "(fs)",
+				Desc: labelDesc(action.Label)})
 		case ActFormatZFS:
-			for _, m := range a.IDs {
-				add(m, &SummaryNode{ID: "__fs__" + m, Name: "zfs", Hint: "(fs)"})
+			for _, member := range action.IDs {
+				add(member, &SummaryNode{ID: "__fs__" + member, Name: "zfs", Hint: "(fs)"})
 			}
 		case ActFormatBtrfs:
-			for _, m := range a.IDs {
-				add(m, &SummaryNode{ID: "__fs__" + m, Name: "btrfs", Hint: "(fs)",
-					Desc: labelDesc(a.Label)})
+			for _, member := range action.IDs {
+				add(member, &SummaryNode{ID: "__fs__" + member, Name: "btrfs", Hint: "(fs)",
+					Desc: labelDesc(action.Label)})
 			}
 		}
 	}
 
 	roleOf := func(id string) string {
 		switch id {
-		case l.BIOSID:
+		case layout.BIOSID:
 			return "bios"
-		case l.EFIID:
+		case layout.EFIID:
 			return "efi"
-		case l.SwapID:
+		case layout.SwapID:
 			return "swap"
-		case l.RootID:
+		case layout.RootID:
 			return "root"
 		}
 		return ""
@@ -106,9 +106,9 @@ func (l *Layout) Summary() []*SummaryNode {
 		if info == nil {
 			return
 		}
-		n := len(info.children)
-		for i, cid := range info.children {
-			last := i == n-1
+		count := len(info.children)
+		for index, childID := range info.children {
+			last := index == count-1
 			var ind, childPrefix string
 			if !suppressConnector {
 				conn := "├─ "
@@ -119,7 +119,7 @@ func (l *Layout) Summary() []*SummaryNode {
 				}
 				ind = prefix + conn
 			}
-			child := nodes[cid].node
+			child := nodes[childID].node
 			out = append(out, &SummaryNode{
 				ID:     child.ID,
 				Name:   child.Name,
@@ -128,7 +128,7 @@ func (l *Layout) Summary() []*SummaryNode {
 				Role:   roleOf(child.ID),
 				Indent: ind,
 			})
-			walk(cid, childPrefix, false)
+			walk(childID, childPrefix, false)
 		}
 	}
 	walk("__root__", "", true)
@@ -152,12 +152,12 @@ func displayID(id string) string {
 }
 
 // SummaryPlain renders the tree as aligned plain text.
-func (l *Layout) SummaryPlain() string {
+func (layout *Layout) SummaryPlain() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%-40s %-24s %s\n", "NODE", "ID", "OPTIONS"))
-	for _, n := range l.Summary() {
+	for _, node := range layout.Summary() {
 		ptr := ""
-		switch n.Role {
+		switch node.Role {
 		case "bios":
 			ptr = "<- bios"
 		case "efi":
@@ -167,17 +167,17 @@ func (l *Layout) SummaryPlain() string {
 		case "root":
 			ptr = "<- root"
 		}
-		name := n.Name
-		if n.Hint != "" {
-			name += " " + n.Hint
+		name := node.Name
+		if node.Hint != "" {
+			name += " " + node.Hint
 		}
-		opts := n.Desc
+		opts := node.Desc
 		if opts == "" {
 			opts = ptr
 		} else if ptr != "" {
 			opts += "  " + ptr
 		}
-		sb.WriteString(fmt.Sprintf("%s%-36s %-24s %s\n", n.Indent, name, displayID(n.ID), opts))
+		sb.WriteString(fmt.Sprintf("%s%-36s %-24s %s\n", node.Indent, name, displayID(node.ID), opts))
 	}
 	return sb.String()
 }

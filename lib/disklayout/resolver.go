@@ -31,12 +31,12 @@ type Resolver struct {
 // SetResolvedDevices seeds fixed device paths for the given layout ids so
 // ResolveDevice returns them verbatim (no blkid/lsblk/filesystem probing).
 // Intended for tests only; production code never sets this.
-func (r *Resolver) SetResolvedDevices(m map[string]string) {
-	if r.overrides == nil && len(m) > 0 {
-		r.overrides = map[string]string{}
+func (resolver *Resolver) SetResolvedDevices(devices map[string]string) {
+	if resolver.overrides == nil && len(devices) > 0 {
+		resolver.overrides = map[string]string{}
 	}
-	for k, v := range m {
-		r.overrides[k] = v
+	for key, value := range devices {
+		resolver.overrides[key] = value
 	}
 }
 
@@ -59,8 +59,8 @@ func GetBlkidField(field, device string) (string, error) {
 		return "", fmt.Errorf("error while executing blkid %q: %w", device, err)
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if v, ok := strings.CutPrefix(line, field+"="); ok {
-			return v, nil
+		if value, ok := strings.CutPrefix(line, field+"="); ok {
+			return value, nil
 		}
 	}
 	return "", fmt.Errorf("could not find %s=... in blkid output for %s", field, device)
@@ -68,21 +68,21 @@ func GetBlkidField(field, device string) (string, error) {
 
 // deviceByPartuuid resolves a partition id via the udev symlink, falling
 // back to a direct blkid scan of the device nodes.
-func (r *Resolver) deviceByPartuuid(u string) (string, error) {
-	p := filepath.Join("/dev/disk/by-partuuid", u)
-	if _, err := os.Stat(p); err == nil {
-		return p, nil
+func (resolver *Resolver) deviceByPartuuid(partUUID string) (string, error) {
+	path := filepath.Join("/dev/disk/by-partuuid", partUUID)
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
 	}
-	return DeviceByBlkidField("PARTUUID", u)
+	return DeviceByBlkidField("PARTUUID", partUUID)
 }
 
 // DeviceByUuid resolves via /dev/disk/by-uuid or blkid.
-func DeviceByUuid(u string) (string, error) {
-	p := filepath.Join("/dev/disk/by-uuid", u)
-	if _, err := os.Stat(p); err == nil {
-		return p, nil
+func DeviceByUuid(uuid string) (string, error) {
+	path := filepath.Join("/dev/disk/by-uuid", uuid)
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
 	}
-	return DeviceByBlkidField("UUID", u)
+	return DeviceByBlkidField("UUID", uuid)
 }
 
 // DeviceByBlkidField searches all block devices for a matching field.
@@ -105,50 +105,50 @@ func DeviceByBlkidField(field, value string) (string, error) {
 		return "", fmt.Errorf("error while executing blkid to find %s=%s: %w", field, value, err)
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if v, ok := strings.CutPrefix(line, "DEVNAME="); ok {
-			return v, nil
+		if value, ok := strings.CutPrefix(line, "DEVNAME="); ok {
+			return value, nil
 		}
 	}
 	return "", fmt.Errorf("could not find DEVNAME=... in blkid output")
 }
 
-func (r *Resolver) lsblkOutput() (string, error) {
-	if r.cachedLsblk != "" {
-		return r.cachedLsblk, nil
+func (resolver *Resolver) lsblkOutput() (string, error) {
+	if resolver.cachedLsblk != "" {
+		return resolver.cachedLsblk, nil
 	}
 	out, err := runOut("lsblk", "--all", "--path", "--pairs", "--output", "NAME,PTUUID,PARTUUID")
 	if err != nil {
 		return "", fmt.Errorf("error while executing lsblk: %w", err)
 	}
-	r.cachedLsblk = out
+	resolver.cachedLsblk = out
 	return out, nil
 }
 
 // CacheLsblkOutput pre-caches lsblk output before entering a chroot.
-func (r *Resolver) CacheLsblkOutput() error {
+func (resolver *Resolver) CacheLsblkOutput() error {
 	out, err := runOut("lsblk", "--all", "--path", "--pairs", "--output", "NAME,PTUUID,PARTUUID")
 	if err != nil {
 		return fmt.Errorf("error while executing lsblk to cache output: %w", err)
 	}
-	r.cachedLsblk = out
+	resolver.cachedLsblk = out
 	return nil
 }
 
 // SetCachedLsblk seeds the cache from the parent environment
 // (GENTOO_CACHED_LSBLK passthrough into the chroot).
-func (r *Resolver) SetCachedLsblk(v string) {
-	if strings.TrimSpace(v) != "" {
-		r.cachedLsblk = v
+func (resolver *Resolver) SetCachedLsblk(value string) {
+	if strings.TrimSpace(value) != "" {
+		resolver.cachedLsblk = value
 	}
 }
 
 // CachedEnvValue exposes CACHED_LSBLK_OUTPUT for chroot env passthrough.
-func (r *Resolver) CachedEnvValue() string { return r.cachedLsblk }
+func (resolver *Resolver) CachedEnvValue() string { return resolver.cachedLsblk }
 
 // DeviceByPtUuid finds the whole-disk device with the given PTUUID.
-func (r *Resolver) DeviceByPtUuid(ptuuid string) (string, error) {
+func (resolver *Resolver) DeviceByPtUuid(ptuuid string) (string, error) {
 	ptuuid = strings.ToLower(ptuuid)
-	out, err := r.lsblkOutput()
+	out, err := resolver.lsblkOutput()
 	if err != nil {
 		return "", err
 	}
@@ -174,28 +174,28 @@ func (r *Resolver) DeviceByPtUuid(ptuuid string) (string, error) {
 	return "", fmt.Errorf("could not find PTUUID=%s in lsblk output", ptuuid)
 }
 
-func deviceByPtUuidFromBlkid(u string) (string, error) {
+func deviceByPtUuidFromBlkid(ptuuid string) (string, error) {
 	blocks, err := os.ReadDir("/sys/block")
 	if err != nil {
 		return "", err
 	}
-	for _, b := range blocks {
-		if !b.Type().IsDir() {
+	for _, block := range blocks {
+		if !block.Type().IsDir() {
 			continue
 		}
-		dev := filepath.Join("/dev", b.Name())
+		dev := filepath.Join("/dev", block.Name())
 		out, err := runOut("blkid", "-p", "-o", "export", dev)
 		if err != nil {
 			continue
 		}
 		for _, line := range strings.Split(out, "\n") {
-			if v, ok := strings.CutPrefix(line, "PTUUID="); ok &&
-				strings.ToLower(strings.TrimSpace(v)) == u {
+			if value, ok := strings.CutPrefix(line, "PTUUID="); ok &&
+				strings.ToLower(strings.TrimSpace(value)) == ptuuid {
 				return dev, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("could not find PTUUID=%s in blkid probes", u)
+	return "", fmt.Errorf("could not find PTUUID=%s in blkid probes", ptuuid)
 }
 
 // DeviceByMdadmUuid resolves an array uuid to its /dev/md/ device.
@@ -209,8 +209,8 @@ func DeviceByMdadmUuid(uuid string) (string, error) {
 		low := strings.ToLower(line)
 		if strings.Contains(low, "uuid="+mduuid) && strings.HasPrefix(low, "array") {
 			dev := strings.TrimPrefix(line, "ARRAY")
-			if i := strings.Index(dev, "metadata="); i >= 0 {
-				dev = dev[:i]
+			if index := strings.Index(dev, "metadata="); index >= 0 {
+				dev = dev[:index]
 			}
 			return strings.TrimSpace(dev), nil
 		}
@@ -219,13 +219,13 @@ func DeviceByMdadmUuid(uuid string) (string, error) {
 }
 
 // ResolveDevice resolves the given id to a canonicalized device path.
-func (r *Resolver) ResolveDevice(id string) (string, error) {
-	if r.overrides != nil {
-		if dev, ok := r.overrides[id]; ok {
+func (resolver *Resolver) ResolveDevice(id string) (string, error) {
+	if resolver.overrides != nil {
+		if dev, ok := resolver.overrides[id]; ok {
 			return dev, nil
 		}
 	}
-	entry, ok := r.Layout.resolvable[id]
+	entry, ok := resolver.Layout.resolvable[id]
 	if !ok {
 		return "", fmt.Errorf("cannot resolve id=%q to a block device (no table entry)", id)
 	}
@@ -234,13 +234,13 @@ func (r *Resolver) ResolveDevice(id string) (string, error) {
 	var err error
 	switch entry.Type {
 	case "partuuid":
-		dev, err = r.deviceByPartuuid(entry.Arg)
+		dev, err = resolver.deviceByPartuuid(entry.Arg)
 	case "ptuuid":
-		dev, err = r.DeviceByPtUuid(entry.Arg)
+		dev, err = resolver.DeviceByPtUuid(entry.Arg)
 	case "uuid":
 		dev, err = DeviceByUuid(entry.Arg)
 	case "mdadm":
-		dev, err = DeviceByMdadmUuid(r.Layout.uuids[id])
+		dev, err = DeviceByMdadmUuid(resolver.Layout.uuids[id])
 	case "luks":
 		dev = "/dev/mapper/" + entry.Arg
 	case "device":
@@ -265,14 +265,14 @@ func Canonicalize(dev string) string {
 		return dev
 	}
 	best := ""
-	for _, e := range entries {
-		p := filepath.Join("/dev/disk/by-id", e.Name())
-		real, err := filepath.EvalSymlinks(p)
+	for _, entry := range entries {
+		path := filepath.Join("/dev/disk/by-id", entry.Name())
+		real, err := filepath.EvalSymlinks(path)
 		if err == nil && real == given {
 			// Prefer entries without a partition suffix for whole disks,
 			// but any match is acceptable; keep the first sorted one.
-			if best == "" || p < best {
-				best = p
+			if best == "" || path < best {
+				best = path
 			}
 		}
 	}

@@ -21,49 +21,49 @@ type Parsed struct {
 // ParseArgs parses args (typically os.Args[1:]) without side effects:
 // no printing, no os.Exit. Errors mirror the fatal messages in main.go.
 func ParseArgs(args []string) (Parsed, error) {
-	var p Parsed
-	i := 0
-	for i < len(args) {
-		a := args[i]
-		switch a {
+	var parsed Parsed
+	index := 0
+	for index < len(args) {
+		arg := args[index]
+		switch arg {
 		case "-h", "--help", "help":
-			p.ShowHelp = true
-			return p, nil
+			parsed.ShowHelp = true
+			return parsed, nil
 		case "-v", "--version":
-			p.ShowVersion = true
-			return p, nil
+			parsed.ShowVersion = true
+			return parsed, nil
 		case "-c", "--config":
-			if i+1 >= len(args) {
-				return p, fmt.Errorf("--config requires a path")
+			if index+1 >= len(args) {
+				return parsed, fmt.Errorf("--config requires a path")
 			}
-			i++
-			p.CfgPath = args[i]
+			index++
+			parsed.CfgPath = args[index]
 		case "install":
-			if p.Mode == "gif" {
-				return p, fmt.Errorf("invalid argument '%s'", a)
+			if parsed.Mode == "gif" {
+				return parsed, fmt.Errorf("invalid argument '%s'", arg)
 			}
-			p.Mode = "install"
+			parsed.Mode = "install"
 		case "gif":
-			if p.Mode == "install" {
-				return p, fmt.Errorf("invalid argument '%s'", a)
+			if parsed.Mode == "install" {
+				return parsed, fmt.Errorf("invalid argument '%s'", arg)
 			}
-			p.Mode = "gif"
-			p.Rest = args[i+1:]
-			i = len(args)
+			parsed.Mode = "gif"
+			parsed.Rest = args[index+1:]
+			index = len(args)
 		case "chroot":
-			p.Mode = "chroot"
-			p.Rest = args[i+1:]
-			i = len(args)
+			parsed.Mode = "chroot"
+			parsed.Rest = args[index+1:]
+			index = len(args)
 		case "--in-chroot":
-			p.Mode = "in-chroot"
+			parsed.Mode = "in-chroot"
 		default:
-			if p.CfgPath == "" && !strings.HasPrefix(a, "-") {
-				p.CfgPath = a // positional config for TUI/install mode
+			if parsed.CfgPath == "" && !strings.HasPrefix(arg, "-") {
+				parsed.CfgPath = arg // positional config for TUI/install mode
 			} else {
-				return p, fmt.Errorf("invalid argument '%s'", a)
+				return parsed, fmt.Errorf("invalid argument '%s'", arg)
 			}
 		}
-		i++
+		index++
 	}
-	return p, nil
+	return parsed, nil
 }

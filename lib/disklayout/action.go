@@ -93,26 +93,26 @@ type Layout struct {
 }
 
 // UUIDOf returns the generated uuid for a registered id.
-func (l *Layout) UUIDOf(id string) (string, bool) {
-	u, ok := l.uuids[id]
-	return u, ok
+func (layout *Layout) UUIDOf(id string) (string, bool) {
+	uuid, exists := layout.uuids[id]
+	return uuid, exists
 }
 
 // ParentGPTOf returns the gpt table id a partition belongs to.
-func (l *Layout) ParentGPTOf(partID string) (string, bool) {
-	g, ok := l.partGPT[partID]
-	return g, ok
+func (layout *Layout) ParentGPTOf(partID string) (string, bool) {
+	gptID, exists := layout.partGPT[partID]
+	return gptID, exists
 }
 
 // ExpandIDs returns all registered ids matching regex, joined with ';'
 // (port of expand_ids).
-func (l *Layout) ExpandIDs(regex string) (string, error) {
+func (layout *Layout) ExpandIDs(regex string) (string, error) {
 	re, err := regexp.Compile(regex)
 	if err != nil {
 		return "", err
 	}
 	var out []string
-	for _, id := range l.order {
+	for _, id := range layout.order {
 		if re.MatchString(id) {
 			out = append(out, id)
 		}
@@ -121,11 +121,11 @@ func (l *Layout) ExpandIDs(regex string) (string, error) {
 }
 
 // SplitIDList splits a ';'-separated id list, dropping empties.
-func SplitIDList(s string) []string {
+func SplitIDList(list string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ";") {
-		if p != "" {
-			out = append(out, p)
+	for _, part := range strings.Split(list, ";") {
+		if part != "" {
+			out = append(out, part)
 		}
 	}
 	return out
@@ -153,14 +153,14 @@ func onlyOneOf(device, id string) error {
 	return nil
 }
 
-func (l *Layout) verifyExisting(field, id string) error {
-	if _, ok := l.uuids[id]; !ok {
+func (layout *Layout) verifyExisting(field, id string) error {
+	if _, ok := layout.uuids[id]; !ok {
 		return fmt.Errorf("%s=%q not found", field, id)
 	}
 	return nil
 }
 
-func (l *Layout) verifyOption(opt, arg string, allowed ...string) error {
+func (layout *Layout) verifyOption(opt, arg string, allowed ...string) error {
 	if slices.Contains(allowed, arg) {
 		return nil
 	}

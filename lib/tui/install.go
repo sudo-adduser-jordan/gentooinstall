@@ -27,57 +27,57 @@ func FirmwareBlockError(bootType string, hasEFI bool) error {
 }
 
 // layoutForDisplay builds the disk layout for preview purposes.
-func layoutForDisplay(c *config.Config) (*disklayout.Layout, error) {
-	return disklayout.BuildFromConfig(c, "")
+func layoutForDisplay(cfg *config.Config) (*disklayout.Layout, error) {
+	return disklayout.BuildFromConfig(cfg, "")
 }
 
 // ActiveTab exposes the current tab index (used by tests).
-func (m *Model) ActiveTab() int { return m.active }
+func (model *Model) ActiveTab() int { return model.active }
 
 // Dirty reports whether unsaved changes exist (used by tests).
-func (m *Model) Dirty() bool { return m.dirty }
+func (model *Model) Dirty() bool { return model.dirty }
 
 // Config exposes the edited configuration (used by tests).
-func (m *Model) Config() *config.Config { return m.cfg }
+func (model *Model) Config() *config.Config { return model.cfg }
 
-func (m *Model) confirmInstall() (tea.Model, tea.Cmd) {
-	if err := FirmwareBlockError(m.cfg.Disk.BootType, m.hasEFI); err != nil {
-		m.overlay = overlay{
+func (model *Model) confirmInstall() (tea.Model, tea.Cmd) {
+	if err := FirmwareBlockError(model.cfg.Disk.BootType, model.hasEFI); err != nil {
+		model.overlay = overlay{
 			kind:    ovButtons,
 			title:   eWarn + " Firmware mismatch",
 			body:    err.Error(),
 			buttons: []string{"Dismiss"},
 			btnCur:  0,
-			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },
+			onBtn:   func(mm *Model, index int) { mm.overlay.kind = ovNone },
 		}
-		return m, nil
+		return model, nil
 	}
-	l, err := layoutForDisplay(m.cfg)
+	layout, err := layoutForDisplay(model.cfg)
 	if err != nil {
-		m.setStatusErr("disk configuration error: " + err.Error())
-		return m, nil
+		model.setStatusErr("disk configuration error: " + err.Error())
+		return model, nil
 	}
-	if errs := m.cfg.Validate(); len(errs) > 0 {
-		m.setStatusErr("configuration is invalid")
-		return m, nil
+	if errs := model.cfg.Validate(); len(errs) > 0 {
+		model.setStatusErr("configuration is invalid")
+		return model, nil
 	}
-	if err := disklayout.CheckBootTypeConsistency(m.cfg, l); err != nil {
-		m.overlay = overlay{
+	if err := disklayout.CheckBootTypeConsistency(model.cfg, layout); err != nil {
+		model.overlay = overlay{
 			kind:    ovButtons,
 			title:   eWarn + " Configuration mismatch",
 			body:    err.Error(),
 			buttons: []string{"Dismiss"},
 			btnCur:  0,
-			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },
+			onBtn:   func(mm *Model, index int) { mm.overlay.kind = ovNone },
 		}
-		return m, nil
+		return model, nil
 	}
 	if !sysinfo.SupportsFilesystem("vfat") {
 		mountpoint := "/boot/bios"
-		if m.cfg.Disk.BootType == "efi" {
+		if model.cfg.Disk.BootType == "efi" {
 			mountpoint = "/boot/efi"
 		}
-		m.overlay = overlay{
+		model.overlay = overlay{
 			kind:  ovButtons,
 			title: eWarn + " Missing vfat support",
 			body: "The live kernel has no vfat support so " + mountpoint +
@@ -86,49 +86,49 @@ func (m *Model) confirmInstall() (tea.Model, tea.Cmd) {
 				"retrying cannot help.",
 			buttons: []string{"Dismiss"},
 			btnCur:  0,
-			onBtn:   func(mm *Model, i int) { mm.overlay.kind = ovNone },
+			onBtn:   func(mm *Model, index int) { mm.overlay.kind = ovNone },
 		}
-		return m, nil
+		return model, nil
 	}
 
 	var targets []string
-	if l.Flags.NoPartitioningOrFormatting {
+	if layout.Flags.NoPartitioningOrFormatting {
 		targets = append(targets, "(existing partitions will be reused)")
 	} else {
-		targets = append(targets, m.cfg.Disk.Device)
-		targets = append(targets, m.cfg.Disk.Devices...)
+		targets = append(targets, model.cfg.Disk.Device)
+		targets = append(targets, model.cfg.Disk.Devices...)
 	}
 	body := "This will DESTROY all data on:\n  " + joinNonEmpty(targets, "\n  ") +
-		"\n\nEffective boot mode: " + m.cfg.Disk.BootType +
-		" (EFIID=" + l.EFIID + " BIOSID=" + l.BIOSID + ")" +
+		"\n\nEffective boot mode: " + model.cfg.Disk.BootType +
+		" (EFIID=" + layout.EFIID + " BIOSID=" + layout.BIOSID + ")" +
 		"\nThe partitioning step cannot be undone. Continue?"
 
-	m.overlay = overlay{
+	model.overlay = overlay{
 		kind:    ovButtons,
 		title:   "Apply this disk configuration?",
 		body:    body,
 		buttons: []string{"Start installation", "Cancel"},
 		btnCur:  1,
-		onBtn: func(mm *Model, i int) {
-			if i == 0 {
+		onBtn: func(mm *Model, index int) {
+			if index == 0 {
 				mm.requestStartInstall()
 			}
 		},
 	}
-	m.usedEnc = l.Flags.UsedEncryption
-	return m, nil
+	model.usedEnc = layout.Flags.UsedEncryption
+	return model, nil
 }
 
 func joinNonEmpty(xs []string, sep string) string {
 	out := ""
-	for _, x := range xs {
-		if x == "" {
+	for _, item := range xs {
+		if item == "" {
 			continue
 		}
 		if out != "" {
 			out += sep
 		}
-		out += x
+		out += item
 	}
 	return out
 }

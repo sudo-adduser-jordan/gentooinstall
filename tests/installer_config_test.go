@@ -10,238 +10,238 @@ import (
 	"gentooinstall/lib/installer"
 )
 
-func TestConfigureBaseSystemSystemd(t *testing.T) {
+func TestConfigureBaseSystemSystemd(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.System.Timezone = "Europe/Berlin"
 	cfg.System.Keymap = "de"
-	c, s := testContext(t, cfg, nil)
-	mkScratchDir(t, c, "/etc")
+	ctx, stub := testContext(testingT, cfg, nil)
+	mkScratchDir(testingT, ctx, "/etc")
 
-	if err := installer.ConfigureBaseSystem(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureBaseSystem(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"locale-gen",
 		"systemd-machine-id-setup",
 		"ln -sfn ../usr/share/zoneinfo/Europe/Berlin /etc/localtime",
 		"env-update",
 	)
-	if got := readScratch(t, c, "/etc/hostname"); got != "gentoo\n" {
-		t.Fatalf("/etc/hostname = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/hostname"); got != "gentoo\n" {
+		testingT.Fatalf("/etc/hostname = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/vconsole.conf"); got != "KEYMAP=de\n" {
-		t.Fatalf("/etc/vconsole.conf = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/vconsole.conf"); got != "KEYMAP=de\n" {
+		testingT.Fatalf("/etc/vconsole.conf = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/locale.conf"); got != "LANG=C.UTF-8\n" {
-		t.Fatalf("/etc/locale.conf = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/locale.conf"); got != "LANG=C.UTF-8\n" {
+		testingT.Fatalf("/etc/locale.conf = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/locale.gen"); got != "C.UTF-8 UTF-8\n" {
-		t.Fatalf("/etc/locale.gen = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/locale.gen"); got != "C.UTF-8 UTF-8\n" {
+		testingT.Fatalf("/etc/locale.gen = %q", got)
 	}
 }
 
-func TestConfigureBaseSystemOpenRC(t *testing.T) {
+func TestConfigureBaseSystemOpenRC(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.Stage3Variant = "openrc"
 	cfg.System.Timezone = "UTC"
 	cfg.System.Keymap = "de"
-	c, s := testContext(t, cfg, nil)
-	writeScratch(t, c, "/etc/conf.d/hostname", "hostname=\"host\"\n")
-	writeScratch(t, c, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
+	ctx, stub := testContext(testingT, cfg, nil)
+	writeScratch(testingT, ctx, "/etc/conf.d/hostname", "hostname=\"host\"\n")
+	writeScratch(testingT, ctx, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
 
-	if err := installer.ConfigureBaseSystem(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureBaseSystem(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"locale-gen",
 		"emerge -v --config sys-libs/timezone-data",
 		"eselect locale set C.UTF-8",
 		"env-update",
 	)
-	if got := readScratch(t, c, "/etc/conf.d/hostname"); got != "hostname=\"gentoo\"\n" {
-		t.Fatalf("/etc/conf.d/hostname = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/conf.d/hostname"); got != "hostname=\"gentoo\"\n" {
+		testingT.Fatalf("/etc/conf.d/hostname = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/conf.d/keymaps"); got != "keymap=\"de\"\n" {
-		t.Fatalf("/etc/conf.d/keymaps = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/conf.d/keymaps"); got != "keymap=\"de\"\n" {
+		testingT.Fatalf("/etc/conf.d/keymaps = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/timezone"); got != "UTC\n" {
-		t.Fatalf("/etc/timezone = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/timezone"); got != "UTC\n" {
+		testingT.Fatalf("/etc/timezone = %q", got)
 	}
 }
 
-func TestConfigureBaseSystemMuslOpenRC(t *testing.T) {
+func TestConfigureBaseSystemMuslOpenRC(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.Stage3Variant = "musl"
 	cfg.System.Timezone = "Asia/Tokyo"
 	cfg.System.Keymap = "jp106"
-	c, s := testContext(t, cfg, nil)
-	writeScratch(t, c, "/etc/conf.d/hostname", "hostname=\"host\"\n")
-	writeScratch(t, c, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
-	mkScratchDir(t, c, "/etc/env.d")
+	ctx, stub := testContext(testingT, cfg, nil)
+	writeScratch(testingT, ctx, "/etc/conf.d/hostname", "hostname=\"host\"\n")
+	writeScratch(testingT, ctx, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
+	mkScratchDir(testingT, ctx, "/etc/env.d")
 
-	if err := installer.ConfigureBaseSystem(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureBaseSystem(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"emerge --verbose sys-apps/musl-locales",
 		"emerge -v sys-libs/timezone-data",
 		"eselect locale set C.UTF-8",
 		"env-update",
 	)
-	envDir := readScratch(t, c, "/etc/env.d/00local")
+	envDir := readScratch(testingT, ctx, "/etc/env.d/00local")
 	for _, want := range []string{"MUSL_LOCPATH=\"/usr/share/i18n/locales/musl\"", "TZ=\"Asia/Tokyo\""} {
 		if !strings.Contains(envDir, want) {
-			t.Fatalf("/etc/env.d/00local missing %q:\n%s", want, envDir)
+			testingT.Fatalf("/etc/env.d/00local missing %q:\n%s", want, envDir)
 		}
 	}
 }
 
-func TestConfigurePortage(t *testing.T) {
+func TestConfigurePortage(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Packages.UseFlags = []string{"networkmanager", ""}
-	c, _ := testContext(t, cfg, nil)
+	ctx, _ := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigurePortage(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigurePortage(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	makeConf := readScratch(t, c, "/etc/portage/make.conf")
+	makeConf := readScratch(testingT, ctx, "/etc/portage/make.conf")
 	if !strings.Contains(makeConf, "MAKEOPTS=\"-j8\"") {
-		t.Fatalf("make.conf missing MAKEOPTS:\n%s", makeConf)
+		testingT.Fatalf("make.conf missing MAKEOPTS:\n%s", makeConf)
 	}
-	if got := readScratch(t, c, "/etc/portage/package.use/user"); got != "networkmanager\n" {
-		t.Fatalf("package.use/user = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/portage/package.use/user"); got != "networkmanager\n" {
+		testingT.Fatalf("package.use/user = %q", got)
 	}
-	for _, f := range []string{"zz-autounmask", "zz-autounmask"} {
-		if _, err := os.Stat(filepath.Join(c.Root, "/etc/portage/package.use/"+f)); err != nil {
-			t.Fatalf("missing %s: %v", f, err)
+	for _, name := range []string{"zz-autounmask", "zz-autounmask"} {
+		if _, err := os.Stat(filepath.Join(ctx.Root, "/etc/portage/package.use/"+name)); err != nil {
+			testingT.Fatalf("missing %s: %v", name, err)
 		}
 	}
-	if got := readScratch(t, c, "/etc/portage/package.keywords/zz-autounmask"); got != "" {
-		t.Fatalf("package.keywords/zz-autounmask = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/portage/package.keywords/zz-autounmask"); got != "" {
+		testingT.Fatalf("package.keywords/zz-autounmask = %q", got)
 	}
-	if got := readScratch(t, c, "/etc/portage/package.license"); got != "" {
-		t.Fatalf("package.license = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/portage/package.license"); got != "" {
+		testingT.Fatalf("package.license = %q", got)
 	}
 }
 
-func TestConfigurePortageBinpkg(t *testing.T) {
+func TestConfigurePortageBinpkg(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Packages.EnableBinpkg = true
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigurePortage(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigurePortage(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmdContains(t, s, []string{"getuto", "chmod 644 /etc/portage/gnupg/pubring.kbx"})
-	makeConf := readScratch(t, c, "/etc/portage/make.conf")
+	assertCmdContains(testingT, stub, []string{"getuto", "chmod 644 /etc/portage/gnupg/pubring.kbx"})
+	makeConf := readScratch(testingT, ctx, "/etc/portage/make.conf")
 	if !strings.Contains(makeConf, "FEATURES=\"getbinpkg binpkg-request-signature\"") {
-		t.Fatalf("make.conf missing binpkg FEATURES:\n%s", makeConf)
+		testingT.Fatalf("make.conf missing binpkg FEATURES:\n%s", makeConf)
 	}
 }
 
-func TestConfigurePortageMirrorselect(t *testing.T) {
+func TestConfigurePortageMirrorselect(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.SelectMirrors = true
 	cfg.Gentoo.SelectMirrorsLargeFile = true
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigurePortage(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigurePortage(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmdContains(t, s, []string{
+	assertCmdContains(testingT, stub, []string{
 		"emerge --verbose --oneshot app-portage/mirrorselect",
 		"mirrorselect -s 4 -b 10 -D",
 	})
 }
 
-func TestConfigureGitSync(t *testing.T) {
+func TestConfigureGitSync(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigureGitSync(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureGitSync(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s, "emerge --sync")
-	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	assertCmds(testingT, stub, "emerge --sync")
+	conf := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf")
 	for _, want := range []string{"sync-type = git", "sync-depth = 1", "auto-sync = yes",
 		"sync-git-verify-commit-signature = yes"} {
 		if !strings.Contains(conf, want) {
-			t.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
+			testingT.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
 		}
 	}
 }
 
-func TestConfigureGitSyncFullHistorySkipsSyncCommand(t *testing.T) {
+func TestConfigureGitSyncFullHistorySkipsSyncCommand(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.PortageGitFullHistory = true
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigureGitSync(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureGitSync(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	if got := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf"); !strings.Contains(got, "sync-depth = 0") {
-		t.Fatalf("expected full history sync-depth = 0:\n%s", got)
+	if got := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf"); !strings.Contains(got, "sync-depth = 0") {
+		testingT.Fatalf("expected full history sync-depth = 0:\n%s", got)
 	}
-	assertCmds(t, s, "emerge --sync")
+	assertCmds(testingT, stub, "emerge --sync")
 }
 
-func TestConfigureGitSyncSkipsRsync(t *testing.T) {
+func TestConfigureGitSyncSkipsRsync(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.PortageSyncType = "rsync"
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigureGitSync(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureGitSync(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	if len(s.Calls()) != 0 {
-		t.Fatalf("rsync sync should issue no commands, got %v", s.Lines())
+	if len(stub.Calls()) != 0 {
+		testingT.Fatalf("rsync sync should issue no commands, got %v", stub.Lines())
 	}
 }
 
-func TestWriteReposConfGit(t *testing.T) {
+func TestWriteReposConfGit(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.WriteReposConf(c); err != nil {
-		t.Fatal(err)
+	if err := installer.WriteReposConf(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	conf := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf")
 	for _, want := range []string{"main-repo = gentoo", "sync-type = git",
 		"sync-depth = 1", "sync-uri = https://anongit.gentoo.org/git/repo/sync/gentoo.git",
 		"auto-sync = yes", "sync-git-verify-commit-signature = yes"} {
 		if !strings.Contains(conf, want) {
-			t.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
+			testingT.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "/var/db/repos/gentoo")); err != nil {
-		t.Fatalf("repository location should exist: %v", err)
+	if _, err := os.Stat(filepath.Join(ctx.Root, "/var/db/repos/gentoo")); err != nil {
+		testingT.Fatalf("repository location should exist: %v", err)
 	}
-	if len(s.Calls()) != 0 {
-		t.Fatalf("WriteReposConf should issue no commands, got %v", s.Lines())
+	if len(stub.Calls()) != 0 {
+		testingT.Fatalf("WriteReposConf should issue no commands, got %v", stub.Lines())
 	}
 }
 
-func TestWriteReposConfRsync(t *testing.T) {
+func TestWriteReposConfRsync(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.PortageSyncType = "rsync"
 	cfg.Gentoo.PortageRsyncMirror = "rsync://mirror.example.invalid/gentoo-portage"
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.WriteReposConf(c); err != nil {
-		t.Fatal(err)
+	if err := installer.WriteReposConf(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	conf := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf")
 	for _, want := range []string{"main-repo = gentoo", "sync-type = rsync",
 		"sync-uri = rsync://mirror.example.invalid/gentoo-portage", "auto-sync = yes"} {
 		if !strings.Contains(conf, want) {
-			t.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
+			testingT.Fatalf("gentoo.conf missing %q:\n%s", want, conf)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "/var/db/repos/gentoo")); err != nil {
-		t.Fatalf("repository location should exist: %v", err)
+	if _, err := os.Stat(filepath.Join(ctx.Root, "/var/db/repos/gentoo")); err != nil {
+		testingT.Fatalf("repository location should exist: %v", err)
 	}
-	if len(s.Calls()) != 0 {
-		t.Fatalf("WriteReposConf should issue no commands, got %v", s.Lines())
+	if len(stub.Calls()) != 0 {
+		testingT.Fatalf("WriteReposConf should issue no commands, got %v", stub.Lines())
 	}
 }
 
@@ -249,42 +249,42 @@ func TestWriteReposConfRsync(t *testing.T) {
 // configured: emerge-webrsync rejects git-typed repos with an "invalid sync
 // type" validation failure. The flip to git happens later in
 // ConfigureGitSync.
-func TestSeedPortageTree(t *testing.T) {
+func TestSeedPortageTree(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	if cfg.Gentoo.PortageSyncType != "git" {
-		t.Fatalf("precondition: default sync type = %q, want git", cfg.Gentoo.PortageSyncType)
+		testingT.Fatalf("precondition: default sync type = %q, want git", cfg.Gentoo.PortageSyncType)
 	}
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 	// A stale git checkout from a previous run must not survive the seed.
-	mkScratchDir(t, c, "/var/db/repos/gentoo/.git")
+	mkScratchDir(testingT, ctx, "/var/db/repos/gentoo/.git")
 
-	if err := installer.SeedPortageTree(c); err != nil {
-		t.Fatal(err)
+	if err := installer.SeedPortageTree(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	conf := readScratch(t, c, "/etc/portage/repos.conf/gentoo.conf")
+	conf := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf")
 	for _, want := range []string{"sync-type = rsync", "auto-sync = yes"} {
 		if !strings.Contains(conf, want) {
-			t.Fatalf("seed gentoo.conf missing %q:\n%s", want, conf)
+			testingT.Fatalf("seed gentoo.conf missing %q:\n%s", want, conf)
 		}
 	}
 	if strings.Contains(conf, "sync-type = git") {
-		t.Fatalf("seed gentoo.conf must not be git-typed:\n%s", conf)
+		testingT.Fatalf("seed gentoo.conf must not be git-typed:\n%s", conf)
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "/var/db/repos/gentoo/.git")); !os.IsNotExist(err) {
-		t.Fatalf("stale .git checkout should be cleared, stat err: %v", err)
+	if _, err := os.Stat(filepath.Join(ctx.Root, "/var/db/repos/gentoo/.git")); !os.IsNotExist(err) {
+		testingT.Fatalf("stale .git checkout should be cleared, stat err: %v", err)
 	}
-	assertCmds(t, s, "emerge-webrsync")
+	assertCmds(testingT, stub, "emerge-webrsync")
 }
 
-func TestEnableRepositories(t *testing.T) {
+func TestEnableRepositories(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Packages.EnablingRepos = []string{"guru", "kde"}
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.EnableRepositories(c); err != nil {
-		t.Fatal(err)
+	if err := installer.EnableRepositories(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"emerge --quiet app-eselect/eselect-repository",
 		"eselect repository enable guru kde",
 		"emaint sync -r guru",
@@ -292,111 +292,111 @@ func TestEnableRepositories(t *testing.T) {
 	)
 }
 
-func TestEnableRepositoriesNone(t *testing.T) {
+func TestEnableRepositoriesNone(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.EnableRepositories(c); err != nil {
-		t.Fatal(err)
+	if err := installer.EnableRepositories(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	if len(s.Calls()) != 0 {
-		t.Fatalf("no repos should issue no commands, got %v", s.Lines())
+	if len(stub.Calls()) != 0 {
+		testingT.Fatalf("no repos should issue no commands, got %v", stub.Lines())
 	}
 }
 
-func TestConfigureNetworkingSystemdDHCP(t *testing.T) {
+func TestConfigureNetworkingSystemdDHCP(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigureNetworking(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureNetworking(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"systemctl enable systemd-networkd",
 		"systemctl enable systemd-resolved",
 		"chown root:systemd-network /etc/systemd/network/20-wired.network",
 		"chmod 640 /etc/systemd/network/20-wired.network",
 	)
-	unit := readScratch(t, c, "/etc/systemd/network/20-wired.network")
+	unit := readScratch(testingT, ctx, "/etc/systemd/network/20-wired.network")
 	if want := "[Match]\nName=en*\n\n[Network]\nDHCP=yes"; unit != want {
-		t.Fatalf("networkd unit:\n%s\nwant:%s", unit, want)
+		testingT.Fatalf("networkd unit:\n%s\nwant:%s", unit, want)
 	}
 }
 
-func TestConfigureNetworkingSystemdStatic(t *testing.T) {
+func TestConfigureNetworkingSystemdStatic(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.System.SystemdNetworkdDHCP = false
-	c, _ := testContext(t, cfg, nil)
+	ctx, _ := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigureNetworking(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureNetworking(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	unit := readScratch(t, c, "/etc/systemd/network/20-wired.network")
+	unit := readScratch(testingT, ctx, "/etc/systemd/network/20-wired.network")
 	for _, want := range []string{"Address=192.168.1.100/32", "Address=fd00::1/64", "Gateway=192.168.1.1"} {
 		if !strings.Contains(unit, want) {
-			t.Fatalf("networkd unit missing %q:\n%s", want, unit)
+			testingT.Fatalf("networkd unit missing %q:\n%s", want, unit)
 		}
 	}
 }
 
-func TestConfigureNetworkingOpenRC(t *testing.T) {
+func TestConfigureNetworkingOpenRC(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Gentoo.Stage3Variant = "openrc"
-	c, s := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	if err := installer.ConfigureNetworking(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ConfigureNetworking(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"emerge --verbose net-misc/dhcpcd",
 		"rc-update add dhcpcd default",
 	)
 }
 
-func TestEnableSSHDAndAuthorizedKeys(t *testing.T) {
+func TestEnableSSHDAndAuthorizedKeys(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Packages.RootSSHAuthorizedKeys = []string{"ssh-ed25519 AAAA test@host"}
-	c, _ := testContext(t, cfg, nil)
+	ctx, _ := testContext(testingT, cfg, nil)
 
-	if err := installer.EnableSSHD(c); err != nil {
-		t.Fatal(err)
+	if err := installer.EnableSSHD(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	if err := installer.InstallAuthorizedKeys(c); err != nil {
-		t.Fatal(err)
+	if err := installer.InstallAuthorizedKeys(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	if got := readScratch(t, c, "/etc/ssh/sshd_config"); !strings.HasPrefix(got, "#") {
-		t.Fatalf("sshd_config = %q", got)
+	if got := readScratch(testingT, ctx, "/etc/ssh/sshd_config"); !strings.HasPrefix(got, "#") {
+		testingT.Fatalf("sshd_config = %q", got)
 	}
-	if got := readScratch(t, c, "/root/.ssh/authorized_keys"); got != "ssh-ed25519 AAAA test@host\n" {
-		t.Fatalf("authorized_keys = %q", got)
+	if got := readScratch(testingT, ctx, "/root/.ssh/authorized_keys"); got != "ssh-ed25519 AAAA test@host\n" {
+		testingT.Fatalf("authorized_keys = %q", got)
 	}
 }
 
-func TestEnableAuthorizedKeysNone(t *testing.T) {
+func TestEnableAuthorizedKeysNone(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, _ := testContext(t, cfg, nil)
+	ctx, _ := testContext(testingT, cfg, nil)
 
-	if err := installer.InstallAuthorizedKeys(c); err != nil {
-		t.Fatal(err)
+	if err := installer.InstallAuthorizedKeys(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "/root/.ssh/authorized_keys")); err == nil {
-		t.Fatal("authorized_keys written despite empty config")
+	if _, err := os.Stat(filepath.Join(ctx.Root, "/root/.ssh/authorized_keys")); err == nil {
+		testingT.Fatal("authorized_keys written despite empty config")
 	}
 }
 
-func TestEnableServiceSwitchByInit(t *testing.T) {
+func TestEnableServiceSwitchByInit(testingT *testing.T) {
 	systemd := classicCfg("/dev/sdX", false, false)
-	cs, ss := testContext(t, systemd, nil)
+	cs, ss := testContext(testingT, systemd, nil)
 	if err := installer.EnableService(cs, "foo"); err != nil {
-		t.Fatal(err)
+		testingT.Fatal(err)
 	}
-	assertCmds(t, ss, "systemctl enable foo")
+	assertCmds(testingT, ss, "systemctl enable foo")
 
 	openrc := classicCfg("/dev/sdX", false, false)
 	openrc.Gentoo.Stage3Variant = "openrc"
-	co, so := testContext(t, openrc, nil)
+	co, so := testContext(testingT, openrc, nil)
 	if err := installer.EnableService(co, "foo"); err != nil {
-		t.Fatal(err)
+		testingT.Fatal(err)
 	}
-	assertCmds(t, so, "rc-update add foo default")
+	assertCmds(testingT, so, "rc-update add foo default")
 }

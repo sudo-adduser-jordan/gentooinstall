@@ -33,17 +33,17 @@ const csiQueryTimeout = 1200 * time.Millisecond
 // the terminal itself, so it is safe to call while the TUI owns the
 // screen. ok is false when no usable size is known.
 func GetWinsize() (cols, rows int, ok bool) {
-	for _, f := range []*os.File{os.Stdout, os.Stdin} {
-		if c, r, good := winsizeOf(int(f.Fd())); good {
-			return c, r, true
+	for _, file := range []*os.File{os.Stdout, os.Stdin} {
+		if width, height, valid := winsizeOf(int(file.Fd())); valid {
+			return width, height, true
 		}
 	}
 	for _, path := range []string{"/dev/console", "/dev/ttyS0"} {
-		if f, err := os.OpenFile(path, os.O_RDONLY, 0); err == nil {
-			c, r, good := winsizeOf(int(f.Fd()))
-			_ = f.Close()
-			if good {
-				return c, r, true
+		if file, err := os.OpenFile(path, os.O_RDONLY, 0); err == nil {
+			width, height, valid := winsizeOf(int(file.Fd()))
+			_ = file.Close()
+			if valid {
+				return width, height, true
 			}
 		}
 	}
@@ -56,8 +56,8 @@ func GetWinsize() (cols, rows int, ok bool) {
 // reports 0x0 there). Must run before the TUI enters the alt-screen: the
 // reply arrives on stdin and would otherwise land in the TUI input.
 func DetectWinsize() (cols, rows int, ok bool) {
-	if c, r, good := GetWinsize(); good {
-		return c, r, true
+	if width, height, valid := GetWinsize(); valid {
+		return width, height, true
 	}
 	return queryTerminalSize(os.Stdin, os.Stdout)
 }
@@ -70,13 +70,13 @@ func ApplyWinsize(cols, rows int) {
 		return
 	}
 	ws := &unix.Winsize{Row: uint16(rows), Col: uint16(cols)}
-	for _, f := range []*os.File{os.Stdin, os.Stdout} {
-		_ = unix.IoctlSetWinsize(int(f.Fd()), unix.TIOCSWINSZ, ws)
+	for _, file := range []*os.File{os.Stdin, os.Stdout} {
+		_ = unix.IoctlSetWinsize(int(file.Fd()), unix.TIOCSWINSZ, ws)
 	}
 	for _, path := range []string{"/dev/console", "/dev/ttyS0"} {
-		if f, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
-			_ = unix.IoctlSetWinsize(int(f.Fd()), unix.TIOCSWINSZ, ws)
-			_ = f.Close()
+		if file, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
+			_ = unix.IoctlSetWinsize(int(file.Fd()), unix.TIOCSWINSZ, ws)
+			_ = file.Close()
 		}
 	}
 }
@@ -124,11 +124,11 @@ func queryTerminalSize(in, out *os.File) (int, int, bool) {
 	tmp := make([]byte, 64)
 	deadline := time.Now().Add(csiQueryTimeout)
 	for time.Now().Before(deadline) {
-		n, err := in.Read(tmp)
-		if n > 0 {
-			buf = append(buf, tmp[:n]...)
-			if c, r, good := ParseCSITextAreaReply(buf); good {
-				return c, r, true
+		length, err := in.Read(tmp)
+		if length > 0 {
+			buf = append(buf, tmp[:length]...)
+			if width, height, valid := ParseCSITextAreaReply(buf); valid {
+				return width, height, true
 			}
 		}
 		if err != nil {
@@ -139,33 +139,33 @@ func queryTerminalSize(in, out *os.File) (int, int, bool) {
 }
 
 // ParseCSITextAreaReply extracts the last "ESC[8;rows;cols t" report from
-// b (terminals may echo setup noise first). Exported for tests.
-func ParseCSITextAreaReply(b []byte) (cols, rows int, ok bool) {
+// data (terminals may echo setup noise first). Exported for tests.
+func ParseCSITextAreaReply(data []byte) (cols, rows int, ok bool) {
 	found := false
-	for i := 0; i+6 < len(b); i++ {
-		if b[i] != 0x1b || b[i+1] != '[' || b[i+2] != '8' || b[i+3] != ';' {
+	for index := 0; index+6 < len(data); index++ {
+		if data[index] != 0x1b || data[index+1] != '[' || data[index+2] != '8' || data[index+3] != ';' {
 			continue
 		}
-		j := i + 4
-		r := 0
-		for j < len(b) && b[j] >= '0' && b[j] <= '9' {
-			r = r*10 + int(b[j]-'0')
-			j++
+		pos := index + 4
+		rowsNum := 0
+		for pos < len(data) && data[pos] >= '0' && data[pos] <= '9' {
+			rowsNum = rowsNum*10 + int(data[pos]-'0')
+			pos++
 		}
-		if j >= len(b) || b[j] != ';' {
+		if pos >= len(data) || data[pos] != ';' {
 			continue
 		}
-		j++
-		c := 0
-		for j < len(b) && b[j] >= '0' && b[j] <= '9' {
-			c = c*10 + int(b[j]-'0')
-			j++
+		pos++
+		colsNum := 0
+		for pos < len(data) && data[pos] >= '0' && data[pos] <= '9' {
+			colsNum = colsNum*10 + int(data[pos]-'0')
+			pos++
 		}
-		if j >= len(b) || b[j] != 't' {
+		if pos >= len(data) || data[pos] != 't' {
 			continue
 		}
-		if clampedSize(c, r) {
-			cols, rows, found = c, r, true
+		if clampedSize(colsNum, rowsNum) {
+			cols, rows, found = colsNum, rowsNum, true
 		}
 	}
 	return cols, rows, found

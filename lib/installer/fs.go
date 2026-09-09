@@ -11,24 +11,24 @@ import (
 // package constants in context.go; explicit parameter paths (mountpoints,
 // chroot dirs, tarball locations) are passed to commands as-is and never run
 // through here.
-func (c *Context) path(p string) string {
-	if c.Root == "" {
-		return p
+func (ctx *Context) path(path string) string {
+	if ctx.Root == "" {
+		return path
 	}
-	return filepath.Join(c.Root, p)
+	return filepath.Join(ctx.Root, path)
 }
 
-func (c *Context) writeFile(p string, data []byte, mode os.FileMode) error {
-	return os.WriteFile(c.path(p), data, mode)
+func (ctx *Context) writeFile(path string, data []byte, mode os.FileMode) error {
+	return os.WriteFile(ctx.path(path), data, mode)
 }
 
-func (c *Context) appendFile(p, line string) error {
-	f, err := os.OpenFile(c.path(p), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+func (ctx *Context) appendFile(path, line string) error {
+	file, err := os.OpenFile(ctx.path(path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return fmt.Errorf("could not write to %s: %w", p, err)
+		return fmt.Errorf("could not write to %s: %w", path, err)
 	}
-	defer f.Close()
-	if _, err := f.WriteString(line + "\n"); err != nil {
+	defer file.Close()
+	if _, err := file.WriteString(line + "\n"); err != nil {
 		return err
 	}
 	return nil
@@ -36,68 +36,68 @@ func (c *Context) appendFile(p, line string) error {
 
 // touchFile creates path if missing without truncating existing content
 // (byte-compatible with the bash `touch` of configure_portage).
-func (c *Context) touchFile(p string) error {
-	f, err := os.OpenFile(c.path(p), os.O_CREATE|os.O_WRONLY, 0o644)
+func (ctx *Context) touchFile(path string) error {
+	file, err := os.OpenFile(ctx.path(path), os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	return f.Close()
+	return file.Close()
 }
 
-func (c *Context) stat(p string) (os.FileInfo, error) {
-	if c.Stat != nil {
-		return c.Stat(p)
+func (ctx *Context) stat(path string) (os.FileInfo, error) {
+	if ctx.Stat != nil {
+		return ctx.Stat(path)
 	}
-	return os.Stat(p)
+	return os.Stat(path)
 }
 
 // hostHasEFI reports whether the running firmware is UEFI-capable: the
 // kernel exposes /sys/firmware/efi only on a UEFI boot.
-func (c *Context) hostHasEFI() bool {
-	_, err := c.stat("/sys/firmware/efi")
+func (ctx *Context) hostHasEFI() bool {
+	_, err := ctx.stat("/sys/firmware/efi")
 	return err == nil
 }
 
 // HostHasEFI is the exported form of hostHasEFI for preflight logging in
 // main.go: it honors the Stat stub so tests stay host-independent.
-func (c *Context) HostHasEFI() bool { return c.hostHasEFI() }
+func (ctx *Context) HostHasEFI() bool { return ctx.hostHasEFI() }
 
 // HostBootMode renders the running firmware as "UEFI" or "BIOS/legacy" for
 // install summaries and logs.
-func (c *Context) HostBootMode() string {
-	if c.hostHasEFI() {
+func (ctx *Context) HostBootMode() string {
+	if ctx.hostHasEFI() {
 		return "UEFI"
 	}
 	return "BIOS/legacy (no /sys/firmware/efi)"
 }
 
-func (c *Context) mkdirAll(p string, mode os.FileMode) error {
-	return os.MkdirAll(c.path(p), mode)
+func (ctx *Context) mkdirAll(path string, mode os.FileMode) error {
+	return os.MkdirAll(ctx.path(path), mode)
 }
 
-func (c *Context) chmod(p string, mode os.FileMode) error {
-	return os.Chmod(c.path(p), mode)
+func (ctx *Context) chmod(path string, mode os.FileMode) error {
+	return os.Chmod(ctx.path(path), mode)
 }
 
-func (c *Context) readFile(p string) ([]byte, error) {
-	return os.ReadFile(c.path(p))
+func (ctx *Context) readFile(path string) ([]byte, error) {
+	return os.ReadFile(ctx.path(path))
 }
 
-func (c *Context) readDir(p string) ([]os.DirEntry, error) {
-	return os.ReadDir(c.path(p))
+func (ctx *Context) readDir(path string) ([]os.DirEntry, error) {
+	return os.ReadDir(ctx.path(path))
 }
 
-func (c *Context) readlink(p string) (string, error) {
-	return os.Readlink(c.path(p))
+func (ctx *Context) readlink(path string) (string, error) {
+	return os.Readlink(ctx.path(path))
 }
 
-func (c *Context) removeAll(p string) error {
-	return os.RemoveAll(c.path(p))
+func (ctx *Context) removeAll(path string) error {
+	return os.RemoveAll(ctx.path(path))
 }
 
-func (c *Context) evalSymlinks(p string) (string, error) {
-	if c.EvalSymlinks != nil {
-		return c.EvalSymlinks(p)
+func (ctx *Context) evalSymlinks(path string) (string, error) {
+	if ctx.EvalSymlinks != nil {
+		return ctx.EvalSymlinks(path)
 	}
-	return filepath.EvalSymlinks(p)
+	return filepath.EvalSymlinks(path)
 }

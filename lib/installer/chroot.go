@@ -26,15 +26,15 @@ func IsMountpoint(path string) bool {
 	return false
 }
 
-func unescapeMount(s string) string {
-	s = strings.ReplaceAll(s, `\040`, " ")
-	s = strings.ReplaceAll(s, `\011`, "\t")
-	return s
+func unescapeMount(str string) string {
+	str = strings.ReplaceAll(str, `\040`, " ")
+	str = strings.ReplaceAll(str, `\011`, "\t")
+	return str
 }
 
-func (c *Context) isMountpoint(path string) bool {
-	if c.IsMountpoint != nil {
-		return c.IsMountpoint(path)
+func (ctx *Context) isMountpoint(path string) bool {
+	if ctx.IsMountpoint != nil {
+		return ctx.IsMountpoint(path)
 	}
 	return IsMountpoint(path)
 }
@@ -42,11 +42,11 @@ func (c *Context) isMountpoint(path string) bool {
 // MountEfiVars mounts efivarfs when not already present. It is only called
 // for EFI layouts and fails fast when the live system is not running under
 // UEFI, where efivarfs cannot exist.
-func MountEfiVars(c *Context) error {
-	if c.isMountpoint("/sys/firmware/efi/efivars") {
+func MountEfiVars(ctx *Context) error {
+	if ctx.isMountpoint("/sys/firmware/efi/efivars") {
 		return nil
 	}
-	if !c.hostHasEFI() {
+	if !ctx.hostHasEFI() {
 		return fmt.Errorf("cannot mount efivarfs: the live system was not booted " +
 			"in UEFI mode (/sys/firmware/efi is missing) but the configuration " +
 			`requests an EFI install (disk.boot_type = "efi"); the live ISO is ` +
@@ -56,11 +56,11 @@ func MountEfiVars(c *Context) error {
 			`-drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd) or switch to a ` +
 			`legacy-BIOS install with disk.boot_type = "bios" (e.g. builds/bios.toml)`)
 	}
-	c.R.log("Mounting efivars")
-	if err := c.mkdirAll("/sys/firmware/efi/efivars", 0o755); err != nil {
+	ctx.Runner.log("Mounting efivars")
+	if err := ctx.mkdirAll("/sys/firmware/efi/efivars", 0o755); err != nil {
 		return fmt.Errorf("could not create efivars mountpoint: %w", err)
 	}
-	if err := c.R.Try("mount", "-t", "efivarfs", "efivarfs",
+	if err := ctx.Runner.Try("mount", "-t", "efivarfs", "efivarfs",
 		"/sys/firmware/efi/efivars"); err != nil {
 		return fmt.Errorf("could not mount efivarfs: %w", err)
 	}
@@ -71,8 +71,8 @@ func MountEfiVars(c *Context) error {
 // supported by the running firmware: an EFI layout on a non-UEFI boot can
 // never mount efivarfs or register boot entries later, so it is rejected
 // before any destructive partitioning happens.
-func CheckHostBootMode(c *Context) error {
-	if c.IsEFI() && !c.hostHasEFI() {
+func CheckHostBootMode(ctx *Context) error {
+	if ctx.IsEFI() && !ctx.hostHasEFI() {
 		return fmt.Errorf("configuration uses an EFI boot partition but the live " +
 			"system was not booted in UEFI mode (/sys/firmware/efi is missing); " +
 			"the live ISO is hybrid BIOS+UEFI, so either reboot it under UEFI " +
@@ -86,9 +86,9 @@ func CheckHostBootMode(c *Context) error {
 
 // SupportsFilesystem reports whether the running kernel supports fs,
 // honoring the Filesystems stub so tests stay host-independent.
-func (c *Context) SupportsFilesystem(fs string) bool {
-	if c.Filesystems != nil {
-		return c.Filesystems(fs)
+func (ctx *Context) SupportsFilesystem(fs string) bool {
+	if ctx.Filesystems != nil {
+		return ctx.Filesystems(fs)
 	}
 	return sysinfo.SupportsFilesystem(fs)
 }
@@ -99,15 +99,15 @@ func (c *Context) SupportsFilesystem(fs string) bool {
 // dies late at mount exit 32 after the stage3 download; reject it before
 // any destructive partitioning instead, with the rebuild-ISO remedy (a
 // retry can never fix a missing kernel driver).
-func CheckFilesystemSupport(c *Context) error {
-	if c.Layout == nil {
+func CheckFilesystemSupport(ctx *Context) error {
+	if ctx.Layout == nil {
 		return nil
 	}
 	mountpoint := "/boot/bios"
-	if c.IsEFI() {
+	if ctx.IsEFI() {
 		mountpoint = "/boot/efi"
 	}
-	if c.SupportsFilesystem("vfat") {
+	if ctx.SupportsFilesystem("vfat") {
 		return nil
 	}
 	return fmt.Errorf("the live kernel has no vfat support so %s cannot be mounted "+
@@ -149,12 +149,12 @@ func hasNameserver(data []byte) bool {
 }
 
 // MountByID mounts the device identified by id at mountpoint.
-func MountByID(c *Context, id, mountpoint string) error {
-	if c.isMountpoint(mountpoint) {
+func MountByID(ctx *Context, id, mountpoint string) error {
+	if ctx.isMountpoint(mountpoint) {
 		// Already mounted: reuse it only when it is the expected device.
 		// A stale mount from a previous layout must never be silently
 		// reused (a later mkfs/cleanup would hit the wrong filesystem).
-		dev, err := resolveID(c, id)
+		dev, err := resolveID(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -166,15 +166,15 @@ func MountByID(c *Context, id, mountpoint string) error {
 		}
 		return nil
 	}
-	c.R.logf("Mounting device with id=%s to '%s'", id, mountpoint)
-	if err := c.mkdirAll(mountpoint, 0o755); err != nil {
+	ctx.Runner.logf("Mounting device with id=%s to '%s'", id, mountpoint)
+	if err := ctx.mkdirAll(mountpoint, 0o755); err != nil {
 		return fmt.Errorf("could not create mountpoint directory '%s': %w", mountpoint, err)
 	}
-	dev, err := resolveID(c, id)
+	dev, err := resolveID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if err := c.R.Try("mount", dev, mountpoint); err != nil {
+	if err := ctx.Runner.Try("mount", dev, mountpoint); err != nil {
 		return fmt.Errorf("could not mount device '%s': %w", dev, err)
 	}
 	return nil
@@ -215,15 +215,15 @@ func EnsureDevSymlinks(chrootDir string) error {
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return fmt.Errorf("could not create '%s': %w", devDir, err)
 	}
-	for _, s := range devSymlinks {
-		p := filepath.Join(devDir, s.name)
-		if _, err := os.Lstat(p); err == nil {
+	for _, symlink := range devSymlinks {
+		path := filepath.Join(devDir, symlink.name)
+		if _, err := os.Lstat(path); err == nil {
 			continue
 		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("could not inspect '%s': %w", p, err)
+			return fmt.Errorf("could not inspect '%s': %w", path, err)
 		}
-		if err := os.Symlink(s.target, p); err != nil && !os.IsExist(err) {
-			return fmt.Errorf("could not create '%s' symlink: %w", p, err)
+		if err := os.Symlink(symlink.target, path); err != nil && !os.IsExist(err) {
+			return fmt.Errorf("could not create '%s' symlink: %w", path, err)
 		}
 	}
 	return nil
@@ -249,8 +249,8 @@ func CheckChrootEnv(chrootDir string) error {
 
 // PrepareChrootEnv copies resolv.conf and mounts the virtual filesystems
 // inside chrootDir (port of gentoo_chroot's environment setup).
-func PrepareChrootEnv(c *Context, chrootDir string) error {
-	c.R.log("Preparing chroot environment")
+func PrepareChrootEnv(ctx *Context, chrootDir string) error {
+	ctx.Runner.log("Preparing chroot environment")
 	dst := filepath.Join(chrootDir, "etc/resolv.conf")
 	// A missing or nameserver-less host resolv.conf would leave the chroot
 	// without DNS; fail here instead of breaking every fetch later.
@@ -268,10 +268,10 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 		return fmt.Errorf("could not copy resolv.conf: %w", err)
 	}
 
-	c.R.log("Mounting virtual filesystems")
+	ctx.Runner.log("Mounting virtual filesystems")
 	for _, vfs := range virtualFS {
 		mp := filepath.Join(chrootDir, vfs.mountpoint)
-		if c.isMountpoint(mp) {
+		if ctx.isMountpoint(mp) {
 			continue
 		}
 		if err := os.MkdirAll(mp, 0o755); err != nil {
@@ -279,14 +279,14 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 		}
 		var err error
 		if vfs.rbind {
-			err = c.R.Try("mount", "--rbind", vfs.mountpoint, mp)
+			err = ctx.Runner.Try("mount", "--rbind", vfs.mountpoint, mp)
 			if err == nil {
-				err = c.R.Try("mount", "--make-rslave", mp)
+				err = ctx.Runner.Try("mount", "--make-rslave", mp)
 			}
 		} else {
 			args := append([]string{}, vfs.proc...)
 			args = append(args, mp)
-			err = c.R.Try("mount", args...)
+			err = ctx.Runner.Try("mount", args...)
 		}
 		if err != nil {
 			return fmt.Errorf("could not mount virtual filesystems (%s): %w",
@@ -306,7 +306,7 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 
 	// lsblk output must be cached before entering the chroot because it
 	// returns almost no information from within.
-	return c.Resolver.CacheLsblkOutput()
+	return ctx.Resolver.CacheLsblkOutput()
 }
 
 // UnmountChroot lazily unmounts the chroot environment at chrootDir: the
@@ -314,18 +314,18 @@ func PrepareChrootEnv(c *Context, chrootDir string) error {
 // Missing mountpoints are skipped; the first error is returned after all
 // attempts. Callers use it for best-effort cleanup on failure paths so a
 // re-run does not trip over leaked binds.
-func UnmountChroot(c *Context, chrootDir string) error {
+func UnmountChroot(ctx *Context, chrootDir string) error {
 	var firstErr error
 	unmount := func(mp string) {
-		if !c.isMountpoint(mp) {
+		if !ctx.isMountpoint(mp) {
 			return
 		}
-		if err := c.R.Try("umount", "-l", mp); err != nil && firstErr == nil {
+		if err := ctx.Runner.Try("umount", "-l", mp); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("could not unmount '%s': %w", mp, err)
 		}
 	}
-	for i := len(virtualFS) - 1; i >= 0; i-- {
-		unmount(filepath.Join(chrootDir, virtualFS[i].mountpoint))
+	for index := len(virtualFS) - 1; index >= 0; index-- {
+		unmount(filepath.Join(chrootDir, virtualFS[index].mountpoint))
 	}
 	unmount(chrootDir)
 	return firstErr
@@ -335,11 +335,11 @@ func UnmountChroot(c *Context, chrootDir string) error {
 // in-chroot phase (port of exec chroot ... dispatch_chroot.sh). The child's
 // output is streamed as usual, but also retained so a failure carries the
 // tail back in the returned error instead of only living in scrollback.
-func EnterChroot(c *Context, chrootDir string, args ...string) error {
+func EnterChroot(ctx *Context, chrootDir string, args ...string) error {
 	if err := CheckChrootEnv(chrootDir); err != nil {
 		return err
 	}
-	if err := StageBind(c); err != nil {
+	if err := StageBind(ctx); err != nil {
 		return err
 	}
 	fullArgs := []string{chrootDir, BinInBind(),
@@ -349,18 +349,18 @@ func EnterChroot(c *Context, chrootDir string, args ...string) error {
 	env := append(os.Environ(),
 		"EXECUTED_IN_CHROOT=true",
 		"TMP_DIR="+TmpDir,
-		"GENTOO_CACHED_LSBLK="+c.Resolver.CachedEnvValue(),
+		"GENTOO_CACHED_LSBLK="+ctx.Resolver.CachedEnvValue(),
 	)
-	c.R.log("Chrooting...")
+	ctx.Runner.log("Chrooting...")
 	cmd := exec.Command("chroot", fullArgs...)
-	if c.R.NonInteractive {
+	if ctx.Runner.NonInteractive {
 		env = append(env, NonInteractiveEnv+"=1")
 		cmd.Stdin = nil // null device
 	} else {
 		cmd.Stdin = os.Stdin
 	}
-	outTW := NewTailWriter(c.R.stdout(), maxTailLines)
-	errTW := NewTailWriter(c.R.stderr(), maxTailLines)
+	outTW := NewTailWriter(ctx.Runner.stdout(), maxTailLines)
+	errTW := NewTailWriter(ctx.Runner.stderr(), maxTailLines)
 	cmd.Stdout = outTW
 	cmd.Stderr = errTW
 	cmd.Env = env
@@ -387,20 +387,20 @@ func EnterChroot(c *Context, chrootDir string, args ...string) error {
 
 // ChrootShell drops into an interactive bash within chrootDir
 // (port of `install --chroot DIR` without command).
-func ChrootShell(c *Context, chrootDir string, args ...string) error {
+func ChrootShell(ctx *Context, chrootDir string, args ...string) error {
 	initScript := filepath.Join(TmpDir, "chroot-init.sh")
 	script := ("source /etc/profile 2>/dev/null; " +
 		"export PS1='(chroot) \\u@\\h \\w \\$ '; " +
 		"export PS1=\"\\[\\033[0;31m\\]\\u\\[\\033[1;31m\\]@\\h \\[\\033[1;34m\\]\\w \\[\\033[m\\]\\$ \\[\\033[m\\]\"")
-	if err := c.writeFile(initScript, []byte(script+"\n"), 0o644); err != nil {
+	if err := ctx.writeFile(initScript, []byte(script+"\n"), 0o644); err != nil {
 		return err
 	}
 	cmdArgs := []string{chrootDir, "/bin/bash", "--init-file", initScript}
 	if len(args) > 0 {
 		cmdArgs = append(cmdArgs, "-c", strings.Join(args, " "))
 	}
-	c.R.logf("Chrooting into %s ...", chrootDir)
-	c.R.logf("To later unmount all virtual filesystems, simply use umount -l -R %q", chrootDir)
+	ctx.Runner.logf("Chrooting into %s ...", chrootDir)
+	ctx.Runner.logf("To later unmount all virtual filesystems, simply use umount -l -R %q", chrootDir)
 	cmd := exec.Command("chroot", cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

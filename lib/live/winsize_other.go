@@ -13,4 +13,4 @@ func DetectWinsize() (cols, rows int, ok bool) { return 0, 0, false }
 func ApplyWinsize(cols, rows int) {}
 
 // ParseCSITextAreaReply is unavailable off linux.
-func ParseCSITextAreaReply(b []byte) (cols, rows int, ok bool) { return 0, 0, false }
+func ParseCSITextAreaReply(data []byte) (cols, rows int, ok bool) { return 0, 0, false }

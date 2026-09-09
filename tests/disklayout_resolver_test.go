@@ -7,88 +7,88 @@ import (
 	"gentooinstall/lib/disklayout"
 )
 
-func TestResolverCanonicalizeFallback(t *testing.T) {
+func TestResolverCanonicalizeFallback(testingT *testing.T) {
 	dev := "/dev/nonexistent-gentooinstall-xyz-123"
 	if got := disklayout.Canonicalize(dev); got != dev {
-		t.Fatalf("Canonicalize(%q) = %q, want passthrough", dev, got)
+		testingT.Fatalf("Canonicalize(%q) = %q, want passthrough", dev, got)
 	}
 }
 
-func TestResolverDeviceByPtUuidCached(t *testing.T) {
-	r := &disklayout.Resolver{}
-	r.SetCachedLsblk("NAME=\"/dev/sdz\" PTUUID=\"abcd-1234\" PARTUUID=\"\"\n" +
+func TestResolverDeviceByPtUuidCached(testingT *testing.T) {
+	resolver := &disklayout.Resolver{}
+	resolver.SetCachedLsblk("NAME=\"/dev/sdz\" PTUUID=\"abcd-1234\" PARTUUID=\"\"\n" +
 		"NAME=\"/dev/sdz1\" PTUUID=\"abcd-1234\" PARTUUID=\"11111111-2222-3333-4444-555555555555\"\n")
-	got, err := r.DeviceByPtUuid("ABCD-1234")
+	got, err := resolver.DeviceByPtUuid("ABCD-1234")
 	if err != nil {
-		t.Fatalf("DeviceByPtUuid: %v", err)
+		testingT.Fatalf("DeviceByPtUuid: %v", err)
 	}
 	if got != "/dev/sdz" {
-		t.Fatalf("DeviceByPtUuid = %q, want /dev/sdz", got)
+		testingT.Fatalf("DeviceByPtUuid = %q, want /dev/sdz", got)
 	}
-	if _, err := r.DeviceByPtUuid("deadbeef-0000"); err == nil {
-		t.Fatal("expected error for unknown PTUUID")
+	if _, err := resolver.DeviceByPtUuid("deadbeef-0000"); err == nil {
+		testingT.Fatal("expected error for unknown PTUUID")
 	}
 }
 
-func TestResolverCachedEnvRoundTrip(t *testing.T) {
-	r := &disklayout.Resolver{}
-	r.SetCachedLsblk("  \n") // blank must not seed the cache
-	if v := r.CachedEnvValue(); v != "" {
-		t.Fatalf("blank cache seeded %q", v)
+func TestResolverCachedEnvRoundTrip(testingT *testing.T) {
+	resolver := &disklayout.Resolver{}
+	resolver.SetCachedLsblk("  \n") // blank must not seed the cache
+	if cached := resolver.CachedEnvValue(); cached != "" {
+		testingT.Fatalf("blank cache seeded %q", cached)
 	}
-	r.SetCachedLsblk("NAME=\"/dev/sda\" PTUUID=\"aa\" PARTUUID=\"\"")
-	if v := r.CachedEnvValue(); v == "" {
-		t.Fatal("expected cached value")
+	resolver.SetCachedLsblk("NAME=\"/dev/sda\" PTUUID=\"aa\" PARTUUID=\"\"")
+	if cached := resolver.CachedEnvValue(); cached == "" {
+		testingT.Fatal("expected cached value")
 	}
 	other := &disklayout.Resolver{}
-	other.SetCachedLsblk(r.CachedEnvValue())
+	other.SetCachedLsblk(resolver.CachedEnvValue())
 	got, err := other.DeviceByPtUuid("aa")
 	if err != nil || got != "/dev/sda" {
-		t.Fatalf("passthrough cache resolve = %q, %v", got, err)
+		testingT.Fatalf("passthrough cache resolve = %q, %v", got, err)
 	}
 }
 
-func TestResolverResolveLuksDevice(t *testing.T) {
+func TestResolverResolveLuksDevice(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", true, false)
-	layout, err := disklayout.BuildFromConfig(cfg, t.TempDir())
+	layout, err := disklayout.BuildFromConfig(cfg, testingT.TempDir())
 	if err != nil {
-		t.Fatalf("BuildFromConfig: %v", err)
+		testingT.Fatalf("BuildFromConfig: %v", err)
 	}
-	r := &disklayout.Resolver{Layout: layout}
-	got, err := r.ResolveDevice("part_luks_root")
+	resolver := &disklayout.Resolver{Layout: layout}
+	got, err := resolver.ResolveDevice("part_luks_root")
 	if err != nil {
-		t.Fatalf("ResolveDevice luks: %v", err)
+		testingT.Fatalf("ResolveDevice luks: %v", err)
 	}
 	if got != "/dev/mapper/root" {
-		t.Fatalf("ResolveDevice(part_luks_root) = %q, want /dev/mapper/root", got)
+		testingT.Fatalf("ResolveDevice(part_luks_root) = %q, want /dev/mapper/root", got)
 	}
-	if _, err := r.ResolveDevice("no-such-id"); err == nil {
-		t.Fatal("expected error for unknown id")
+	if _, err := resolver.ResolveDevice("no-such-id"); err == nil {
+		testingT.Fatal("expected error for unknown id")
 	}
 }
 
-func TestSplitIDList(t *testing.T) {
+func TestSplitIDList(testingT *testing.T) {
 	got := disklayout.SplitIDList("a;b;;c")
 	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
-		t.Fatalf("SplitIDList = %q", got)
+		testingT.Fatalf("SplitIDList = %q", got)
 	}
 	if len(disklayout.SplitIDList("")) != 0 {
-		t.Fatal("empty input must yield no ids")
+		testingT.Fatal("empty input must yield no ids")
 	}
 }
 
-func TestResolverResolveExistingDevice(t *testing.T) {
-	b := disklayout.NewBuilder(t.TempDir())
-	if err := b.RegisterExisting("rootdisk", "/dev/sdz"); err != nil {
-		t.Fatalf("RegisterExisting: %v", err)
+func TestResolverResolveExistingDevice(testingT *testing.T) {
+	builder := disklayout.NewBuilder(testingT.TempDir())
+	if err := builder.RegisterExisting("rootdisk", "/dev/sdz"); err != nil {
+		testingT.Fatalf("RegisterExisting: %v", err)
 	}
-	layout := b.Finish()
-	r := &disklayout.Resolver{Layout: layout}
-	got, err := r.ResolveDevice("rootdisk")
+	layout := builder.Finish()
+	resolver := &disklayout.Resolver{Layout: layout}
+	got, err := resolver.ResolveDevice("rootdisk")
 	if err != nil {
-		t.Fatalf("ResolveDevice: %v", err)
+		testingT.Fatalf("ResolveDevice: %v", err)
 	}
 	if got != "/dev/sdz" {
-		t.Fatalf("ResolveDevice(rootdisk) = %q, want /dev/sdz", got)
+		testingT.Fatalf("ResolveDevice(rootdisk) = %q, want /dev/sdz", got)
 	}
 }

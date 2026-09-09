@@ -11,7 +11,7 @@ import (
 	"gentooinstall/lib/disklayout"
 )
 
-func osStat(p string) (os.FileInfo, error) { return os.Stat(p) }
+func osStat(path string) (os.FileInfo, error) { return os.Stat(path) }
 
 // kvList collects aligned label/value rows and renders them with a dynamic
 // key column so nothing gets cut off.
@@ -20,203 +20,203 @@ type kvList struct {
 	kw   int
 }
 
-func (k *kvList) add(key, val string) {
-	k.rows = append(k.rows, [2]string{key, val})
-	if w := lipgloss.Width(key); w > k.kw {
-		k.kw = w
+func (list *kvList) add(key, val string) {
+	list.rows = append(list.rows, [2]string{key, val})
+	if width := lipgloss.Width(key); width > list.kw {
+		list.kw = width
 	}
 }
 
-func (k *kvList) render(b *strings.Builder, indent string, w int) {
-	trunc := lipgloss.NewStyle().MaxWidth(maxInt(20, w))
-	for _, r := range k.rows {
-		pad := strings.Repeat(" ", maxInt(0, k.kw-lipgloss.Width(r[0])))
-		b.WriteString(trunc.Render(indent+r[0]+pad+"  "+r[1]) + "\n")
+func (list *kvList) render(body *strings.Builder, indent string, width int) {
+	trunc := lipgloss.NewStyle().MaxWidth(maxInt(20, width))
+	for _, row := range list.rows {
+		pad := strings.Repeat(" ", maxInt(0, list.kw-lipgloss.Width(row[0])))
+		body.WriteString(trunc.Render(indent+row[0]+pad+"  "+row[1]) + "\n")
 	}
 }
 
 // openConfigView opens the configuration summary in a scrollable modal;
 // the content is rendered live so it always reflects the current state.
-func (m *Model) openConfigView() {
-	m.overlay = overlay{kind: ovConfig}
+func (model *Model) openConfigView() {
+	model.overlay = overlay{kind: ovConfig}
 }
 
 // openMakeConfView opens a scrollable viewer for the effective
 // /etc/portage/make.conf content. Editing is added later.
-func (m *Model) openMakeConfView() {
-	m.overlay = overlay{kind: ovMakeConf}
+func (model *Model) openMakeConfView() {
+	model.overlay = overlay{kind: ovMakeConf}
 }
 
 // makeConfViewContent renders the effective make.conf content for the
 // viewer: the built-in entries, the selected options, and the extra block.
-func makeConfViewContent(c *config.Config, jobs int) string {
-	var b strings.Builder
-	b.WriteString("# /etc/portage/make.conf (effective)\n\n")
-	if c.Packages.EnableBinpkg {
-		b.WriteString("FEATURES=\"getbinpkg binpkg-request-signature\"\n")
+func makeConfViewContent(cfg *config.Config, jobs int) string {
+	var body strings.Builder
+	body.WriteString("# /etc/portage/make.conf (effective)\n\n")
+	if cfg.Packages.EnableBinpkg {
+		body.WriteString("FEATURES=\"getbinpkg binpkg-request-signature\"\n")
 	}
-	arch := c.Gentoo.Arch
-	for _, key := range c.MakeConf.Options {
-		o := config.LookupMakeConfOption(key)
-		if o == nil {
+	arch := cfg.Gentoo.Arch
+	for _, key := range cfg.MakeConf.Options {
+		opt := config.LookupMakeConfOption(key)
+		if opt == nil {
 			continue
 		}
-		line := strings.ReplaceAll(o.Line, "${JOBS}", fmt.Sprintf("%d", jobs))
+		line := strings.ReplaceAll(opt.Line, "${JOBS}", fmt.Sprintf("%d", jobs))
 		line = strings.ReplaceAll(line, "${ARCH}", arch)
-		b.WriteString(line + "\n")
+		body.WriteString(line + "\n")
 	}
-	extra := strings.TrimSpace(c.MakeConf.Extra)
+	extra := strings.TrimSpace(cfg.MakeConf.Extra)
 	if extra != "" {
-		b.WriteString("\n" + extra + "\n")
+		body.WriteString("\n" + extra + "\n")
 	}
-	return b.String()
+	return body.String()
 }
 
 // renderOverview collects the current configuration as a styled summary.
-func renderOverview(m *Model) string {
-	var b strings.Builder
-	c := m.cfg
-	w := m.bodyWidth()
+func renderOverview(model *Model) string {
+	var body strings.Builder
+	cfg := model.cfg
+	width := model.bodyWidth()
 
-	b.WriteString(sectionRule("📄 Configuration", w) + "\n")
+	body.WriteString(sectionRule("📄 Configuration", width) + "\n")
 	var kv kvList
-	kv.add("Config file", valueStyle.Render(m.cfgPath))
-	if m.hasEFI {
+	kv.add("Config file", valueStyle.Render(model.cfgPath))
+	if model.hasEFI {
 		kv.add("EFI support", okStyle.Render("✓ yes"))
 	} else {
 		kv.add("EFI support", errorStyle.Render("✗ no"))
 	}
-	kv.add("Boot type", badgeStyle.Render(c.Disk.BootType))
-	if c.Disk.BootType == "efi" && !m.hasEFI {
+	kv.add("Boot type", badgeStyle.Render(cfg.Disk.BootType))
+	if cfg.Disk.BootType == "efi" && !model.hasEFI {
 		kv.add("", warnStyle.Render("⚠ your system does NOT support EFI — double-check!"))
 	}
-	kv.add("Init system", badgeStyle.Render(systemdName(c)))
-	kv.add("Stage3", valueStyle.Render(c.Stage3BaseNameFinal()))
-	kv.render(&b, " ", w)
+	kv.add("Init system", badgeStyle.Render(systemdName(cfg)))
+	kv.add("Stage3", valueStyle.Render(cfg.Stage3BaseNameFinal()))
+	kv.render(&body, " ", width)
 
-	b.WriteString("\n" + sectionRule("Disk", w) + "\n")
+	body.WriteString("\n" + sectionRule("Disk", width) + "\n")
 	kv = kvList{}
-	kv.add("Scheme", badgeStyle.Render(c.Disk.Scheme))
-	switch c.Disk.Scheme {
+	kv.add("Scheme", badgeStyle.Render(cfg.Disk.Scheme))
+	switch cfg.Disk.Scheme {
 	case config.SchemeClassic, config.SchemeExisting:
-		kv.add("Device", valueStyle.Render(c.Disk.Device))
-		if c.Disk.Scheme == config.SchemeExisting {
-			kv.add("Boot device", valueStyle.Render(c.Disk.BootDevice))
+		kv.add("Device", valueStyle.Render(cfg.Disk.Device))
+		if cfg.Disk.Scheme == config.SchemeExisting {
+			kv.add("Boot device", valueStyle.Render(cfg.Disk.BootDevice))
 		}
 	case config.SchemeZFSCentric, config.SchemeBtrfs,
 		config.SchemeRaid0Luks, config.SchemeRaid1Luks:
-		kv.add("Devices", valueStyle.Render(strings.Join(c.Disk.Devices, " ")))
+		kv.add("Devices", valueStyle.Render(strings.Join(cfg.Disk.Devices, " ")))
 	}
-	kv.render(&b, " ", w)
+	kv.render(&body, " ", width)
 
-	b.WriteString("\n" + sectionRule("🧩 System", w) + "\n")
+	body.WriteString("\n" + sectionRule("🧩 System", width) + "\n")
 	kv = kvList{}
-	orUnset := func(s string) string {
-		if strings.TrimSpace(s) == "" {
+	orUnset := func(str string) string {
+		if strings.TrimSpace(str) == "" {
 			return unsetStyle.Render("unset (autodetect)")
 		}
-		return valueStyle.Render(s)
+		return valueStyle.Render(str)
 	}
-	kv.add("Hostname", orUnset(c.System.Hostname))
-	kv.add("Timezone", orUnset(c.System.Timezone))
-	kv.add("Keymap", orUnset(c.System.Keymap))
-	if n := len(c.System.Locales); n > 0 {
-		kv.add("Locales", badgeStyle.Render(fmt.Sprintf("%d selected", n))+
-			" "+unsetStyle.Render(strings.Join(c.System.Locales, ", ")))
+	kv.add("Hostname", orUnset(cfg.System.Hostname))
+	kv.add("Timezone", orUnset(cfg.System.Timezone))
+	kv.add("Keymap", orUnset(cfg.System.Keymap))
+	if count := len(cfg.System.Locales); count > 0 {
+		kv.add("Locales", badgeStyle.Render(fmt.Sprintf("%d selected", count))+
+			" "+unsetStyle.Render(strings.Join(cfg.System.Locales, ", ")))
 	} else {
 		kv.add("Locales", unsetStyle.Render("none"))
 	}
-	kv.add("Locale", orUnset(c.System.Locale))
-	kv.render(&b, " ", w)
-	return b.String()
+	kv.add("Locale", orUnset(cfg.System.Locale))
+	kv.render(&body, " ", width)
+	return body.String()
 }
 
 // renderInstallTab shows the former overview's configuration summary
 // followed by the installation status, checks and layout tree.
-func renderInstallTab(m *Model) string {
-	var b strings.Builder
-	c := m.cfg
-	w := m.bodyWidth()
+func renderInstallTab(model *Model) string {
+	var body strings.Builder
+	cfg := model.cfg
+	width := model.bodyWidth()
 
-	b.WriteString(sectionRule("Install", w) + "\n\n")
+	body.WriteString(sectionRule("Install", width) + "\n\n")
 
 	var st kvList
-	st.add("Total packages", badgeStyle.Render(fmt.Sprintf("~%d", c.EstimatePackageCount())))
-	st.add("Install size", badgeStyle.Render(c.EstimateInstallSize()))
-	st.add("Profile", badgeStyle.Render(profileSummary(c)))
-	st.add("Kernel", badgeStyle.Render(kernelSummary(c)))
-	st.add("Init", badgeStyle.Render(systemdName(c)))
-	st.render(&b, " ", w)
-	b.WriteString("\n")
+	st.add("Total packages", badgeStyle.Render(fmt.Sprintf("~%d", cfg.EstimatePackageCount())))
+	st.add("Install size", badgeStyle.Render(cfg.EstimateInstallSize()))
+	st.add("Profile", badgeStyle.Render(profileSummary(cfg)))
+	st.add("Kernel", badgeStyle.Render(kernelSummary(cfg)))
+	st.add("Init", badgeStyle.Render(systemdName(cfg)))
+	st.render(&body, " ", width)
+	body.WriteString("\n")
 
 	var problems []string
-	for _, e := range c.Validate() {
-		problems = append(problems, e.Error())
+	for _, entry := range cfg.Validate() {
+		problems = append(problems, entry.Error())
 	}
-	if err := FirmwareBlockError(c.Disk.BootType, m.hasEFI); err != nil {
+	if err := FirmwareBlockError(cfg.Disk.BootType, model.hasEFI); err != nil {
 		problems = append(problems, err.Error())
 	}
 	if len(problems) > 0 {
-		b.WriteString(errorStyle.Render("⛔ Cannot install — fix these problems first:") + "\n")
-		for _, e := range problems {
-			b.WriteString("  " + errorStyle.Render("✗") + " " + e + "\n")
+		body.WriteString(errorStyle.Render("⛔ Cannot install — fix these problems first:") + "\n")
+		for _, entry := range problems {
+			body.WriteString("  " + errorStyle.Render("✗") + " " + entry + "\n")
 		}
-		b.WriteString("\n")
+		body.WriteString("\n")
 	}
 
-	if warns := c.Advisories(); len(warns) > 0 {
-		b.WriteString(warnStyle.Render("⚠ Worth a look:") + "\n")
-		for _, w := range warns {
-			b.WriteString("  " + warnStyle.Render(w) + "\n")
+	if warns := cfg.Advisories(); len(warns) > 0 {
+		body.WriteString(warnStyle.Render("⚠ Worth a look:") + "\n")
+		for _, warn := range warns {
+			body.WriteString("  " + warnStyle.Render(warn) + "\n")
 		}
-		b.WriteString("\n")
+		body.WriteString("\n")
 	}
 
-	l, err := layoutForDisplay(c)
+	layout, err := layoutForDisplay(cfg)
 	if err != nil {
-		b.WriteString(errorStyle.Render("Disk configuration error: "+err.Error()) + "\n")
+		body.WriteString(errorStyle.Render("Disk configuration error: "+err.Error()) + "\n")
 	} else {
-		b.WriteString(renderLayoutTree(l, w))
+		body.WriteString(renderLayoutTree(layout, width))
 	}
 
-	b.WriteString("\n")
-	switch m.instState {
+	body.WriteString("\n")
+	switch model.instState {
 	case instRunning, instWaiting:
-		b.WriteString(warnStyle.Render(
+		body.WriteString(warnStyle.Render(
 			"An installation is in progress. Press i to view it.") + "\n")
 	case instDone:
-		b.WriteString(okStyle.Render(
+		body.WriteString(okStyle.Render(
 			"The installation finished successfully.") + "\n")
 	case instAborted:
-		b.WriteString(errorStyle.Render(
+		body.WriteString(errorStyle.Render(
 			"The installation was aborted. Review the log with i; fix\n"+
 				"your configuration and start again once the disks are settled.") + "\n")
 	default:
-		b.WriteString(helpStyle.Render(
+		body.WriteString(helpStyle.Render(
 			"Press i to start the installation (destructive), d for a simulated demo, or v to view the raw config."))
 	}
 
-	return b.String()
+	return body.String()
 }
 
 // renderLayoutTree renders the disk layout summary as a compact
 // single-column tree with inline role badges.
-func renderLayoutTree(l *disklayout.Layout, w int) string {
-	w = maxInt(50, w)
-	var b strings.Builder
+func renderLayoutTree(layout *disklayout.Layout, width int) string {
+	width = maxInt(50, width)
+	var body strings.Builder
 
-	for _, n := range l.Summary() {
-		name := n.Name
-		if n.Hint != "" {
-			name += " " + n.Hint
+	for _, node := range layout.Summary() {
+		name := node.Name
+		if node.Hint != "" {
+			name += " " + node.Hint
 		}
-		left := treeGlyphStyle.Render(n.Indent) + valueStyle.Render(name)
+		left := treeGlyphStyle.Render(node.Indent) + valueStyle.Render(name)
 
 		rightParts := []string{}
-		if n.Desc != "" {
-			rightParts = append(rightParts, unsetStyle.Render(n.Desc))
+		if node.Desc != "" {
+			rightParts = append(rightParts, unsetStyle.Render(node.Desc))
 		}
-		switch n.Role {
+		switch node.Role {
 		case "bios":
 			rightParts = append(rightParts, treeRoleStyle.Render("[bios]"))
 		case "efi":
@@ -231,49 +231,49 @@ func renderLayoutTree(l *disklayout.Layout, w int) string {
 		if len(rightParts) > 0 {
 			right := strings.Join(rightParts, "  ")
 			rightW := lipgloss.Width(right)
-			gap := w - leftW - rightW - 4
+			gap := width - leftW - rightW - 4
 			if gap < 2 {
 				gap = 2
 			}
-			b.WriteString(left + strings.Repeat(" ", gap) + right + "\n")
+			body.WriteString(left + strings.Repeat(" ", gap) + right + "\n")
 		} else {
-			b.WriteString(left + "\n")
+			body.WriteString(left + "\n")
 		}
 	}
-	return b.String()
+	return body.String()
 }
 
-func systemdName(c *config.Config) string {
-	if c.UsesSystemd() {
+func systemdName(cfg *config.Config) string {
+	if cfg.UsesSystemd() {
 		return "systemd"
 	}
-	s := "OpenRC"
-	if c.UsesMusl() {
-		s += " (musl)"
+	name := "OpenRC"
+	if cfg.UsesMusl() {
+		name += " (musl)"
 	}
-	return s
+	return name
 }
 
 // profileSummary renders the selected eselect profile as its friendly
 // description, falling back to the raw id or "unset".
-func profileSummary(c *config.Config) string {
-	p := c.Gentoo.Profile
-	if p == "" {
+func profileSummary(cfg *config.Config) string {
+	profile := cfg.Gentoo.Profile
+	if profile == "" {
 		return "unset"
 	}
-	if d := config.ProfileDesc(p); d != "" {
-		return d
+	if desc := config.ProfileDesc(profile); desc != "" {
+		return desc
 	}
-	return p
+	return profile
 }
 
 // kernelSummary renders the selected kernel package type.
-func kernelSummary(c *config.Config) string {
-	switch c.Packages.KernelType {
+func kernelSummary(cfg *config.Config) string {
+	switch cfg.Packages.KernelType {
 	case "source":
 		return "source (gentoo-kernel)"
 	case "bin":
 		return "binary (gentoo-kernel-bin)"
 	}
-	return c.Packages.KernelType
+	return cfg.Packages.KernelType
 }

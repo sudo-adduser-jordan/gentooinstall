@@ -27,8 +27,6 @@ import (
 	"gentooinstall/lib/tui"
 )
 
-var version = "0.1.0"
-
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "\x1b[1;31merror:\x1b[m "+format+"\n", args...)
 	os.Exit(1)
@@ -63,14 +61,16 @@ func defaultConfigPath() string {
 }
 
 func cwd() string {
-	d, err := os.Getwd()
+	dir, err := os.Getwd()
 	if err != nil {
 		return "."
 	}
-	return d
+	return dir
 }
 
-const usage = `gentooinstall — gentoo installer (Go/Charm edition)
+var VERSION = "0.1.0"
+
+const USAGE = `gentooinstall — gentoo installer (Go/Charm edition)
 
 Usage:
   gentooinstall                    Open the interactive configurator (builds/custom.toml, or
@@ -100,29 +100,30 @@ partitioning (destructive!), downloads and verifies a stage3 tarball and
 completes configuration inside a chroot.`
 
 func main() {
-	args := os.Args[1:]
 
-	p, err := cli.ParseArgs(args)
+	args := os.Args[1:]
+	parsed, err := cli.ParseArgs(args)
+
 	if err != nil {
 		fatal("%v", err)
 	}
-	if p.ShowHelp {
-		fmt.Println(usage)
+	if parsed.ShowHelp {
+		fmt.Println(USAGE)
 		return
 	}
-	if p.ShowVersion {
-		fmt.Println("gentooinstall", version)
+	if parsed.ShowVersion {
+		fmt.Println("gentooinstall", VERSION)
 		return
 	}
-	cfgPath := p.CfgPath
-	mode := p.Mode
-	rest := p.Rest
+
+	cfgPath := parsed.CfgPath
+	mode := parsed.Mode
+	rest := parsed.Rest
 
 	if mode == "gif" {
 		runGIF(rest)
 		return
 	}
-
 	if cfgPath == "" {
 		cfgPath = defaultConfigPath()
 	}
@@ -131,40 +132,17 @@ func main() {
 		fatal("%v", err)
 	}
 
-	// When run as PID 1 the binary is the live-ISO init (rdinit=/init). Emit
-	// a deterministic startup banner so the boot is observable on a headless
-	// serial console (e.g. the QEMU e2e test) before the TUI opens.
 	if os.Getpid() == 1 {
-		// The banner goes to /dev/console, which on a graphical boot is tty0.
-		// Mirror it to the serial port so headless serial consoles still see it.
-		msg := fmt.Sprintf("gentooinstall init: PID 1, version %s\n", version)
+		msg := fmt.Sprintf("gentooinstall init: PID 1, version %s\n", VERSION)
 		fmt.Print(msg)
-		mirrorSerialBanner(msg)
-		// Bootstrap the live environment (mount proc/sys/dev, load the bundled
-		// storage drivers so disks appear, bring up DHCP). Best-effort: any
-		// failure is logged but never keeps the TUI from starting.
+		printHeadlessBanner(msg)
 		if err := live.Init(); err != nil {
 			fmt.Fprintf(os.Stderr, "live init: %v\n", err)
 		}
-		// Headless install mode (drives the opt-in VM e2e tests): when the
-		// kernel command line carries `gentooinstall.install=<config path>`,
-		// run the CLI install flow straight away instead of opening the TUI.
-		// Relative paths resolve against /builds (where release.sh stages the
-		// shipped configs on the live rootfs). GENTOOINSTALL_ASSUME_YES=1
-		// answers the confirmation prompts and GENTOO_INSTALL_ENCRYPTION_KEY
-		// supplies the luks/zfs passphrase (override with
-		// gentooinstall.install-key=<key> on the cmdline). The install runs as
-		// a child so a fatal() in the CLI path cannot kill PID 1; afterwards
-		// the result is reported on the serial console and the machine powers
-		// off (the QEMU harness uses -no-reboot to end the capture).
 		if cfg, key := headlessInstallRequest(); cfg != "" {
 			runHeadlessInstall(cfg, key)
 		}
-		// Probe the default mirror in the background and mirror the result to
-		// the serial console so headless e2e tests can assert that DNS + outbound
-		// HTTPS + CA certs all work inside the ISO (the things the tarball fetch
-		// depends on). This never blocks the TUI from opening.
-		go probeMirrorSerial()
+		go pingSelectedMirror()
 	}
 
 	switch mode {
@@ -187,12 +165,12 @@ func headlessInstallRequest() (cfg, key string) {
 	if err != nil {
 		return "", ""
 	}
-	for _, f := range strings.Fields(string(data)) {
+	for _, field := range strings.Fields(string(data)) {
 		switch {
-		case strings.HasPrefix(f, "gentooinstall.install="):
-			cfg = strings.TrimPrefix(f, "gentooinstall.install=")
-		case strings.HasPrefix(f, "gentooinstall.install-key="):
-			key = strings.TrimPrefix(f, "gentooinstall.install-key=")
+		case strings.HasPrefix(field, "gentooinstall.install="):
+			cfg = strings.TrimPrefix(field, "gentooinstall.install=")
+		case strings.HasPrefix(field, "gentooinstall.install-key="):
+			key = strings.TrimPrefix(field, "gentooinstall.install-key=")
 		}
 	}
 	return cfg, key
@@ -210,7 +188,7 @@ func runHeadlessInstall(cfg, key string) {
 	report := func(status string) {
 		msg := "gentooinstall install: " + status + "\n"
 		fmt.Print(msg)
-		mirrorSerialBanner(msg)
+		printHeadlessBanner(msg)
 		powerOff()
 		os.Exit(0)
 	}
@@ -249,13 +227,13 @@ func powerOff() {
 	os.Exit(0)
 }
 
-// mirrorSerialBanner writes msg to the first serial port (ttyS0) so headless
+// printHeadlessBanner writes msg to the first serial port (ttyS0) so headless
 // serial consoles observe the boot even when /dev/console is a graphical tty0.
 // The initramfs ships no device nodes, so as PID 1 (root) we create a missing
 // /dev/ttyS0 on the fly (char major 4, minor 64); any failure is ignored.
 // Muted while the TUI owns a serial-only console (the single grub entry):
 // raw writes there would smear the alt-screen.
-func mirrorSerialBanner(msg string) {
+func printHeadlessBanner(msg string) {
 	if live.TuiActive() {
 		return
 	}
@@ -266,23 +244,23 @@ func mirrorSerialBanner(msg string) {
 			return
 		}
 	}
-	if f, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
-		_, _ = f.WriteString(msg)
-		_ = f.Close()
+	if file, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
+		_, _ = file.WriteString(msg)
+		_ = file.Close()
 	}
 }
 
-// probeMirrorSerial resolves the default Gentoo mirror over the live network
+// pingSelectedMirror resolves the default Gentoo mirror over the live network
 // and mirrors the outcome to the serial console (`live: mirror <host>: ok` /
 // `fail: <note>`). It only takes effect when running as the live-ISO init.
 // It waits briefly for the concurrent DHCP bring-up to populate /etc/resolv.conf
 // so the probe exercises real DNS + outbound HTTPS + CA certs end-to-end.
-func probeMirrorSerial() {
+func pingSelectedMirror() {
 	if os.Getpid() != 1 {
 		return
 	}
 	mirror := config.Default(false).Gentoo.Mirror
-	for i := 0; i < 6; i++ {
+	for attempt := 0; attempt < 6; attempt++ {
 		if live.NetworkReady() {
 			break
 		}
@@ -294,7 +272,7 @@ func probeMirrorSerial() {
 	st := sysinfo.MirrorProbe(ctx, mirror)
 	// Serial-only: this runs in a goroutine after the TUI owns the terminal, so
 	// a stdout write here would smear across the TUI's framebuffer tty.
-	mirrorSerialBanner(fmt.Sprintf("live: mirror %s: %s\n", host, noteToSerial(st)))
+	printHeadlessBanner(fmt.Sprintf("live: mirror %s: %s\n", host, noteToSerial(st)))
 }
 
 // noteToSerial maps a probe status to the serial-friendly ok/fail summary used
@@ -315,19 +293,19 @@ func noteToSerial(st sysinfo.MirrorStatus) string {
 // user. The `vhs` binary must be installed separately.
 func runGIF(args []string) {
 	out := "demo.gif"
-	for i := 0; i < len(args); i++ {
-		a := args[i]
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
 		switch {
-		case a == "-o" || a == "--output":
-			if i+1 >= len(args) {
+		case arg == "-o" || arg == "--output":
+			if index+1 >= len(args) {
 				fatal("--output requires a path")
 			}
-			i++
-			out = args[i]
-		case !strings.HasPrefix(a, "-"):
-			out = a
+			index++
+			out = args[index]
+		case !strings.HasPrefix(arg, "-"):
+			out = arg
 		default:
-			fatal("invalid argument '%s'", a)
+			fatal("invalid argument '%s'", arg)
 		}
 	}
 
@@ -373,7 +351,7 @@ func runGIF(args []string) {
 // corresponding screens are visible (line-scoped `Wait` sees no output from
 // full-screen TUIs); `Set WaitTimeout 30s` covers the whole demo.
 func gifTape(out string) string {
-	b := argv0()
+	binPath := argv0()
 	return strings.Join([]string{
 		`Output "` + out + `"`,
 		"Set Width 2000",
@@ -391,7 +369,7 @@ func gifTape(out string) string {
 		// screen-scoped waits a larger budget than the 15s default.
 		"Set WaitTimeout 30s",
 		"",
-		`Type "` + b + `"`,
+		`Type "` + binPath + `"`,
 		"Enter",
 		"Sleep 1.2s",
 		"",
@@ -449,8 +427,7 @@ func runTUI(cfgPath string) {
 		lipgloss.SetColorProfile(termenv.TrueColor)
 	}
 
-	hasEFI := sysinfo.HasEFI()
-	cfg, _, err := config.LoadOrDefault(cfgPath, hasEFI)
+	cfg, _, err := config.LoadOrDefault(cfgPath, sysinfo.HasEFI())
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -472,19 +449,19 @@ func runTUI(cfgPath string) {
 		live.ApplyWinsize(cols, rows)
 	}
 	opts := []tea.ProgramOption{tea.WithAltScreen()}
-	p := tea.NewProgram(model, opts...)
-	tui.SetProgram(p)
+	program := tea.NewProgram(model, opts...)
+	tui.SetProgram(program)
 	if os.Getpid() == 1 {
 		// Headless serial consoles cannot see the framebuffer TUI; announce
 		// its launch so e2e tests can assert the boot reached the TUI.
 		// Serial-only: stdout is the TUI's terminal from here on.
-		mirrorSerialBanner("live: tui starting\n")
+		printHeadlessBanner("live: tui starting\n")
 	}
 	live.SetTuiActive(true)
-	_, runErr := p.Run()
+	_, runErr := program.Run()
 	live.SetTuiActive(false)
 	if runErr != nil {
-		mirrorSerialBanner(fmt.Sprintf("tui: error: %v\n", runErr))
+		printHeadlessBanner(fmt.Sprintf("tui: error: %v\n", runErr))
 		fatal("tui: %v", runErr)
 	}
 }
@@ -517,8 +494,8 @@ func loadConfigForInstall(cfgPath string) *config.Config {
 	}
 	fillSystemDefaults(cfg)
 	if errs := cfg.Validate(); len(errs) > 0 {
-		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, " - "+e.Error())
+		for _, verr := range errs {
+			fmt.Fprintln(os.Stderr, " - "+verr.Error())
 		}
 		fatal("configuration is invalid")
 	}
@@ -526,11 +503,11 @@ func loadConfigForInstall(cfgPath string) *config.Config {
 }
 
 func newRunner(interactive bool) *installer.Runner {
-	r := installer.NewRunner(os.Stdout, os.Stderr)
+	runner := installer.NewRunner(os.Stdout, os.Stderr)
 	if interactive {
-		r.OnFailure = installer.InteractiveOnFailure(r)
+		runner.OnFailure = installer.InteractiveOnFailure(runner)
 	}
-	return r
+	return runner
 }
 
 // assumeYes reports whether automated (non-interactive) confirmation is
@@ -542,40 +519,40 @@ func assumeYes() bool {
 }
 
 func buildLayoutE(cfg *config.Config) (*disklayout.Layout, error) {
-	l, err := disklayout.BuildFromConfig(cfg, installer.UUIDStorageDir)
+	layout, err := disklayout.BuildFromConfig(cfg, installer.UUIDStorageDir)
 	if err != nil {
 		return nil, fmt.Errorf("disk layout: %w", err)
 	}
-	if l.RootID == "" {
+	if layout.RootID == "" {
 		return nil, errors.New("you must assign DISK_ID_ROOT (no root device in layout)")
 	}
-	if l.EFIID == "" && l.BIOSID == "" {
+	if layout.EFIID == "" && layout.BIOSID == "" {
 		return nil, errors.New("you must assign DISK_ID_EFI or DISK_ID_BIOS")
 	}
-	if err := disklayout.CheckBootTypeConsistency(cfg, l); err != nil {
+	if err := disklayout.CheckBootTypeConsistency(cfg, layout); err != nil {
 		return nil, err
 	}
-	return l, nil
+	return layout, nil
 }
 
 func buildLayout(cfg *config.Config) *disklayout.Layout {
-	l, err := buildLayoutE(cfg)
+	layout, err := buildLayoutE(cfg)
 	if err != nil {
 		fatal("%v", err)
 	}
-	return l
+	return layout
 }
 
 // unmountStale best-effort unmounts a previous run's chroot mounts without
 // ever prompting: cleanup failures warn, they must not block a fresh install.
-func unmountStale(c *installer.Context, dir string) {
-	prev := c.R.OnFailure
-	c.R.OnFailure = installer.DefaultOnFailure
-	defer func() { c.R.OnFailure = prev }()
-	if err := installer.UnmountChroot(c, dir); err != nil {
+func unmountStale(ctx *installer.Context, dir string) {
+	prev := ctx.Runner.OnFailure
+	ctx.Runner.OnFailure = installer.DefaultOnFailure
+	defer func() { ctx.Runner.OnFailure = prev }()
+	if err := installer.UnmountChroot(ctx, dir); err != nil {
 		msg := fmt.Sprintf("[!] warning: could not unmount stale filesystems: %v", err)
-		if c.R.Log != nil {
-			c.R.Log("%s", msg)
+		if ctx.Runner.Log != nil {
+			ctx.Runner.Log("%s", msg)
 		} else {
 			fmt.Fprintln(os.Stderr, msg)
 		}
@@ -593,17 +570,17 @@ func runInstall(cfgPath string) {
 	layout := buildLayout(cfg)
 	resolver := &disklayout.Resolver{Layout: layout}
 	nonInteractive := assumeYes()
-	r := newRunner(!nonInteractive)
-	r.NonInteractive = nonInteractive
+	runner := newRunner(!nonInteractive)
+	runner.NonInteractive = nonInteractive
 	// Mirror everything (host phases plus the chroot child) into the
 	// persistent install log so a failure can be inspected afterwards.
-	if f, err := installer.OpenInstallLog(); err == nil {
-		r.Stdout = io.MultiWriter(r.Stdout, f)
-		r.Stderr = io.MultiWriter(r.Stderr, f)
-		defer f.Close()
+	if file, err := installer.OpenInstallLog(); err == nil {
+		runner.Stdout = io.MultiWriter(runner.Stdout, file)
+		runner.Stderr = io.MultiWriter(runner.Stderr, file)
+		defer file.Close()
 	}
-	c := &installer.Context{
-		R:            r,
+	ctx := &installer.Context{
+		Runner:       runner,
 		Cfg:          cfg,
 		Layout:       layout,
 		Resolver:     resolver,
@@ -612,27 +589,27 @@ func runInstall(cfgPath string) {
 
 	// Drop stale mounts from a previous run before touching disks
 	// (port of gentoo_umount); best effort, never prompts.
-	unmountStale(c, installer.RootMountpoint)
+	unmountStale(ctx, installer.RootMountpoint)
 
 	fmt.Printf("[+] Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)\n",
-		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
-	if err := installer.CheckHostBootMode(c); err != nil {
+		ctx.HostBootMode(), ctx.Cfg.Disk.BootType, ctx.Layout.EFIID, ctx.Layout.BIOSID)
+	if err := installer.CheckHostBootMode(ctx); err != nil {
 		fatal("%v", err)
 	}
-	if err := installer.CheckFilesystemSupport(c); err != nil {
+	if err := installer.CheckFilesystemSupport(ctx); err != nil {
 		fatal("%v", err)
 	}
-	if err := installer.PrepareEnvironment(c); err != nil {
+	if err := installer.PrepareEnvironment(ctx); err != nil {
 		fatal("%v", err)
 	}
-	if err := installer.EnsureEncryptionKey(c, os.Stdin); err != nil {
+	if err := installer.EnsureEncryptionKey(ctx, os.Stdin); err != nil {
 		fatal("%v", err)
 	}
 
-	summarizeAndConfirm(c)
+	summarizeAndConfirm(ctx)
 
 	fmt.Println("[+] Applying disk configuration")
-	if err := installer.ApplyDiskActions(c); err != nil {
+	if err := installer.ApplyDiskActions(ctx); err != nil {
 		fatal("%v", err)
 	}
 	fmt.Println("[+] Disk configuration was applied successfully")
@@ -642,29 +619,29 @@ func runInstall(cfgPath string) {
 	// the RAM-backed /tmp: mounting later would hide the download beneath
 	// the new mount (same ordering as the TUI flow).
 	fmt.Println("[+] Mounting root filesystem")
-	if err := installer.MountRoot(c); err != nil {
+	if err := installer.MountRoot(ctx); err != nil {
 		fatal("%v", err)
 	}
-	stage3, err := installer.DownloadStage3(c)
+	stage3, err := installer.DownloadStage3(ctx)
 	if err != nil {
 		fatal("%v", err)
 	}
-	if err := installer.ExtractStage3(c, stage3); err != nil {
+	if err := installer.ExtractStage3(ctx, stage3); err != nil {
 		fatal("%v", err)
 	}
 
-	if c.IsEFI() {
-		if err := installer.MountEfiVars(c); err != nil {
+	if ctx.IsEFI() {
+		if err := installer.MountEfiVars(ctx); err != nil {
 			fatal("%v", err)
 		}
 	}
 
-	if err := installer.PrepareChrootEnv(c, installer.RootMountpoint); err != nil {
-		installer.UnmountChroot(c, installer.RootMountpoint)
+	if err := installer.PrepareChrootEnv(ctx, installer.RootMountpoint); err != nil {
+		installer.UnmountChroot(ctx, installer.RootMountpoint)
 		fatal("%v", err)
 	}
-	if err := installer.EnterChroot(c, installer.RootMountpoint); err != nil {
-		installer.UnmountChroot(c, installer.RootMountpoint)
+	if err := installer.EnterChroot(ctx, installer.RootMountpoint); err != nil {
+		installer.UnmountChroot(ctx, installer.RootMountpoint)
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			// Preserve the child's exit code for scripting, but surface the
@@ -676,18 +653,18 @@ func runInstall(cfgPath string) {
 	}
 }
 
-func summarizeAndConfirm(c *installer.Context) {
-	out, _ := c.R.QuietRun("lsblk")
+func summarizeAndConfirm(ctx *installer.Context) {
+	out, _ := ctx.Runner.QuietRun("lsblk")
 	fmt.Println("[+] \x1b[1mCurrent lsblk output:\x1b[m")
 	fmt.Println(out)
 	fmt.Println()
 	fmt.Printf("[+] Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)\n",
-		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
+		ctx.HostBootMode(), ctx.Cfg.Disk.BootType, ctx.Layout.EFIID, ctx.Layout.BIOSID)
 	fmt.Println("[+] \x1b[1mConfigured disk layout:\x1b[m")
-	fmt.Println(c.Layout.SummaryPlain())
+	fmt.Println(ctx.Layout.SummaryPlain())
 	fmt.Println()
 
-	if c.Layout.Flags.NoPartitioningOrFormatting {
+	if ctx.Layout.Flags.NoPartitioningOrFormatting {
 		fmt.Println("[+] You have chosen an existing disk configuration. No devices will")
 		fmt.Println("    actually be re-partitioned or formatted.")
 	} else {
@@ -697,7 +674,7 @@ func summarizeAndConfirm(c *installer.Context) {
 		fmt.Fprintln(os.Stderr, "    Otherwise, automatic partitioning may fail.")
 	}
 
-	ok, err := installer.AskYesNo(c.R,
+	ok, err := installer.AskYesNo(ctx.Runner,
 		"Do you really want to apply this disk configuration?", assumeYes())
 	if err != nil {
 		fatal("%v", err)
@@ -706,14 +683,14 @@ func summarizeAndConfirm(c *installer.Context) {
 		fatal("aborted")
 	}
 	if !assumeYes() {
-		countdown(c, "Applying in ", 5)
+		countdown(ctx, "Applying in ", 5)
 	}
 }
 
-func countdown(c *installer.Context, msg string, n int) {
+func countdown(ctx *installer.Context, msg string, seconds int) {
 	fmt.Fprint(os.Stderr, msg)
-	for i := n; i > 0; i-- {
-		fmt.Fprintf(os.Stderr, "\x1b[1;31m%d\x1b[m ", i)
+	for remaining := seconds; remaining > 0; remaining-- {
+		fmt.Fprintf(os.Stderr, "\x1b[1;31m%d\x1b[m ", remaining)
 		time.Sleep(time.Second)
 	}
 	fmt.Fprintln(os.Stderr)
@@ -734,14 +711,14 @@ func runChroot(args []string) {
 
 	cfg := &config.Config{} // minimal context; chroot shell needs no config
 	_ = cfg
-	c := &installer.Context{
-		R:        newRunner(true),
+	ctx := &installer.Context{
+		Runner:   newRunner(true),
 		Resolver: &disklayout.Resolver{},
 	}
-	if err := installer.PrepareChrootEnv(c, dir); err != nil {
+	if err := installer.PrepareChrootEnv(ctx, dir); err != nil {
 		fatal("%v", err)
 	}
-	if err := installer.ChrootShell(c, dir, args[1:]...); err != nil {
+	if err := installer.ChrootShell(ctx, dir, args[1:]...); err != nil {
 		fatal("%v", err)
 	}
 }
@@ -755,25 +732,25 @@ func runInChroot(cfgPath string) {
 	fillSystemDefaults(cfg)
 
 	nonInteractive := os.Getenv(installer.NonInteractiveEnv) == "1"
-	r := newRunner(!nonInteractive)
-	r.NonInteractive = nonInteractive
+	runner := newRunner(!nonInteractive)
+	runner.NonInteractive = nonInteractive
 
 	layout := buildLayout(cfg)
 	resolver := &disklayout.Resolver{Layout: layout}
-	if v := os.Getenv("GENTOO_CACHED_LSBLK"); v != "" {
-		resolver.SetCachedLsblk(v)
+	if value := os.Getenv("GENTOO_CACHED_LSBLK"); value != "" {
+		resolver.SetCachedLsblk(value)
 	}
 
-	c := &installer.Context{
-		R:        r,
+	ctx := &installer.Context{
+		Runner:   runner,
 		Cfg:      cfg,
 		Layout:   layout,
 		Resolver: resolver,
 		InChroot: true,
 	}
-	installer.SetupChrootEnv(c)
+	installer.SetupChrootEnv(ctx)
 
-	if err := installer.MainInstallGentooInChroot(c); err != nil {
+	if err := installer.MainInstallGentooInChroot(ctx); err != nil {
 		fatal("%v", err)
 	}
 }
@@ -784,7 +761,7 @@ func runInChroot(cfgPath string) {
 type tuiInstaller struct {
 	cfg    *config.Config
 	path   string
-	r      *installer.Runner
+	runner *installer.Runner
 	decide chan tui.InstallDecision
 
 	// logFile appends every install line (host + chroot child output) to
@@ -800,28 +777,28 @@ type tuiInstaller struct {
 
 // awaitDecision reports a failure to the install window and blocks
 // until the user answers with Retry or Abort.
-func (t *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecision {
-	return t.awaitDecisionCore(cmdline, err)
+func (inst *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecision {
+	return inst.awaitDecisionCore(cmdline, err)
 }
 
 // awaitPhaseDecision reports a phase-level failure and blocks until the
 // user answers with Retry or Abort.
-func (t *tuiInstaller) awaitPhaseDecision(cmdline string, err error) tui.InstallDecision {
-	return t.awaitDecisionCore(cmdline, err)
+func (inst *tuiInstaller) awaitPhaseDecision(cmdline string, err error) tui.InstallDecision {
+	return inst.awaitDecisionCore(cmdline, err)
 }
 
 // awaitDecisionCore implements the shared decision loop.
-func (t *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.InstallDecision {
-	t.decided = true
+func (inst *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.InstallDecision {
+	inst.decided = true
 	for {
 		tui.EmitInstallFailed(tui.InstallFailedMsg{
 			Cmdline: cmdline,
 			Err:     err.Error(),
-			Decide:  func(d tui.InstallDecision) { t.decide <- d },
+			Decide:  func(decision tui.InstallDecision) { inst.decide <- decision },
 		})
-		switch d := <-t.decide; d {
+		switch decision := <-inst.decide; decision {
 		case tui.DecideRetry, tui.DecideAbort:
-			return d
+			return decision
 		default:
 			return tui.DecideAbort
 		}
@@ -829,32 +806,32 @@ func (t *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.InstallD
 }
 
 // logf emits a progress line through the runner's Log hook.
-func (t *tuiInstaller) logf(format string, args ...any) {
-	if t.r != nil && t.r.Log != nil {
-		t.r.Log(format, args...)
+func (inst *tuiInstaller) logf(format string, args ...any) {
+	if inst.runner != nil && inst.runner.Log != nil {
+		inst.runner.Log(format, args...)
 	}
 }
 
 // newTUIRunner builds a non-interactive runner streaming everything
 // into the TUI install window (nothing goes to the real terminal).
-func (t *tuiInstaller) newRunner() *installer.Runner {
+func (inst *tuiInstaller) newRunner() *installer.Runner {
 	var sink io.Writer
-	if f, err := installer.OpenInstallLog(); err == nil {
-		t.logFile = f
-		sink = f
+	if file, err := installer.OpenInstallLog(); err == nil {
+		inst.logFile = file
+		sink = file
 	}
 	out := installer.NewLineTee(sink, tui.EmitInstallLine)
-	r := installer.NewRunner(out, out)
-	r.NonInteractive = true
-	r.OnFailure = func(cmdline string, err error) installer.FailAction {
-		if t.awaitDecision(cmdline, err) == tui.DecideRetry {
-			t.decided = false // the phase may still complete; keep retry options open
+	runner := installer.NewRunner(out, out)
+	runner.NonInteractive = true
+	runner.OnFailure = func(cmdline string, err error) installer.FailAction {
+		if inst.awaitDecision(cmdline, err) == tui.DecideRetry {
+			inst.decided = false // the phase may still complete; keep retry options open
 			return installer.FailRetry
 		}
 		return installer.FailAbort
 	}
-	t.r = r
-	return r
+	inst.runner = runner
+	return runner
 }
 
 // runInstallTUI performs the host-side installation while the TUI stays
@@ -872,55 +849,55 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		return err
 	}
 
-	t := &tuiInstaller{cfg: cfg, path: cfgPath,
+	inst := &tuiInstaller{cfg: cfg, path: cfgPath,
 		decide: make(chan tui.InstallDecision, 1)}
-	r := t.newRunner()
+	runner := inst.newRunner()
 	defer func() {
-		if t.logFile != nil {
-			_ = t.logFile.Close()
-			t.logFile = nil
+		if inst.logFile != nil {
+			_ = inst.logFile.Close()
+			inst.logFile = nil
 		}
 	}()
 
-	c := &installer.Context{
-		R:            r,
+	ctx := &installer.Context{
+		Runner:       runner,
 		Cfg:          cfg,
 		Layout:       layout,
 		Resolver:     &disklayout.Resolver{Layout: layout},
 		SourceConfig: resolved,
 	}
 
-	t.logf("Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)",
-		c.HostBootMode(), c.Cfg.Disk.BootType, c.Layout.EFIID, c.Layout.BIOSID)
-	if err := installer.CheckHostBootMode(c); err != nil {
+	inst.logf("Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)",
+		ctx.HostBootMode(), ctx.Cfg.Disk.BootType, ctx.Layout.EFIID, ctx.Layout.BIOSID)
+	if err := installer.CheckHostBootMode(ctx); err != nil {
 		return err
 	}
-	if err := installer.CheckFilesystemSupport(c); err != nil {
+	if err := installer.CheckFilesystemSupport(ctx); err != nil {
 		return err
 	}
 
-	t.logf("Preparing installation environment")
-	t.logf("Configured disk layout:")
-	t.logf("%s", c.Layout.SummaryPlain())
-	if err := installer.PrepareEnvironment(c); err != nil {
+	inst.logf("Preparing installation environment")
+	inst.logf("Configured disk layout:")
+	inst.logf("%s", ctx.Layout.SummaryPlain())
+	if err := installer.PrepareEnvironment(ctx); err != nil {
 		return err
 	}
 	if layout.Flags.UsedEncryption && os.Getenv(installer.EncryptionKeyEnv) == "" {
 		return fmt.Errorf("encryption enabled but %s is missing; restart the installation from the configurator",
 			installer.EncryptionKeyEnv)
 	}
-	if err := installer.EnsureEncryptionKey(c, nil); err != nil {
+	if err := installer.EnsureEncryptionKey(ctx, nil); err != nil {
 		return err
 	}
 
-	out, _ := c.R.QuietRun("lsblk")
-	t.logf("Current lsblk output:")
-	t.logf("%s", out)
-	t.logf("Configured disk layout:")
-	t.logf("%s", c.Layout.SummaryPlain())
+	out, _ := ctx.Runner.QuietRun("lsblk")
+	inst.logf("Current lsblk output:")
+	inst.logf("%s", out)
+	inst.logf("Configured disk layout:")
+	inst.logf("%s", ctx.Layout.SummaryPlain())
 
-	for i := 5; i > 0; i-- {
-		t.logf("Applying disk configuration in %d…", i)
+	for remaining := 5; remaining > 0; remaining-- {
+		inst.logf("Applying disk configuration in %d…", remaining)
 		time.Sleep(time.Second)
 	}
 
@@ -934,44 +911,44 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		fn        func() error
 	}{
 		{"Unmounting stale filesystems", false,
-			func() error { unmountStale(c, installer.RootMountpoint); return nil }},
+			func() error { unmountStale(ctx, installer.RootMountpoint); return nil }},
 		{"Applying disk configuration", false,
-			func() error { return installer.ApplyDiskActions(c) }},
+			func() error { return installer.ApplyDiskActions(ctx) }},
 		// The root filesystem must be mounted before the stage3 download so
 		// the tarball can be staged on the (disk-backed) target disk instead
 		// of the RAM-backed /tmp, which is too small for a ~400MB tarball on
 		// low-memory live systems. MountByID is idempotent per mountpoint.
 		{"Mounting root filesystem", false,
-			func() error { return installer.MountRoot(c) }},
+			func() error { return installer.MountRoot(ctx) }},
 		{"Downloading stage3", false,
 			func() error {
-				_, err := installer.DownloadStage3(c)
+				_, err := installer.DownloadStage3(ctx)
 				return err
 			}},
 		{"Extracting stage3", true,
 			func() error {
-				return installer.ExtractStage3(c,
-					installer.Stage3Info{Path: c.Stage3File})
+				return installer.ExtractStage3(ctx,
+					installer.Stage3Info{Path: ctx.Stage3File})
 			}},
 		{"Mounting efivars", false,
-			func() error { return installer.MountEfiVars(c) }},
+			func() error { return installer.MountEfiVars(ctx) }},
 		{"Preparing chroot environment", false,
-			func() error { return installer.PrepareChrootEnv(c, installer.RootMountpoint) }},
+			func() error { return installer.PrepareChrootEnv(ctx, installer.RootMountpoint) }},
 	}
-	for _, ph := range phases {
-		if ph.name == "Mounting efivars" && !c.IsEFI() {
+	for _, phase := range phases {
+		if phase.name == "Mounting efivars" && !ctx.IsEFI() {
 			continue
 		}
-		if err := t.runPhase(c, ph.name, ph.cleanRoot, ph.fn); err != nil {
+		if err := inst.runPhase(ctx, phase.name, phase.cleanRoot, phase.fn); err != nil {
 			return err
 		}
 	}
 	for {
-		err := installer.EnterChroot(c, installer.RootMountpoint)
+		err := installer.EnterChroot(ctx, installer.RootMountpoint)
 		if err == nil {
 			return nil
 		}
-		switch t.awaitPhaseDecision("gentooinstall --in-chroot (chroot phase)", err) {
+		switch inst.awaitPhaseDecision("gentooinstall --in-chroot (chroot phase)", err) {
 		case tui.DecideRetry:
 			tui.EmitInstallLine("Re-entering chroot phase…")
 		default:
@@ -982,46 +959,46 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 
 // runPhase runs one installation phase, pausing on failure so the user can
 // decide how to proceed. A nil return means the phase succeeded.
-func (t *tuiInstaller) runPhase(c *installer.Context, name string, cleanRoot bool, fn func() error) error {
-	t.decided = false
-	t.logf(name)
+func (inst *tuiInstaller) runPhase(ctx *installer.Context, name string, cleanRoot bool, fn func() error) error {
+	inst.decided = false
+	inst.logf(name)
 	for {
 		err := fn()
 		if err == nil {
-			t.decided = false
+			inst.decided = false
 			return nil
 		}
-		if t.decided {
+		if inst.decided {
 			// The failure was already answered at the command level; do not
 			// prompt a second time for the same underlying error.
-			t.decided = false
+			inst.decided = false
 			return fmt.Errorf("%s failed: %w", name, err)
 		}
-		switch t.awaitPhaseDecision(name, err) {
+		switch inst.awaitPhaseDecision(name, err) {
 		case tui.DecideRetry:
-			t.decided = false // the retried phase may fail again; re-prompt then
+			inst.decided = false // the retried phase may fail again; re-prompt then
 			// Rebuild the layout from the current config so a Retry never
 			// reuses a stale EFI/BIOS role set (e.g. user fixed BootType
 			// to bios but retried an EFI-built run). A rebuild failure
 			// aborts instead of retrying with known-stale roles.
-			if fresh, ferr := buildLayoutE(c.Cfg); ferr != nil {
+			if fresh, ferr := buildLayoutE(ctx.Cfg); ferr != nil {
 				return fmt.Errorf("%s: refreshed layout invalid, abort instead of retrying stale layout: %w", name, ferr)
 			} else {
-				c.Layout = fresh
-				if c.Resolver != nil {
-					c.Resolver.Layout = fresh
+				ctx.Layout = fresh
+				if ctx.Resolver != nil {
+					ctx.Resolver.Layout = fresh
 				} else {
-					c.Resolver = &disklayout.Resolver{Layout: fresh}
+					ctx.Resolver = &disklayout.Resolver{Layout: fresh}
 				}
-				t.logf("Refreshed layout: boot type %s (EFIID=%s BIOSID=%s)",
-					c.Cfg.Disk.BootType, fresh.EFIID, fresh.BIOSID)
+				inst.logf("Refreshed layout: boot type %s (EFIID=%s BIOSID=%s)",
+					ctx.Cfg.Disk.BootType, fresh.EFIID, fresh.BIOSID)
 			}
-			if name == "Mounting efivars" && !c.IsEFI() {
+			if name == "Mounting efivars" && !ctx.IsEFI() {
 				tui.EmitInstallLine("Skipping Mounting efivars (BIOS layout) …")
 				return nil
 			}
 			if cleanRoot {
-				if ce := installer.ClearRoot(c); ce != nil {
+				if ce := installer.ClearRoot(ctx); ce != nil {
 					return fmt.Errorf("%s: could not clean root: %w", name, ce)
 				}
 			}

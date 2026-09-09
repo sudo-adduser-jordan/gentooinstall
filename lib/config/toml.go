@@ -15,36 +15,36 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Config{}
-	if err := toml.Unmarshal(data, c); err != nil {
+	cfg := &Config{}
+	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return c, nil
+	return cfg, nil
 }
 
 // LoadOrDefault loads path; missing files yield the default configuration
 // with Timezone/Keymap left for the caller to fill from system detection.
 func LoadOrDefault(path string, hasEFI bool) (*Config, bool, error) {
-	c := Default(hasEFI)
+	cfg := Default(hasEFI)
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return c, false, nil
+		return cfg, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
-	if err := toml.Unmarshal(data, c); err != nil {
+	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, false, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return c, true, nil
+	return cfg, true, nil
 }
 
 // String returns the config serialised as TOML.
-func (c *Config) String() string {
+func (cfg *Config) String() string {
 	var buf bytes.Buffer
 	enc := toml.NewEncoder(&buf)
 	enc.Indent = "    "
-	if err := enc.Encode(c); err != nil {
+	if err := enc.Encode(cfg); err != nil {
 		return "# error encoding config"
 	}
 	return buf.String()
@@ -55,11 +55,11 @@ func (c *Config) String() string {
 // builds/ dir). A directory that cannot be created is the real failure and is
 // reported as such, naming the parent directory instead of letting WriteFile
 // surface a cryptic error for the file itself.
-func (c *Config) Save(path string) error {
+func (cfg *Config) Save(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config directory %s: %w", filepath.Dir(path), err)
 	}
-	return os.WriteFile(path, []byte(c.String()), 0o644)
+	return os.WriteFile(path, []byte(cfg.String()), 0o644)
 }
 
 // DefaultConfigName and CustomConfigName are the shipped template and the

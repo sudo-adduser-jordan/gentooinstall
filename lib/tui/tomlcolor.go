@@ -20,10 +20,10 @@ var (
 
 // highlightTOML returns s with TOML syntax coloured via lipgloss ANSI
 // escape sequences. The result can be fed directly to a viewport.
-func highlightTOML(s string) string {
+func highlightTOML(src string) string {
 	var out strings.Builder
-	for i, line := range strings.Split(s, "\n") {
-		if i > 0 {
+	for idx, line := range strings.Split(src, "\n") {
+		if idx > 0 {
 			out.WriteByte('\n')
 		}
 		hlLine(&out, line)
@@ -141,12 +141,12 @@ func hlValue(out *strings.Builder, val string) {
 // hlQuotedString highlights a single or double-quoted string, colouring
 // the delimiters faint and the content green.
 func hlQuotedString(out *strings.Builder, val string) {
-	q := byte(val[0])
+	quote := byte(val[0])
 	// find closing quote (skip escaped quotes)
 	end := -1
-	for i := 1; i < len(val); i++ {
-		if val[i] == q && val[i-1] != '\\' {
-			end = i
+	for idx := 1; idx < len(val); idx++ {
+		if val[idx] == quote && val[idx-1] != '\\' {
+			end = idx
 			break
 		}
 	}
@@ -155,35 +155,35 @@ func hlQuotedString(out *strings.Builder, val string) {
 		out.WriteString(tomlStringStyle.Render(val))
 		return
 	}
-	out.WriteString(tomlQuoteStyle.Render(string(q)))
+	out.WriteString(tomlQuoteStyle.Render(string(quote)))
 	out.WriteString(tomlStringStyle.Render(val[1:end]))
-	out.WriteString(tomlQuoteStyle.Render(string(q)))
+	out.WriteString(tomlQuoteStyle.Render(string(quote)))
 	if end+1 < len(val) {
 		// trailing content after closing quote (e.g. comment)
 		out.WriteString(tomlCommentStyle.Render(val[end+1:]))
 	}
 }
 
-func isTOMLNumber(s string) bool {
-	if s == "" {
+func isTOMLNumber(val string) bool {
+	if val == "" {
 		return false
 	}
-	i := 0
-	if s[0] == '+' || s[0] == '-' {
-		i = 1
+	idx := 0
+	if val[0] == '+' || val[0] == '-' {
+		idx = 1
 	}
-	if i >= len(s) {
+	if idx >= len(val) {
 		return false
 	}
-	if s[i] == '0' && i+1 < len(s) && s[i+1] == 'x' {
+	if val[idx] == '0' && idx+1 < len(val) && val[idx+1] == 'x' {
 		// hex
-		i += 2
-		if i >= len(s) {
+		idx += 2
+		if idx >= len(val) {
 			return false
 		}
-		for ; i < len(s); i++ {
-			c := s[i]
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '_') {
+		for ; idx < len(val); idx++ {
+			ch := val[idx]
+			if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || ch == '_') {
 				return false
 			}
 		}
@@ -191,42 +191,42 @@ func isTOMLNumber(s string) bool {
 	}
 	// decimal / octal / binary
 	hasDot := false
-	for ; i < len(s); i++ {
-		c := s[i]
-		if c == '_' {
+	for ; idx < len(val); idx++ {
+		ch := val[idx]
+		if ch == '_' {
 			continue
 		}
-		if c == '.' && !hasDot {
+		if ch == '.' && !hasDot {
 			hasDot = true
 			continue
 		}
-		if c == 'e' || c == 'E' {
+		if ch == 'e' || ch == 'E' {
 			// exponent
-			i++
-			if i < len(s) && (s[i] == '+' || s[i] == '-') {
-				i++
+			idx++
+			if idx < len(val) && (val[idx] == '+' || val[idx] == '-') {
+				idx++
 			}
-			for ; i < len(s); i++ {
-				if !unicode.IsDigit(rune(s[i])) {
+			for ; idx < len(val); idx++ {
+				if !unicode.IsDigit(rune(val[idx])) {
 					return false
 				}
 			}
 			return true
 		}
-		if !unicode.IsDigit(rune(c)) {
+		if !unicode.IsDigit(rune(ch)) {
 			return false
 		}
 	}
 	return true
 }
 
-func isTOMLDate(s string) bool {
+func isTOMLDate(val string) bool {
 	// rough check: starts with a digit and contains '-' or 'T' or ':'
-	if len(s) < 4 || !unicode.IsDigit(rune(s[0])) {
+	if len(val) < 4 || !unicode.IsDigit(rune(val[0])) {
 		return false
 	}
-	for _, c := range s {
-		if c == '-' || c == 'T' || c == ':' || c == 'Z' || c == '+' || c == '.' {
+	for _, ch := range val {
+		if ch == '-' || ch == 'T' || ch == ':' || ch == 'Z' || ch == '+' || ch == '.' {
 			return true
 		}
 	}

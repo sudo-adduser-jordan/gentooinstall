@@ -66,22 +66,22 @@ func sep(label string) *field {
 // when nil, activation shows the field's help.
 func readOnly(label, help string, get func(*config.Config) string, style lipgloss.Style,
 	onPick ...func(*Model, *field, string)) *field {
-	f := &field{
+	fld := &field{
 		label: label, help: help, kind: kReadOnly,
 		getText: func(cc *config.Config) string { return get(cc) },
 		vis:     func(*config.Config) bool { return true },
 		summ: func(cc *config.Config) string {
-			s := get(cc)
-			if s == "" {
+			subject := get(cc)
+			if subject == "" {
 				return unsetStyle.Render("none")
 			}
-			return style.Render(s)
+			return style.Render(subject)
 		},
 	}
 	if len(onPick) > 0 {
-		f.onPick = onPick[0]
+		fld.onPick = onPick[0]
 	}
-	return f
+	return fld
 }
 
 func toggle(label, help string, get func(*config.Config) bool, set func(*config.Config, bool)) *field {
@@ -112,46 +112,46 @@ func choice(label string, opts func() []option, cur func(*config.Config) string,
 
 func filteredChoice(label string, opts func() []option, cur func(*config.Config) string,
 	set func(*config.Config, string), help string) *field {
-	f := choice(label, opts, cur, set, help)
-	f.filter = true
-	return f
+	field := choice(label, opts, cur, set, help)
+	field.filter = true
+	return field
 }
 
-func visible(f *field, c *config.Config) bool {
-	if f.vis == nil {
+func visible(field *field, cfg *config.Config) bool {
+	if field.vis == nil {
 		return true
 	}
-	return f.vis(c)
+	return field.vis(cfg)
 }
 
-func summaryOf(f *field, c *config.Config) string {
-	if f.summ != nil {
-		return f.summ(c)
+func summaryOf(field *field, cfg *config.Config) string {
+	if field.summ != nil {
+		return field.summ(cfg)
 	}
-	switch f.kind {
+	switch field.kind {
 	case kToggle:
-		if f.getBool(c) {
+		if field.getBool(cfg) {
 			return toggleOnStyle.Render("●") + " on"
 		}
 		return toggleOffStyle.Render("○") + " off"
 	case kText, kMultiText:
-		s := f.getText(c)
-		if s == "" {
+		subject := field.getText(cfg)
+		if subject == "" {
 			return unsetStyle.Render("unset")
 		}
-		return s
+		return subject
 	case kChoice:
-		v := f.getChoice(c)
-		if v == "" {
+		value := field.getChoice(cfg)
+		if value == "" {
 			return unsetStyle.Render("unset")
 		}
-		return v
+		return value
 	case kMultiChoice:
-		n := len(f.getStrings(c))
-		if n == 0 {
+		count := len(field.getStrings(cfg))
+		if count == 0 {
 			return unsetStyle.Render("none")
 		}
-		return badgeStyle.Render(fmt.Sprintf("%d selected", n))
+		return badgeStyle.Render(fmt.Sprintf("%d selected", count))
 	}
 	return ""
 }

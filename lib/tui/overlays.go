@@ -15,40 +15,40 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (m *Model) openHelp(title, body string) {
-	m.overlay = overlay{kind: ovHelp, title: title, body: body}
+func (model *Model) openHelp(title, body string) {
+	model.overlay = overlay{kind: ovHelp, title: title, body: body}
 }
 
 // openProfilePackages opens a scrollable modal listing the packages that the
 // currently selected profile installs.
-func (m *Model) openProfilePackages() {
-	m.overlay = overlay{kind: ovPackages, title: ePackage + " Packages installed by profile"}
+func (model *Model) openProfilePackages() {
+	model.overlay = overlay{kind: ovPackages, title: ePackage + " Packages installed by profile"}
 }
 
-func (m *Model) openPicker(title string, opts []option, current string, filter bool,
+func (model *Model) openPicker(title string, opts []option, current string, filter bool,
 	onPick func(*Model, string)) {
 	in := textinput.New()
 	in.Placeholder = "🔍 type to filter…"
 	if filter {
 		in.Focus()
 	}
-	m.overlay = overlay{
+	model.overlay = overlay{
 		kind: ovPicker, title: title, opts: opts, input: in,
 		current: current,
 	}
-	for i, o := range opts {
-		if o.Value == current {
-			m.overlay.cursor = i
+	for idx, opt := range opts {
+		if opt.Value == current {
+			model.overlay.cursor = idx
 		}
 	}
-	m.pickFn = onPick
+	model.pickFn = onPick
 }
 
-func (m *Model) openText(title, value string, multi bool, onDone func(*Model, string)) {
-	m.openTextWithNote(title, value, "", multi, onDone)
+func (model *Model) openText(title, value string, multi bool, onDone func(*Model, string)) {
+	model.openTextWithNote(title, value, "", multi, onDone)
 }
 
-func (m *Model) openTextWithNote(title, value, note string, multi bool,
+func (model *Model) openTextWithNote(title, value, note string, multi bool,
 	onDone func(*Model, string)) {
 	if multi {
 		ta := textarea.New()
@@ -57,16 +57,16 @@ func (m *Model) openTextWithNote(title, value, note string, multi bool,
 		ta.SetWidth(70)
 		ta.SetHeight(maxInt(3, minInt(8, strings.Count(value, "\n")+3)))
 		ta.ShowLineNumbers = false
-		m.overlay = overlay{kind: ovText, title: title, note: note, area: ta}
+		model.overlay = overlay{kind: ovText, title: title, note: note, area: ta}
 	} else {
 		ti := textinput.New()
 		ti.SetValue(value)
 		ti.Focus()
 		ti.CharLimit = 0
 		ti.Width = 70
-		m.overlay = overlay{kind: ovText, title: title, note: note, input: ti}
+		model.overlay = overlay{kind: ovText, title: title, note: note, input: ti}
 	}
-	m.textFn = &textState{multi: multi, fn: onDone}
+	model.textFn = &textState{multi: multi, fn: onDone}
 }
 
 type textState struct {
@@ -74,78 +74,78 @@ type textState struct {
 	fn    func(*Model, string)
 }
 
-func (m *Model) openMultiPicker(title string, opts []option, current []string,
+func (model *Model) openMultiPicker(title string, opts []option, current []string,
 	fn func(*Model, []string)) {
 	sel := map[string]bool{}
-	for _, v := range current {
-		sel[v] = true
+	for _, val := range current {
+		sel[val] = true
 	}
 	in := textinput.New()
 	in.Placeholder = "🔍 type to filter…"
 	in.Focus()
-	m.overlay = overlay{
+	model.overlay = overlay{
 		kind: ovPicker, title: title, opts: opts, input: in,
 		filter: "", multiChoice: true, selected: sel,
 	}
 	// Start on the first selected entry.
-	for i, o := range opts {
-		if sel[o.Value] {
-			m.overlay.cursor = i
+	for idx, opt := range opts {
+		if sel[opt.Value] {
+			model.overlay.cursor = idx
 			break
 		}
 	}
-	m.multiFn = fn
+	model.multiFn = fn
 }
 
 // updatePickerKeys handles key input for pickers; routed reports whether
 // the key belongs to the filter input.
-func (m *Model) updatePickerKeys(msg tea.KeyMsg) (routed bool, cmd tea.Cmd) {
+func (model *Model) updatePickerKeys(msg tea.KeyMsg) (routed bool, cmd tea.Cmd) {
 	switch msg.String() {
 	case "down", "ctrl+n":
-		if m.overlay.cursor < len(m.filteredOpts())-1 {
-			m.overlay.cursor++
+		if model.overlay.cursor < len(model.filteredOpts())-1 {
+			model.overlay.cursor++
 		}
 		return false, nil
 	case "up", "ctrl+p":
-		if m.overlay.cursor > 0 {
-			m.overlay.cursor--
+		if model.overlay.cursor > 0 {
+			model.overlay.cursor--
 		}
 		return false, nil
 	default:
-		var c tea.Cmd
-		before := m.overlay.filter
-		m.overlay.input, c = m.overlay.input.Update(msg)
-		m.overlay.filter = m.overlay.input.Value()
-		if before != m.overlay.filter {
-			m.overlay.cursor = 0
+		var cmd tea.Cmd
+		before := model.overlay.filter
+		model.overlay.input, cmd = model.overlay.input.Update(msg)
+		model.overlay.filter = model.overlay.input.Value()
+		if before != model.overlay.filter {
+			model.overlay.cursor = 0
 		}
-		return true, c
+		return true, cmd
 	}
 }
 
 // handleRawViewportKeys scrolls the dedicated raw output viewport. Any
 // scroll away from the bottom pauses tail-follow; reaching the bottom
 // (via keys or End/G) resumes it.
-func (m *Model) handleRawViewportKeys(msg tea.KeyMsg) {
+func (model *Model) handleRawViewportKeys(msg tea.KeyMsg) {
 	switch msg.String() {
 	case "down", "j":
-		m.rawVp.LineDown(1)
-		m.rawFollow = m.rawVp.AtBottom()
+		model.rawVp.LineDown(1)
+		model.rawFollow = model.rawVp.AtBottom()
 	case "up", "k":
-		m.rawVp.LineUp(1)
-		m.rawFollow = m.rawVp.AtBottom()
+		model.rawVp.LineUp(1)
+		model.rawFollow = model.rawVp.AtBottom()
 	case "pgdown", "ctrl+f", " ":
-		m.rawVp.HalfViewDown()
-		m.rawFollow = m.rawVp.AtBottom()
+		model.rawVp.HalfViewDown()
+		model.rawFollow = model.rawVp.AtBottom()
 	case "pgup", "ctrl+b":
-		m.rawVp.HalfViewUp()
-		m.rawFollow = m.rawVp.AtBottom()
+		model.rawVp.HalfViewUp()
+		model.rawFollow = model.rawVp.AtBottom()
 	case "home", "g":
-		m.rawVp.GotoTop()
-		m.rawFollow = false
+		model.rawVp.GotoTop()
+		model.rawFollow = false
 	case "end", "G":
-		m.rawVp.GotoBottom()
-		m.rawFollow = true
+		model.rawVp.GotoBottom()
+		model.rawFollow = true
 	}
 }
 
@@ -153,36 +153,36 @@ func (m *Model) handleRawViewportKeys(msg tea.KeyMsg) {
 // colorizes lines appended since the last render, and refreshes the
 // viewport content only when something changed. New output jumps to the
 // bottom while tail-follow is on; a scrolled-up viewport keeps its offset.
-func (m *Model) syncRawViewport(w, vh int) {
-	if m.rawVp.Width != w || m.rawVp.Height != vh {
-		m.rawVp = viewport.New(w, vh)
-		m.rawDirty = true
+func (model *Model) syncRawViewport(width, viewportHeight int) {
+	if model.rawVp.Width != width || model.rawVp.Height != viewportHeight {
+		model.rawVp = viewport.New(width, viewportHeight)
+		model.rawDirty = true
 	}
-	if len(m.rawContent) > len(m.instRawLines) {
+	if len(model.rawContent) > len(model.instRawLines) {
 		// instRawLines is capped (oldest lines dropped); drop the same
 		// prefix from the colorized cache so indexes stay aligned.
-		m.rawContent = append([]string(nil),
-			m.rawContent[len(m.rawContent)-len(m.instRawLines):]...)
-		m.rawDirty = true
+		model.rawContent = append([]string(nil),
+			model.rawContent[len(model.rawContent)-len(model.instRawLines):]...)
+		model.rawDirty = true
 	}
-	for i := len(m.rawContent); i < len(m.instRawLines); i++ {
+	for idx := len(model.rawContent); idx < len(model.instRawLines); idx++ {
 		stripped := ""
-		if i < len(m.instLines) {
-			stripped = m.instLines[i]
+		if idx < len(model.instLines) {
+			stripped = model.instLines[idx]
 		} else {
-			stripped = stripAnsi(m.instRawLines[i])
+			stripped = stripAnsi(model.instRawLines[idx])
 		}
-		m.rawContent = append(m.rawContent, colorizeRawLine(stripped, m.instRawLines[i]))
-		m.rawDirty = true
+		model.rawContent = append(model.rawContent, colorizeRawLine(stripped, model.instRawLines[idx]))
+		model.rawDirty = true
 	}
-	if m.rawDirty {
-		m.rawVp.SetContent(strings.Join(m.rawContent, "\n"))
-		m.rawDirty = false
-		if m.rawFollow {
-			m.rawVp.GotoBottom()
+	if model.rawDirty {
+		model.rawVp.SetContent(strings.Join(model.rawContent, "\n"))
+		model.rawDirty = false
+		if model.rawFollow {
+			model.rawVp.GotoBottom()
 		}
-	} else if m.rawFollow && !m.rawVp.AtBottom() {
-		m.rawVp.GotoBottom()
+	} else if model.rawFollow && !model.rawVp.AtBottom() {
+		model.rawVp.GotoBottom()
 	}
 }
 
@@ -199,17 +199,17 @@ func colorizeRawLine(stripped, raw string) string {
 	if strings.Contains(raw, "\x1b") {
 		return raw
 	}
-	s := stripped
+	lineContent := stripped
 	switch {
-	case strings.HasPrefix(s, "[+]"):
-		name := strings.TrimSpace(strings.TrimPrefix(s, "[+]"))
+	case strings.HasPrefix(lineContent, "[+]"):
+		name := strings.TrimSpace(strings.TrimPrefix(lineContent, "[+]"))
 		return demoCyan + "[+]" + demoReset + " " + demoBold + name + demoReset
-	case strings.HasPrefix(s, "[!]"):
-		return demoRed + s + demoReset
-	case strings.HasPrefix(s, "$ "):
-		return colorizeCmdLine(s)
+	case strings.HasPrefix(lineContent, "[!]"):
+		return demoRed + lineContent + demoReset
+	case strings.HasPrefix(lineContent, "$ "):
+		return colorizeCmdLine(lineContent)
 	}
-	lower := strings.ToLower(s)
+	lower := strings.ToLower(lineContent)
 	switch {
 	case strings.Contains(lower, "fail"),
 		strings.Contains(lower, "error"),
@@ -217,19 +217,19 @@ func colorizeRawLine(stripped, raw string) string {
 		strings.Contains(lower, "not found"),
 		strings.Contains(lower, "denied"),
 		strings.Contains(lower, "no such"):
-		return demoRed + s + demoReset
+		return demoRed + lineContent + demoReset
 	case strings.Contains(lower, "warn"):
-		return demoYellow + s + demoReset
-	case strings.Contains(s, "://") || strings.Contains(s, "/dev/") ||
-		strings.HasSuffix(s, ".tar.xz"):
-		return demoCyan + s + demoReset
+		return demoYellow + lineContent + demoReset
+	case strings.Contains(lineContent, "://") || strings.Contains(lineContent, "/dev/") ||
+		strings.HasSuffix(lineContent, ".tar.xz"):
+		return demoCyan + lineContent + demoReset
 	}
-	return highlightAtoms(s)
+	return highlightAtoms(lineContent)
 }
 
 // colorizeCmdLine paints "$ cmd args", highlighting package atoms in green.
-func colorizeCmdLine(s string) string {
-	rest := strings.TrimPrefix(s, "$ ")
+func colorizeCmdLine(commandLine string) string {
+	rest := strings.TrimPrefix(commandLine, "$ ")
 	prompt := demoYellow + "$" + demoReset
 	if rest == "" {
 		return prompt
@@ -242,236 +242,236 @@ func colorizeCmdLine(s string) string {
 
 // highlightAtoms paints whitespace-separated category/name tokens green,
 // leaving the rest of the line untouched.
-func highlightAtoms(s string) string {
-	out := highlightAtomsPlain(s)
-	if out == s {
-		return s
+func highlightAtoms(subject string) string {
+	out := highlightAtomsPlain(subject)
+	if out == subject {
+		return subject
 	}
 	return out
 }
 
 // highlightAtomsPlain is the ANSI-core of highlightAtoms so callers can nest
 // it inside other sequences (e.g. the dimmed command line).
-func highlightAtomsPlain(s string) string {
-	parts := strings.Split(s, " ")
+func highlightAtomsPlain(subject string) string {
+	parts := strings.Split(subject, " ")
 	painted := false
-	for i, p := range parts {
-		if strings.Contains(p, "/") {
-			parts[i] = demoGreen + p + demoReset
+	for idx, part := range parts {
+		if strings.Contains(part, "/") {
+			parts[idx] = demoGreen + part + demoReset
 			painted = true
 		}
 	}
 	if !painted {
-		return s
+		return subject
 	}
 	return strings.Join(parts, " ")
 }
 
 // handleViewportKeys applies scroll keys to the shared log viewport used
 // by the log/config/make.conf/packages overlays.
-func (m *Model) handleViewportKeys(msg tea.KeyMsg) {
+func (model *Model) handleViewportKeys(msg tea.KeyMsg) {
 	switch msg.String() {
 	case "down", "j":
-		m.logVp.LineDown(1)
+		model.logVp.LineDown(1)
 	case "up", "k":
-		m.logVp.LineUp(1)
+		model.logVp.LineUp(1)
 	case "pgdown", "ctrl+f", " ":
-		m.logVp.HalfViewDown()
+		model.logVp.HalfViewDown()
 	case "pgup", "ctrl+b":
-		m.logVp.HalfViewUp()
+		model.logVp.HalfViewUp()
 	case "home", "g":
-		m.logVp.GotoTop()
+		model.logVp.GotoTop()
 	case "end", "G":
-		m.logVp.GotoBottom()
+		model.logVp.GotoBottom()
 	}
 }
 
-func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch m.overlay.kind {
+func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch model.overlay.kind {
 
 	case ovHelp:
-		m.closeOverlay()
-		return m, nil
+		model.closeOverlay()
+		return model, nil
 
 	case ovLog:
 		switch msg.String() {
 		case "esc", "l", "q":
-			m.closeOverlay()
+			model.closeOverlay()
 		default:
-			m.handleRawViewportKeys(msg)
+			model.handleRawViewportKeys(msg)
 		}
-		return m, nil
+		return model, nil
 
 	case ovConfig:
 		switch msg.String() {
 		case "esc", "v", "q":
-			m.closeOverlay()
+			model.closeOverlay()
 		default:
-			m.handleViewportKeys(msg)
+			model.handleViewportKeys(msg)
 		}
-		return m, nil
+		return model, nil
 
 	case ovMakeConf:
 		switch msg.String() {
 		case "esc", "q":
-			m.closeOverlay()
+			model.closeOverlay()
 		default:
-			m.handleViewportKeys(msg)
+			model.handleViewportKeys(msg)
 		}
-		return m, nil
+		return model, nil
 
 	case ovPackages:
 		switch msg.String() {
 		case "esc", "q":
-			m.closeOverlay()
+			model.closeOverlay()
 		default:
-			m.handleViewportKeys(msg)
+			model.handleViewportKeys(msg)
 		}
-		return m, nil
+		return model, nil
 
 	case ovPicker:
 		switch msg.String() {
 		case "esc":
-			m.closeOverlay()
-			return m, nil
+			model.closeOverlay()
+			return model, nil
 		case "enter":
-			opts := m.filteredOpts()
-			if m.overlay.multiChoice {
+			opts := model.filteredOpts()
+			if model.overlay.multiChoice {
 				var vals []string
-				for _, o := range m.overlay.opts { // preserve original order
-					if m.overlay.selected[o.Value] {
-						vals = append(vals, o.Value)
+				for _, opt := range model.overlay.opts { // preserve original order
+					if model.overlay.selected[opt.Value] {
+						vals = append(vals, opt.Value)
 					}
 				}
-				fn := m.multiFn
-				m.closeOverlay()
+				fn := model.multiFn
+				model.closeOverlay()
 				if fn != nil {
-					fn(m, vals)
+					fn(model, vals)
 				}
-				return m, nil
+				return model, nil
 			}
-			if len(opts) > 0 && m.overlay.cursor < len(opts) {
-				v := opts[m.overlay.cursor].Value
-				fn := m.pickFn
-				m.closeOverlay()
+			if len(opts) > 0 && model.overlay.cursor < len(opts) {
+				val := opts[model.overlay.cursor].Value
+				fn := model.pickFn
+				model.closeOverlay()
 				if fn != nil {
-					fn(m, v)
+					fn(model, val)
 				}
 			}
-			return m, nil
+			return model, nil
 		case " ", "space":
 			// For multi-choice, Space toggles the focused row regardless of
 			// filter focus (so users can search then toggle). Package/repo
 			// names don't need a literal space in the filter.
-			if m.overlay.multiChoice {
-				opts := m.filteredOpts()
-				if m.overlay.cursor < len(opts) {
-					if m.overlay.selected == nil {
-						m.overlay.selected = map[string]bool{}
+			if model.overlay.multiChoice {
+				opts := model.filteredOpts()
+				if model.overlay.cursor < len(opts) {
+					if model.overlay.selected == nil {
+						model.overlay.selected = map[string]bool{}
 					}
-					v := opts[m.overlay.cursor].Value
-					m.overlay.selected[v] = !m.overlay.selected[v]
+					val := opts[model.overlay.cursor].Value
+					model.overlay.selected[val] = !model.overlay.selected[val]
 				}
-				return m, nil
+				return model, nil
 			}
-			routed, cmd := m.updatePickerKeys(msg)
+			routed, cmd := model.updatePickerKeys(msg)
 			if routed && cmd != nil {
-				return m, cmd
+				return model, cmd
 			}
-			return m, nil
+			return model, nil
 		default:
-			routed, cmd := m.updatePickerKeys(msg)
+			routed, cmd := model.updatePickerKeys(msg)
 			if !routed {
-				return m, nil
+				return model, nil
 			}
-			return m, cmd
+			return model, cmd
 		}
 
 	case ovText:
-		isArea := m.textFn != nil && m.textFn.multi
+		isArea := model.textFn != nil && model.textFn.multi
 		switch msg.String() {
 		case "esc":
-			m.closeOverlay()
-			return m, nil
+			model.closeOverlay()
+			return model, nil
 		case "enter":
 			if isArea {
 				break // newline goes to the editor below
 			}
-			v := strings.TrimSpace(m.overlay.input.Value())
-			st := m.textFn
-			m.closeOverlay()
+			val := strings.TrimSpace(model.overlay.input.Value())
+			st := model.textFn
+			model.closeOverlay()
 			if st != nil && st.fn != nil {
-				st.fn(m, v)
+				st.fn(model, val)
 			}
-			cmd := m.deferredCmd
-			m.deferredCmd = nil
-			return m, cmd
+			cmd := model.deferredCmd
+			model.deferredCmd = nil
+			return model, cmd
 		case "ctrl+d":
 			if isArea {
-				v := strings.TrimSpace(m.overlay.area.Value())
-				st := m.textFn
-				m.closeOverlay()
+				val := strings.TrimSpace(model.overlay.area.Value())
+				st := model.textFn
+				model.closeOverlay()
 				if st != nil && st.fn != nil {
-					st.fn(m, v)
+					st.fn(model, val)
 				}
-				cmd := m.deferredCmd
-				m.deferredCmd = nil
-				return m, cmd
+				cmd := model.deferredCmd
+				model.deferredCmd = nil
+				return model, cmd
 			}
 		}
 		var cmd tea.Cmd
 		if isArea {
-			m.overlay.area, cmd = m.overlay.area.Update(msg)
+			model.overlay.area, cmd = model.overlay.area.Update(msg)
 		} else {
-			m.overlay.input, cmd = m.overlay.input.Update(msg)
+			model.overlay.input, cmd = model.overlay.input.Update(msg)
 		}
-		return m, cmd
+		return model, cmd
 
 	case ovButtons:
 		switch msg.String() {
 		case "ctrl+c":
-			m.quitNow()
-			return m, tea.Quit
+			model.quitNow()
+			return model, tea.Quit
 		case "esc":
-			m.closeOverlay()
+			model.closeOverlay()
 		case "left", "h":
-			if m.overlay.btnCur > 0 {
-				m.overlay.btnCur--
+			if model.overlay.btnCur > 0 {
+				model.overlay.btnCur--
 			}
 		case "right", "l":
-			if m.overlay.btnCur < len(m.overlay.buttons)-1 {
-				m.overlay.btnCur++
+			if model.overlay.btnCur < len(model.overlay.buttons)-1 {
+				model.overlay.btnCur++
 			}
 		case "enter":
-			i := m.overlay.btnCur
-			fn := m.overlay.onBtn
-			m.overlay.kind = ovNone
+			buttonIdx := model.overlay.btnCur
+			fn := model.overlay.onBtn
+			model.overlay.kind = ovNone
 			if fn != nil {
-				fn(m, i)
+				fn(model, buttonIdx)
 			}
 		}
-		return m, nil
+		return model, nil
 	}
-	return m, nil
+	return model, nil
 }
 
-func (m *Model) closeOverlay() {
-	m.pickFn = nil
-	m.textFn = nil
-	m.multiFn = nil
-	m.overlay.kind = ovNone
+func (model *Model) closeOverlay() {
+	model.pickFn = nil
+	model.textFn = nil
+	model.multiFn = nil
+	model.overlay.kind = ovNone
 }
 
-func (m *Model) filteredOpts() []option {
-	f := strings.ToLower(strings.TrimSpace(m.overlay.filter))
-	if f == "" {
-		return m.overlay.opts
+func (model *Model) filteredOpts() []option {
+	filter := strings.ToLower(strings.TrimSpace(model.overlay.filter))
+	if filter == "" {
+		return model.overlay.opts
 	}
 	var out []option
-	for _, o := range m.overlay.opts {
-		if strings.Contains(strings.ToLower(o.Value), f) ||
-			strings.Contains(strings.ToLower(o.Desc), f) {
-			out = append(out, o)
+	for _, opt := range model.overlay.opts {
+		if strings.Contains(strings.ToLower(opt.Value), filter) ||
+			strings.Contains(strings.ToLower(opt.Desc), filter) {
+			out = append(out, opt)
 		}
 	}
 	return out
@@ -479,79 +479,79 @@ func (m *Model) filteredOpts() []option {
 
 const pickerVisibleRows = 14
 
-func (m *Model) renderOverlay() string {
-	w := maxInt(40, minInt(90, m.width-6))
-	switch m.overlay.kind {
+func (model *Model) renderOverlay() string {
+	width := maxInt(40, minInt(90, model.width-6))
+	switch model.overlay.kind {
 	case ovHelp:
-		body := wrapText(m.overlay.body, minInt(78, maxInt(40, m.width-12)))
-		content := titleStyle.Render("❓ "+m.overlay.title) + "\n\n" + body +
+		body := wrapText(model.overlay.body, minInt(78, maxInt(40, model.width-12)))
+		content := titleStyle.Render("❓ "+model.overlay.title) + "\n\n" + body +
 			"\n\n" + helpStyle.Render("Press any key to return")
-		return modalBoxStyle.MaxWidth(w).Render(content)
+		return modalBoxStyle.MaxWidth(width).Render(content)
 
 	case ovLog:
-		h := maxInt(6, m.height-8)
-		bw := maxInt(40, minInt(110, m.width-10))
-		m.syncRawViewport(bw-2, h-2)
-		box := overlayBoxStyle.Width(bw).Height(h).Render(
-			titleStyle.Render(eScroll+" Raw output") + "\n\n" + m.rawVp.View())
+		height := maxInt(6, model.height-8)
+		boxWidth := maxInt(40, minInt(110, model.width-10))
+		model.syncRawViewport(boxWidth-2, height-2)
+		box := overlayBoxStyle.Width(boxWidth).Height(height).Render(
+			titleStyle.Render(eScroll+" Raw output") + "\n\n" + model.rawVp.View())
 		hint := "↑↓ scroll · End resumes tail · l/Esc close"
-		if !m.rawFollow {
+		if !model.rawFollow {
 			hint = "▲ scrolled — End resumes tail · l/Esc close"
 		}
 		return lipgloss.JoinVertical(lipgloss.Center, box, helpStyle.Render(hint))
 
 	case ovConfig:
-		h := maxInt(6, m.height-8)
-		bw := maxInt(40, minInt(90, m.width-12))
-		if m.logVp.Width != bw-2 || m.logVp.Height != h-4 {
-			m.logVp = viewport.New(bw-2, h-4)
+		height := maxInt(6, model.height-8)
+		boxWidth := maxInt(40, minInt(90, model.width-12))
+		if model.logVp.Width != boxWidth-2 || model.logVp.Height != height-4 {
+			model.logVp = viewport.New(boxWidth-2, height-4)
 		}
-		m.logVp.SetContent(highlightTOML(m.cfg.String()))
-		box := overlayBoxStyle.Width(bw).Height(h).Render(
-			titleStyle.Render(eInfo+" "+filepath.Base(m.cfgPath)) + "\n\n" + m.logVp.View() + "\n" +
+		model.logVp.SetContent(highlightTOML(model.cfg.String()))
+		box := overlayBoxStyle.Width(boxWidth).Height(height).Render(
+			titleStyle.Render(eInfo+" "+filepath.Base(model.cfgPath)) + "\n\n" + model.logVp.View() + "\n" +
 				helpStyle.Render("↑↓ scroll · v/Esc close"))
 		return lipgloss.JoinVertical(lipgloss.Center, box)
 
 	case ovMakeConf:
-		h := maxInt(6, m.height-8)
-		bw := maxInt(40, minInt(90, m.width-12))
-		if m.logVp.Width != bw-2 || m.logVp.Height != h-4 {
-			m.logVp = viewport.New(bw-2, h-4)
+		height := maxInt(6, model.height-8)
+		boxWidth := maxInt(40, minInt(90, model.width-12))
+		if model.logVp.Width != boxWidth-2 || model.logVp.Height != height-4 {
+			model.logVp = viewport.New(boxWidth-2, height-4)
 		}
 		jobs := runtime.NumCPU()
 		if jobs < 2 {
 			jobs = 2
 		}
-		m.logVp.SetContent(makeConfViewContent(m.cfg, jobs))
-		box := overlayBoxStyle.Width(bw).Height(h).Render(
-			titleStyle.Render(ePencil+" make.conf") + "\n\n" + m.logVp.View() + "\n" +
+		model.logVp.SetContent(makeConfViewContent(model.cfg, jobs))
+		box := overlayBoxStyle.Width(boxWidth).Height(height).Render(
+			titleStyle.Render(ePencil+" make.conf") + "\n\n" + model.logVp.View() + "\n" +
 				helpStyle.Render("↑↓ scroll · q/Esc close"))
 		return lipgloss.JoinVertical(lipgloss.Center, box)
 
 	case ovPackages:
-		h := maxInt(6, m.height-8)
-		bw := maxInt(40, minInt(90, m.width-12))
-		if m.logVp.Width != bw-2 || m.logVp.Height != h-4 {
-			m.logVp = viewport.New(bw-2, h-4)
+		height := maxInt(6, model.height-8)
+		boxWidth := maxInt(40, minInt(90, model.width-12))
+		if model.logVp.Width != boxWidth-2 || model.logVp.Height != height-4 {
+			model.logVp = viewport.New(boxWidth-2, height-4)
 		}
-		var b strings.Builder
-		pkgs := m.cfg.ProfilePackages()
+		var builder strings.Builder
+		pkgs := model.cfg.ProfilePackages()
 		if len(pkgs) == 0 {
-			b.WriteString(unsetStyle.Render("(no packages are defined for the selected profile)\n"))
+			builder.WriteString(unsetStyle.Render("(no packages are defined for the selected profile)\n"))
 		} else {
-			for _, p := range pkgs {
-				b.WriteString(profilePkgStyle.Render("  • "+p) + "\n")
+			for _, pkgName := range pkgs {
+				builder.WriteString(profilePkgStyle.Render("  • "+pkgName) + "\n")
 			}
 		}
-		m.logVp.SetContent(b.String())
-		box := overlayBoxStyle.Width(bw).Height(h).Render(
-			titleStyle.Render(m.overlay.title) + "\n\n" + m.logVp.View() + "\n" +
+		model.logVp.SetContent(builder.String())
+		box := overlayBoxStyle.Width(boxWidth).Height(height).Render(
+			titleStyle.Render(model.overlay.title) + "\n\n" + model.logVp.View() + "\n" +
 				helpStyle.Render("↑↓ scroll · q/Esc close"))
 		return lipgloss.JoinVertical(lipgloss.Center, box)
 
 	case ovPicker:
-		opts := m.filteredOpts()
-		cur := m.overlay.cursor
+		opts := model.filteredOpts()
+		cur := model.overlay.cursor
 		start := 0
 		if cur >= pickerVisibleRows {
 			start = cur - pickerVisibleRows + 1
@@ -561,150 +561,150 @@ func (m *Model) renderOverlay() string {
 			end = len(opts)
 			start = maxInt(0, end-pickerVisibleRows)
 		}
-		titleLine := titleStyle.Render(m.overlay.title)
+		titleLine := titleStyle.Render(model.overlay.title)
 		counter := unsetStyle.Render(strconv.Itoa(min(cur+1, maxInt(1, len(opts)))) + "/" + strconv.Itoa(len(opts)))
-		gap := maxInt(1, w-lipgloss.Width(titleLine)-lipgloss.Width(counter)-4)
+		gap := maxInt(1, width-lipgloss.Width(titleLine)-lipgloss.Width(counter)-4)
 		head := titleLine + strings.Repeat(" ", gap) + counter
 
-		var b strings.Builder
-		b.WriteString(head + "\n")
-		if m.overlay.filter != "" || m.overlay.input.Focused() {
-			b.WriteString(m.overlay.input.View() + "\n")
+		var builder strings.Builder
+		builder.WriteString(head + "\n")
+		if model.overlay.filter != "" || model.overlay.input.Focused() {
+			builder.WriteString(model.overlay.input.View() + "\n")
 		}
 		if start > 0 {
-			b.WriteString(unsetStyle.Render("  ▲ more") + "\n")
+			builder.WriteString(unsetStyle.Render("  ▲ more") + "\n")
 		}
-		trunc := lipgloss.NewStyle().MaxWidth(w - 4)
-		for i := start; i < end; i++ {
-			o := opts[i]
+		trunc := lipgloss.NewStyle().MaxWidth(width - 4)
+		for idx := start; idx < end; idx++ {
+			opt := opts[idx]
 			marker := "  "
 			style := lipgloss.NewStyle()
-			if i == cur {
+			if idx == cur {
 				style = selectedRowStyle
-				if !m.overlay.multiChoice {
+				if !model.overlay.multiChoice {
 					marker = rowCursorStyle.Render("▌ ")
 				}
 			}
-			if m.overlay.multiChoice {
-				if m.overlay.selected[o.Value] {
+			if model.overlay.multiChoice {
+				if model.overlay.selected[opt.Value] {
 					marker += "[" + okStyle.Render("✓") + "] "
 				} else {
 					marker += "[ ] "
 				}
 			}
-			line := marker + o.Value
-			if o.primaryDesc {
+			line := marker + opt.Value
+			if opt.primaryDesc {
 				// Prefer the friendly description as the primary label.
-				primary := o.Desc
+				primary := opt.Desc
 				if primary == "" {
-					primary = o.Value
+					primary = opt.Value
 				}
 				line = marker + primary
-				if primary != o.Value {
-					line += "  " + unsetStyle.Render(o.Value)
+				if primary != opt.Value {
+					line += "  " + unsetStyle.Render(opt.Value)
 				}
 			}
-			if !m.overlay.multiChoice && o.Value == m.overlay.current {
+			if !model.overlay.multiChoice && opt.Value == model.overlay.current {
 				line += " " + okStyle.Render("✓")
 			}
-			if o.Desc != "" && !o.primaryDesc {
-				line += "  " + unsetStyle.Render(o.Desc)
+			if opt.Desc != "" && !opt.primaryDesc {
+				line += "  " + unsetStyle.Render(opt.Desc)
 			}
-			b.WriteString(trunc.Render(style.Render(line)) + "\n")
+			builder.WriteString(trunc.Render(style.Render(line)) + "\n")
 		}
 		if end < len(opts) {
-			b.WriteString(unsetStyle.Render("  ▼ more") + "\n")
+			builder.WriteString(unsetStyle.Render("  ▼ more") + "\n")
 		}
 		if len(opts) == 0 {
-			b.WriteString(unsetStyle.Render("no matches") + "\n")
+			builder.WriteString(unsetStyle.Render("no matches") + "\n")
 		}
 		hint := "↑↓ navigate · Enter select · Esc cancel"
-		if m.overlay.multiChoice {
+		if model.overlay.multiChoice {
 			nSel := 0
-			for _, v := range m.overlay.selected {
-				if v {
+			for _, val := range model.overlay.selected {
+				if val {
 					nSel++
 				}
 			}
 			hint = fmt.Sprintf("↑↓ navigate · Space toggle (%d selected) · Enter apply · Esc cancel", nSel)
 		}
-		if m.overlay.input.Focused() {
+		if model.overlay.input.Focused() {
 			hint += " · type to filter"
 		}
-		b.WriteString(helpStyle.Render(hint))
-		return overlayBoxStyle.MaxWidth(w).Render(b.String())
+		builder.WriteString(helpStyle.Render(hint))
+		return overlayBoxStyle.MaxWidth(width).Render(builder.String())
 
 	case ovText:
 		var fieldView string
-		if m.textFn != nil && m.textFn.multi {
-			fieldView = m.overlay.area.View()
+		if model.textFn != nil && model.textFn.multi {
+			fieldView = model.overlay.area.View()
 		} else {
-			fieldView = m.overlay.input.View()
+			fieldView = model.overlay.input.View()
 		}
-		content := titleStyle.Render(ePencil+" "+stripLeadingEmoji(m.overlay.title)) + "\n"
-		if m.overlay.note != "" {
-			content += warnStyle.Render(m.overlay.note) + "\n"
+		content := titleStyle.Render(ePencil+" "+stripLeadingEmoji(model.overlay.title)) + "\n"
+		if model.overlay.note != "" {
+			content += warnStyle.Render(model.overlay.note) + "\n"
 		}
 		hint := "Enter confirm · Esc cancel"
-		if m.textFn != nil && m.textFn.multi {
+		if model.textFn != nil && model.textFn.multi {
 			hint = "one entry per line · Ctrl+D confirm · Esc cancel"
 		}
 		content += "\n" + fieldView + "\n\n" + helpStyle.Render(hint)
-		return modalBoxStyle.MaxWidth(w).Render(content)
+		return modalBoxStyle.MaxWidth(width).Render(content)
 
 	case ovButtons:
-		var b strings.Builder
-		b.WriteString(titleStyle.Render(eWarn+" "+stripLeadingEmoji(m.overlay.title)) + "\n\n")
-		b.WriteString(wrapText(m.overlay.body, minInt(64, w-8)) + "\n\n")
+		var builder strings.Builder
+		builder.WriteString(titleStyle.Render(eWarn+" "+stripLeadingEmoji(model.overlay.title)) + "\n\n")
+		builder.WriteString(wrapText(model.overlay.body, minInt(64, width-8)) + "\n\n")
 		var pills []string
-		for i, btn := range m.overlay.buttons {
-			s := pillInactiveStyle
-			if i == m.overlay.btnCur {
-				s = pillActiveStyle
+		for btnIdx, btn := range model.overlay.buttons {
+			style := pillInactiveStyle
+			if btnIdx == model.overlay.btnCur {
+				style = pillActiveStyle
 			}
-			pills = append(pills, s.Render(btn))
+			pills = append(pills, style.Render(btn))
 		}
-		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, pills...))
-		b.WriteString("\n" + helpStyle.Render("←→ choose · Enter confirm · Esc cancel"))
-		return modalBoxStyle.MaxWidth(w).Render(b.String())
+		builder.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, pills...))
+		builder.WriteString("\n" + helpStyle.Render("←→ choose · Enter confirm · Esc cancel"))
+		return modalBoxStyle.MaxWidth(width).Render(builder.String())
 	}
 	return ""
 }
 
 // stripLeadingEmoji removes an emoji prefix added at call sites so titles
 // are not decorated twice.
-func stripLeadingEmoji(s string) string {
-	for _, e := range []string{eWarn + " ", eInfo + " ", ePencil + " ", eScroll + " "} {
-		if rest, ok := strings.CutPrefix(s, e); ok {
+func stripLeadingEmoji(emoji string) string {
+	for _, prefix := range []string{eWarn + " ", eInfo + " ", ePencil + " ", eScroll + " "} {
+		if rest, ok := strings.CutPrefix(emoji, prefix); ok {
 			return rest
 		}
 	}
-	return s
+	return emoji
 }
 
 // wrapText wraps s at width runes per line, preserving blank lines.
-func wrapText(s string, width int) string {
+func wrapText(text string, width int) string {
 	width = maxInt(10, width)
 	var out []string
-	for _, para := range strings.Split(s, "\n") {
+	for _, para := range strings.Split(text, "\n") {
 		if para == "" {
 			out = append(out, "")
 			continue
 		}
 		line := ""
 		lineLen := 0
-		for _, w := range strings.Fields(para) {
-			wl := utf8.RuneCountInString(w)
+		for _, word := range strings.Fields(para) {
+			wordLen := utf8.RuneCountInString(word)
 			if line == "" {
-				line = w
-				lineLen = wl
-			} else if lineLen+1+wl <= width {
-				line += " " + w
-				lineLen += 1 + wl
+				line = word
+				lineLen = wordLen
+			} else if lineLen+1+wordLen <= width {
+				line += " " + word
+				lineLen += 1 + wordLen
 			} else {
 				out = append(out, line)
-				line = w
-				lineLen = wl
+				line = word
+				lineLen = wordLen
 			}
 		}
 		if line != "" {

@@ -12,102 +12,102 @@ import (
 
 func containsAll(hay []string, needles ...string) bool {
 	set := map[string]bool{}
-	for _, h := range hay {
-		set[h] = true
+	for _, hayItem := range hay {
+		set[hayItem] = true
 	}
-	for _, n := range needles {
-		if !set[n] {
+	for _, needle := range needles {
+		if !set[needle] {
 			return false
 		}
 	}
 	return true
 }
 
-func TestWantedProgramsComposition(t *testing.T) {
+func TestWantedProgramsComposition(testingT *testing.T) {
 	base := classicCfg("/dev/sdX", false, false)
-	c, _ := testContext(t, base, nil)
-	req, _ := installer.WantedPrograms(c)
+	ctx, _ := testContext(testingT, base, nil)
+	req, _ := installer.WantedPrograms(ctx)
 	if !containsAll(req, "gpg", "sgdisk", "lsblk", "partprobe", "hwclock", "ntpd") {
-		t.Fatalf("base required = %v", req)
+		testingT.Fatalf("base required = %v", req)
 	}
 	for _, bad := range []string{"cryptsetup", "mdadm", "zfs", "btrfs"} {
-		for _, p := range req {
-			if p == bad {
-				t.Fatalf("base required unexpectedly contains %q: %v", bad, req)
+		for _, prog := range req {
+			if prog == bad {
+				testingT.Fatalf("base required unexpectedly contains %q: %v", bad, req)
 			}
 		}
 	}
 
 	luks := classicCfg("/dev/sdX", true, false)
-	lc, _ := testContext(t, luks, nil)
+	lc, _ := testContext(testingT, luks, nil)
 	req, _ = installer.WantedPrograms(lc)
 	if !containsAll(req, "cryptsetup") {
-		t.Fatalf("luks required = %v", req)
+		testingT.Fatalf("luks required = %v", req)
 	}
 }
 
-func TestMustExist(t *testing.T) {
-	dir := t.TempDir()
+func TestMustExist(testingT *testing.T) {
+	dir := testingT.TempDir()
 	ok := filepath.Join(dir, "present")
 	if err := os.WriteFile(ok, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
+		testingT.Fatal(err)
 	}
 	if err := installer.MustExist(ok, "file"); err != nil {
-		t.Fatalf("MustExist present: %v", err)
+		testingT.Fatalf("MustExist present: %v", err)
 	}
 	if err := installer.MustExist(filepath.Join(dir, "missing"), "file"); err == nil {
-		t.Fatal("expected error for missing path")
+		testingT.Fatal("expected error for missing path")
 	}
 }
 
-func TestBinConfigInBind(t *testing.T) {
+func TestBinConfigInBind(testingT *testing.T) {
 	if !strings.HasSuffix(installer.BinInBind(), "gentooinstall-self") {
-		t.Fatalf("BinInBind = %q", installer.BinInBind())
+		testingT.Fatalf("BinInBind = %q", installer.BinInBind())
 	}
 	if !strings.HasSuffix(installer.ConfigInBind(), "config.toml") {
-		t.Fatalf("ConfigInBind = %q", installer.ConfigInBind())
+		testingT.Fatalf("ConfigInBind = %q", installer.ConfigInBind())
 	}
 }
 
-func TestIsMountpointNegative(t *testing.T) {
+func TestIsMountpointNegative(testingT *testing.T) {
 	if installer.IsMountpoint("/definitely/not/a/mountpoint-gentooinstall-xyz") {
-		t.Fatal("bogus path reported as mountpoint")
+		testingT.Fatal("bogus path reported as mountpoint")
 	}
 }
 
-func TestRunnerHasProgramStub(t *testing.T) {
+func TestRunnerHasProgramStub(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, _ := testContext(t, cfg, nil)
-	c.R.LookPath = func(s string) bool { return s == "sgdisk" }
-	if !c.R.HasProgram("sgdisk") {
-		t.Fatal("stubbed sgdisk must be present")
+	ctx, _ := testContext(testingT, cfg, nil)
+	ctx.Runner.LookPath = func(name string) bool { return name == "sgdisk" }
+	if !ctx.Runner.HasProgram("sgdisk") {
+		testingT.Fatal("stubbed sgdisk must be present")
 	}
-	if c.R.HasProgram("no-such-program-xyz") {
-		t.Fatal("stubbed missing program must be absent")
+	if ctx.Runner.HasProgram("no-such-program-xyz") {
+		testingT.Fatal("stubbed missing program must be absent")
 	}
 }
 
-func TestMountByIDSkipAndMount(t *testing.T) {
+func TestMountByIDSkipAndMount(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, stub := testContext(t, cfg, nil)
+	ctx, stub := testContext(testingT, cfg, nil)
 
-	c.IsMountpoint = func(string) bool { return true }
-	if err := installer.MountByID(c, c.Layout.RootID, "/mnt/skip"); err != nil {
-		t.Fatalf("skip mounted: %v", err)
+	ctx.IsMountpoint = func(string) bool { return true }
+	if err := installer.MountByID(ctx, ctx.Layout.RootID, "/mnt/skip"); err != nil {
+		testingT.Fatalf("skip mounted: %v", err)
 	}
 	if len(stub.Calls()) != 0 {
-		t.Fatalf("mounted path must record no commands, got %v", stub.Lines())
+		testingT.Fatalf("mounted path must record no commands, got %v", stub.Lines())
 	}
 
-	c.IsMountpoint = func(string) bool { return false }
-	if err := installer.MountByID(c, c.Layout.RootID, "/mnt/target"); err != nil {
-		t.Fatalf("MountByID: %v", err)
+	ctx.IsMountpoint = func(string) bool { return false }
+	if err := installer.MountByID(ctx, ctx.Layout.RootID, "/mnt/target"); err != nil {
+		testingT.Fatalf("MountByID: %v", err)
 	}
 	lines := stub.Lines()
 	if len(lines) != 1 || !strings.HasPrefix(lines[0], "mount ") {
-		t.Fatalf("expected one mount call, got %v", lines)
+		testingT.Fatalf("expected one mount call, got %v", lines)
 	}
 	if !strings.Contains(lines[0], "/mnt/target") {
-		t.Fatalf("mount target missing: %v", lines)
+		testingT.Fatalf("mount target missing: %v", lines)
 	}
 }

@@ -70,7 +70,7 @@ const installCardH = 24
 var reAnsi = regexp.MustCompile(
 	"\x1b\\[[0-9;?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)?")
 
-func stripAnsi(s string) string { return reAnsi.ReplaceAllString(s, "") }
+func stripAnsi(str string) string { return reAnsi.ReplaceAllString(str, "") }
 
 // Program plumbing (pVPN-style): background goroutines push messages
 // through the shared program reference.
@@ -84,7 +84,7 @@ func sendInstall(msg tea.Msg) {
 
 // SetProgram stores the running tea.Program so installer goroutines can
 // stream into the TUI. Call before p.Run().
-func SetProgram(p *tea.Program) { globalProgram = p }
+func SetProgram(prog *tea.Program) { globalProgram = prog }
 
 // EmitInstallLine streams one output line into the install window.
 func EmitInstallLine(line string) { sendInstall(InstallLineMsg{Line: line}) }
@@ -93,22 +93,22 @@ func EmitInstallLine(line string) { sendInstall(InstallLineMsg{Line: line}) }
 func EmitInstallDone(err error) { sendInstall(InstallDoneMsg{Err: err}) }
 
 // EmitInstallFailed reports a failed step awaiting a user decision.
-func EmitInstallFailed(f InstallFailedMsg) { sendInstall(f) }
+func EmitInstallFailed(failedMsg InstallFailedMsg) { sendInstall(failedMsg) }
 
 // SetInstallFunc wires the install routine triggered by the confirm
 // overlay (injected by main).
-func (m *Model) SetInstallFunc(fn InstallFunc) { m.instFn = fn }
+func (model *Model) SetInstallFunc(fn InstallFunc) { model.instFn = fn }
 
 // InstallState reports idle/running/waiting/done/aborted (tests).
-func (m *Model) InstallState() string { return instStateNames[m.instState] }
+func (model *Model) InstallState() string { return instStateNames[model.instState] }
 
 // InstallActive reports whether the full-screen install view is shown.
-func (m *Model) InstallActive() bool { return m.installing }
+func (model *Model) InstallActive() bool { return model.installing }
 
 // InstallLines returns the buffered log lines (tests).
-func (m *Model) InstallLines() []string {
-	out := make([]string, len(m.instLines))
-	copy(out, m.instLines)
+func (model *Model) InstallLines() []string {
+	out := make([]string, len(model.instLines))
+	copy(out, model.instLines)
 	return out
 }
 
@@ -121,13 +121,13 @@ type instStep struct {
 	done   bool
 }
 
-func newProgressModel(w int) progress.Model {
-	p := progress.New(progress.WithDefaultGradient())
-	p.Width = w
-	return p
+func newProgressModel(width int) progress.Model {
+	prog := progress.New(progress.WithDefaultGradient())
+	prog.Width = width
+	return prog
 }
 
-func (m *Model) appendInstLine(line string) {
+func (model *Model) appendInstLine(line string) {
 	raw := line // preserve ANSI codes for log overlay
 	line = strings.TrimRight(stripAnsi(line), "\r \t")
 	if line == "" {
@@ -137,120 +137,120 @@ func (m *Model) appendInstLine(line string) {
 	// pin to the header line, never a checklist step. Otherwise every
 	// mount/emerge floods the card and pins progress at (n-1)/n.
 	if cmd, ok := strings.CutPrefix(line, "[+] $ "); ok {
-		m.curCmd = strings.TrimSpace(cmd)
+		model.curCmd = strings.TrimSpace(cmd)
 	} else if cmd, ok := strings.CutPrefix(line, "$ "); ok {
-		m.curCmd = strings.TrimSpace(cmd)
+		model.curCmd = strings.TrimSpace(cmd)
 	} else {
 		switch {
 		case strings.HasPrefix(line, "[+]"):
 			name := strings.TrimSpace(strings.TrimPrefix(line, "[+]"))
-			m.curStep = name
-			m.markCurrentStepDone()
-			if len(m.instSteps) == 0 || m.instSteps[len(m.instSteps)-1].name != name {
-				m.instSteps = append(m.instSteps, instStep{name: name})
+			model.curStep = name
+			model.markCurrentStepDone()
+			if len(model.instSteps) == 0 || model.instSteps[len(model.instSteps)-1].name != name {
+				model.instSteps = append(model.instSteps, instStep{name: name})
 			}
 		case strings.HasPrefix(line, "[!]"):
-			if len(m.instSteps) > 0 {
-				m.instSteps[len(m.instSteps)-1].failed = true
+			if len(model.instSteps) > 0 {
+				model.instSteps[len(model.instSteps)-1].failed = true
 			}
 		}
 	}
-	m.instLines = append(m.instLines, line)
-	m.instRawLines = append(m.instRawLines, raw)
-	if len(m.instLines) > maxInstLines {
-		m.instLines = m.instLines[len(m.instLines)-maxInstLines:]
-		m.instRawLines = m.instRawLines[len(m.instRawLines)-maxInstLines:]
+	model.instLines = append(model.instLines, line)
+	model.instRawLines = append(model.instRawLines, raw)
+	if len(model.instLines) > maxInstLines {
+		model.instLines = model.instLines[len(model.instLines)-maxInstLines:]
+		model.instRawLines = model.instRawLines[len(model.instRawLines)-maxInstLines:]
 	}
 }
 
 // markCurrentStepDone flags the active step complete before a new one starts.
-func (m *Model) markCurrentStepDone() {
-	for i := range m.instSteps {
-		if !m.instSteps[i].done {
-			m.instSteps[i].done = true
-			m.instSteps[i].failed = false
+func (model *Model) markCurrentStepDone() {
+	for idx := range model.instSteps {
+		if !model.instSteps[idx].done {
+			model.instSteps[idx].done = true
+			model.instSteps[idx].failed = false
 		}
 	}
 }
 
 // stepProgress returns the fraction of finished steps.
-func (m *Model) stepProgress() float64 {
-	total := len(m.instSteps)
+func (model *Model) stepProgress() float64 {
+	total := len(model.instSteps)
 	if total == 0 {
 		return 0
 	}
 	done := 0
-	for _, s := range m.instSteps {
-		if s.done {
+	for _, step := range model.instSteps {
+		if step.done {
 			done++
 		}
 	}
-	if m.instState == instDone && done < total {
+	if model.instState == instDone && done < total {
 		done = total
 	}
 	return float64(done) / float64(total)
 }
 
 // beginInstall switches to the install view and launches the goroutine.
-func (m *Model) beginInstall() {
-	if m.instFn == nil || m.instState != instIdle {
+func (model *Model) beginInstall() {
+	if model.instFn == nil || model.instState != instIdle {
 		return
 	}
-	m.installing = true
-	m.instState = instRunning
-	m.instDemo = false
-	m.vpInitReset()
-	fn := m.instFn
+	model.installing = true
+	model.instState = instRunning
+	model.instDemo = false
+	model.vpInitReset()
+	fn := model.instFn
 	go func() {
 		EmitInstallDone(fn())
 	}()
 }
 
 // vpInitReset prepares the install card state.
-func (m *Model) vpInitReset() {
-	m.instSteps = nil
-	m.prog = newProgressModel(40)
-	m.appendInstLine("[+] Starting installation")
+func (model *Model) vpInitReset() {
+	model.instSteps = nil
+	model.prog = newProgressModel(40)
+	model.appendInstLine("[+] Starting installation")
 }
 
 // requestStartInstall runs pre-flight collection (luks passphrase)
 // before launching. Called from the confirm overlay button.
-func (m *Model) requestStartInstall() {
-	if m.usedEnc && os.Getenv(EncryptionKeyEnv) == "" {
-		m.collectLuksKey("", "")
+func (model *Model) requestStartInstall() {
+	if model.usedEnc && os.Getenv(EncryptionKeyEnv) == "" {
+		model.collectLuksKey("", "")
 		return
 	}
-	m.beginInstall()
+	model.beginInstall()
 }
 
-func (m *Model) collectLuksKey(note, pending string) {
+func (model *Model) collectLuksKey(note, pending string) {
 	title := "Disk encryption passphrase (min 8 characters)"
 	if pending != "" {
 		title = "Repeat encryption passphrase"
 	}
-	m.openSecret(title, note, func(mm *Model, v string) {
-		if v == "" {
+	model.openSecret(title, note, func(mm *Model, value string) {
+		if value == "" {
 			return // cancelled
 		}
 		if pending == "" {
-			if len(v) < 8 {
+			if len(value) < 8 {
 				mm.collectLuksKey("Passphrase too short (min 8 characters).", "")
 				return
 			}
-			mm.collectLuksKey("", v)
+			mm.collectLuksKey("", value)
 			return
 		}
-		if v != pending {
+		if value != pending {
 			mm.collectLuksKey("Passphrases do not match.", "")
 			return
 		}
-		_ = os.Setenv(EncryptionKeyEnv, v)
+		_ = os.Setenv(EncryptionKeyEnv, value)
 		mm.beginInstall()
 	})
 }
 
 // openSecret opens a masked single-line text overlay.
-func (m *Model) openSecret(title, note string, onDone func(*Model, string)) {
+func (model *Model) openSecret(title, note string, onDone func(*Model, string)) {
 	ti := textinput.New()
 	ti.Placeholder = "enter passphrase"
 	ti.EchoMode = textinput.EchoPassword
@@ -258,111 +258,111 @@ func (m *Model) openSecret(title, note string, onDone func(*Model, string)) {
 	ti.Focus()
 	ti.CharLimit = 0
 	ti.Width = 70
-	m.overlay = overlay{kind: ovText, title: title, note: note, input: ti}
-	m.textFn = &textState{fn: onDone}
+	model.overlay = overlay{kind: ovText, title: title, note: note, input: ti}
+	model.textFn = &textState{fn: onDone}
 }
 
 // updateInstallMsg handles install-related tea.Msg values.
-func (m *Model) updateInstallMsg(msg tea.Msg) {
+func (model *Model) updateInstallMsg(msg tea.Msg) {
 	switch msg := msg.(type) {
 	case InstallLineMsg:
-		m.appendInstLine(msg.Line)
+		model.appendInstLine(msg.Line)
 	case InstallFailedMsg:
-		f := msg
-		m.fail = &f
-		m.btnCur = 0
-		m.instState = instWaiting
-		m.appendInstLine("[!] Command failed: " + msg.Cmdline + ": " + msg.Err)
+		failedMsg := msg
+		model.fail = &failedMsg
+		model.btnCur = 0
+		model.instState = instWaiting
+		model.appendInstLine("[!] Command failed: " + msg.Cmdline + ": " + msg.Err)
 	case InstallDoneMsg:
 		if msg.Err != nil {
-			m.instState = instAborted
-			m.appendInstLine("[!] Installation aborted: " + msg.Err.Error())
+			model.instState = instAborted
+			model.appendInstLine("[!] Installation aborted: " + msg.Err.Error())
 		} else {
-			m.instState = instDone
-			m.markCurrentStepDone()
-			m.appendInstLine("[+] Installation finished successfully " + eParty)
+			model.instState = instDone
+			model.markCurrentStepDone()
+			model.appendInstLine("[+] Installation finished successfully " + eParty)
 		}
-		m.fail = nil
+		model.fail = nil
 	}
 }
 
 // failButtons are the choices offered while waiting after a failure.
 var failButtons = []string{"Retry", "Abort"}
 
-func (m *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (model *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
-		m.quitNow()
-		return m, tea.Quit
+		model.quitNow()
+		return model, tea.Quit
 	case "l":
-		m.openLogOverlay()
-		return m, nil
+		model.openLogOverlay()
+		return model, nil
 	}
-	if m.instState == instWaiting && m.fail != nil {
+	if model.instState == instWaiting && model.fail != nil {
 		switch msg.String() {
 		case "left", "h":
-			if m.btnCur > 0 {
-				m.btnCur--
+			if model.btnCur > 0 {
+				model.btnCur--
 			}
 		case "right":
-			if m.btnCur < len(failButtons)-1 {
-				m.btnCur++
+			if model.btnCur < len(failButtons)-1 {
+				model.btnCur++
 			}
 		case "r":
-			m.decideFail(DecideRetry)
+			model.decideFail(DecideRetry)
 		case "a":
-			m.decideFail(DecideAbort)
+			model.decideFail(DecideAbort)
 		case "enter":
-			switch m.btnCur {
+			switch model.btnCur {
 			case 0:
-				m.decideFail(DecideRetry)
+				model.decideFail(DecideRetry)
 			case 1:
-				m.decideFail(DecideAbort)
+				model.decideFail(DecideAbort)
 			}
 		}
-		return m, nil
+		return model, nil
 	}
-	if m.instState == instWaiting {
+	if model.instState == instWaiting {
 		// Waiting but no failure panel (transient); nothing else to do.
-		return m, nil
+		return model, nil
 	}
 	switch msg.String() {
 	case "e", "esc":
-		if m.instState == instDone || m.instState == instAborted {
-			m.leaveInstallView()
+		if model.instState == instDone || model.instState == instAborted {
+			model.leaveInstallView()
 		}
 	case "q":
-		return m.confirmQuit()
+		return model.confirmQuit()
 	}
-	return m, nil
+	return model, nil
 }
 
 // leaveInstallView returns to the tabs. A finished or failed installation is
 // reset to idle so a fresh installation can be started again without exiting
 // the program.
-func (m *Model) leaveInstallView() {
-	m.installing = false
-	if m.instState == instDone || m.instState == instAborted {
-		m.instState = instIdle
-		m.instDemo = false
-		m.instSteps = nil
-		m.curStep = ""
-		m.curCmd = ""
+func (model *Model) leaveInstallView() {
+	model.installing = false
+	if model.instState == instDone || model.instState == instAborted {
+		model.instState = instIdle
+		model.instDemo = false
+		model.instSteps = nil
+		model.curStep = ""
+		model.curCmd = ""
 	}
 }
 
-func (m *Model) decideFail(d InstallDecision) {
-	if m.fail != nil && m.fail.Decide != nil {
-		fn := m.fail.Decide
-		if d == DecideRetry {
-			m.fail = nil
-			m.instState = instRunning
-			if len(m.instSteps) > 0 {
-				m.instSteps[len(m.instSteps)-1].failed = false
+func (model *Model) decideFail(decision InstallDecision) {
+	if model.fail != nil && model.fail.Decide != nil {
+		fn := model.fail.Decide
+		if decision == DecideRetry {
+			model.fail = nil
+			model.instState = instRunning
+			if len(model.instSteps) > 0 {
+				model.instSteps[len(model.instSteps)-1].failed = false
 			}
-			m.appendInstLine("[+] Retrying…")
+			model.appendInstLine("[+] Retrying…")
 		}
-		fn(d)
+		fn(decision)
 	}
 }
 
@@ -370,47 +370,47 @@ func (m *Model) decideFail(d InstallDecision) {
 // It uses a dedicated viewport with tail-follow: new output jumps to the
 // bottom while the user stays at the bottom, and scrolling up pauses the
 // follow until End/G resumes it.
-func (m *Model) openLogOverlay() {
-	m.overlay = overlay{kind: ovLog}
-	m.rawFollow = true
-	m.rawDirty = true
-	if m.rawVp.Height == 0 {
+func (model *Model) openLogOverlay() {
+	model.overlay = overlay{kind: ovLog}
+	model.rawFollow = true
+	model.rawDirty = true
+	if model.rawVp.Height == 0 {
 		// Sized on first render; jump to bottom once content is set.
-		m.rawVp.GotoBottom()
+		model.rawVp.GotoBottom()
 	}
 }
 
 // renderFailPanel renders the decision panel shown while a step waits
 // for the user's choice after a failure.
-func (m *Model) renderFailPanel() string {
-	var b strings.Builder
-	b.WriteString(warnStyle.Render("$") + " " + helpStyle.Render(m.fail.Cmdline) + "\n")
-	b.WriteString(warnStyle.Render(m.fail.Err) + "\n\n")
+func (model *Model) renderFailPanel() string {
+	var body strings.Builder
+	body.WriteString(warnStyle.Render("$") + " " + helpStyle.Render(model.fail.Cmdline) + "\n")
+	body.WriteString(warnStyle.Render(model.fail.Err) + "\n\n")
 	var pills []string
-	for i, btn := range failButtons {
-		s := pillInactiveStyle
-		if i == m.btnCur {
-			s = pillActiveStyle
+	for idx, btn := range failButtons {
+		style := pillInactiveStyle
+		if idx == model.btnCur {
+			style = pillActiveStyle
 		}
-		pills = append(pills, s.Render(btn))
+		pills = append(pills, style.Render(btn))
 	}
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, pills...))
-	b.WriteString("\n" + helpStyle.Render("←→ choose · Enter confirm"))
-	return b.String()
+	body.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, pills...))
+	body.WriteString("\n" + helpStyle.Render("←→ choose · Enter confirm"))
+	return body.String()
 }
 
 // renderInstallView draws the status card: pinned header and current
 // command over the loading bar, with the step checklist scrolling up
 // underneath it. The card has a constant size so streaming output never
 // resizes the modal; the failure decision panel is stacked below, unchanged.
-func (m *Model) renderInstallView() string {
-	w, h := m.width, m.height
-	if w == 0 {
-		w, h = 80, 24
+func (model *Model) renderInstallView() string {
+	width, height := model.width, model.height
+	if width == 0 {
+		width, height = 80, 24
 	}
 
 	status, st := "running", helpStyle
-	switch m.instState {
+	switch model.instState {
 	case instRunning:
 		status = "running"
 		st = okStyle
@@ -426,7 +426,7 @@ func (m *Model) renderInstallView() string {
 	}
 
 	hint := "l raw output · "
-	switch m.instState {
+	switch model.instState {
 	case instRunning:
 		hint += "q quit (dangerous)"
 	case instWaiting:
@@ -437,24 +437,24 @@ func (m *Model) renderInstallView() string {
 		hint += "e back to tabs · q quit"
 	}
 
-	cardW := maxInt(46, minInt(w-6, 84))
+	cardW := maxInt(46, minInt(width-6, 84))
 	barW := minInt(cardW-10, 56)
-	if m.prog.Width != barW {
-		m.prog.Width = barW
+	if model.prog.Width != barW {
+		model.prog.Width = barW
 	}
 
 	header := titleStyle.Render("Installation") +
 		helpStyle.Render(" · ") + st.Render(status)
 
 	var cmdLine string
-	if m.curCmd != "" {
+	if model.curCmd != "" {
 		// Single line: long chroot paths (e.g. devpts on
 		// /tmp/gentoo-install/root/dev/pts) must ellipsize, never wrap
 		// and break the fixed card height.
-		cmdLine = truncateToWidth(unsetStyle.Render("$ "+m.curCmd), cardW-8)
+		cmdLine = truncateToWidth(unsetStyle.Render("$ "+model.curCmd), cardW-8)
 	}
 
-	bar := m.prog.ViewAs(m.stepProgress())
+	bar := model.prog.ViewAs(model.stepProgress())
 
 	// Data box: border 2 + padding 2 rows, then header (1), blank, cmd (1),
 	// blank, bar (1), blank, checklist (rest), blank, hint (1). The
@@ -463,12 +463,12 @@ func (m *Model) renderInstallView() string {
 	// (e.g. 80x24 over -nographic) shrink to fit so lipgloss.Place can
 	// still center the card instead of overflowing top-aligned.
 	cardH := installCardH
-	if h > 0 {
-		cardH = minInt(installCardH, maxInt(14, h-2))
+	if height > 0 {
+		cardH = minInt(installCardH, maxInt(14, height-2))
 	}
 	inner := cardH - 4
 	checklistSlots := maxInt(1, inner-8)
-	checklist := m.renderChecklist(cardW-8, checklistSlots)
+	checklist := model.renderChecklist(cardW-8, checklistSlots)
 
 	body := strings.Join([]string{
 		header,
@@ -483,47 +483,47 @@ func (m *Model) renderInstallView() string {
 	card := modalBoxStyle.Width(cardW - 6).Height(cardH - 2).Render(body)
 
 	stack := []string{card}
-	if m.fail != nil {
+	if model.fail != nil {
 		panel := modalBoxStyle.Width(cardW - 6).
 			BorderForeground(bad).
-			Render(m.renderFailPanel())
+			Render(model.renderFailPanel())
 		stack = append(stack, panel)
 	}
 
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center,
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
 		lipgloss.JoinVertical(lipgloss.Center, stack...))
 }
 
 // renderChecklist renders the step list inside the available height with
 // a sliding window around the newest entries.
-func (m *Model) renderChecklist(maxW, maxH int) string {
-	if len(m.instSteps) == 0 {
+func (model *Model) renderChecklist(maxW, maxH int) string {
+	if len(model.instSteps) == 0 {
 		return ""
 	}
 	maxH = maxInt(1, maxH)
 	start := 0
-	if n := len(m.instSteps); n > maxH {
-		start = n - maxH
+	if count := len(model.instSteps); count > maxH {
+		start = count - maxH
 	}
-	last := len(m.instSteps) - 1
+	last := len(model.instSteps) - 1
 	maxW = maxInt(24, maxW)
-	var b strings.Builder
-	for i, s := range m.instSteps[start:] {
-		idx := start + i
+	var body strings.Builder
+	for offset, step := range model.instSteps[start:] {
+		idx := start + offset
 		var line string
 		switch {
-		case s.failed:
-			line = errorStyle.Render("✗ " + s.name)
-		case s.done:
-			line = okStyle.Render("✓ " + s.name)
-		case idx == last && m.instState == instRunning:
-			line = spinnerStyle.Render(m.spinner.View()) + " " +
-				valueStyle.Render(s.name)
+		case step.failed:
+			line = errorStyle.Render("✗ " + step.name)
+		case step.done:
+			line = okStyle.Render("✓ " + step.name)
+		case idx == last && model.instState == instRunning:
+			line = spinnerStyle.Render(model.spinner.View()) + " " +
+				valueStyle.Render(step.name)
 		default:
-			line = unsetStyle.Render("· " + s.name)
+			line = unsetStyle.Render("· " + step.name)
 		}
 		// MaxWidth wraps; the fixed-height card needs one row per step.
-		b.WriteString(truncateToWidth(line, maxW) + "\n")
+		body.WriteString(truncateToWidth(line, maxW) + "\n")
 	}
-	return strings.TrimSuffix(b.String(), "\n")
+	return strings.TrimSuffix(body.String(), "\n")
 }

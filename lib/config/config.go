@@ -289,9 +289,9 @@ var MakeConfOptions = []MakeConfOption{
 
 // LookupMakeConfOption returns the catalog entry for a key, or nil.
 func LookupMakeConfOption(key string) *MakeConfOption {
-	for i := range MakeConfOptions {
-		if MakeConfOptions[i].Key == key {
-			return &MakeConfOptions[i]
+	for index := range MakeConfOptions {
+		if MakeConfOptions[index].Key == key {
+			return &MakeConfOptions[index]
 		}
 	}
 	return nil
@@ -359,9 +359,9 @@ func Default(hasEFI bool) *Config {
 
 // LookupProfile returns the profile with the given id, or nil.
 func LookupProfile(id string) *Profile {
-	for i := range Profiles {
-		if Profiles[i].ID == id {
-			return &Profiles[i]
+	for index := range Profiles {
+		if Profiles[index].ID == id {
+			return &Profiles[index]
 		}
 	}
 	return nil
@@ -404,9 +404,9 @@ const DefaultPortageRsyncMirror = "rsync://rsync.gentoo.org/gentoo-portage"
 
 // LookupOverlay returns the overlay with the given name, or nil.
 func LookupOverlay(name string) *Repo {
-	for i := range Overlays {
-		if Overlays[i].Name == name {
-			return &Overlays[i]
+	for index := range Overlays {
+		if Overlays[index].Name == name {
+			return &Overlays[index]
 		}
 	}
 	return nil
@@ -421,12 +421,12 @@ func RepoPackages(enabled []string) []string {
 	seen := map[string]bool{}
 	all := make([]string, 0, 256)
 	add := func(atoms []string) {
-		for _, a := range atoms {
-			if seen[a] {
+		for _, atom := range atoms {
+			if seen[atom] {
 				continue
 			}
-			seen[a] = true
-			all = append(all, a)
+			seen[atom] = true
+			all = append(all, atom)
 		}
 	}
 	add(pkglists.Atoms("gentoo"))
@@ -442,8 +442,8 @@ func RepoPackages(enabled []string) []string {
 // for an unknown/empty id. It mirrors Desc so the TUI can show friendly
 // names in place of the full profile path.
 func ProfileDesc(id string) string {
-	if p := LookupProfile(id); p != nil {
-		return p.Desc
+	if profile := LookupProfile(id); profile != nil {
+		return profile.Desc
 	}
 	return ""
 }
@@ -457,40 +457,40 @@ func ProfileUsesSystemd(id string) bool {
 
 // ProfilePackages returns the curated package set for the currently
 // selected profile. It is empty when no (known) profile is selected.
-func (c *Config) ProfilePackages() []string {
-	p := LookupProfile(c.Gentoo.Profile)
-	if p == nil {
+func (cfg *Config) ProfilePackages() []string {
+	profile := LookupProfile(cfg.Gentoo.Profile)
+	if profile == nil {
 		return nil
 	}
-	return p.Packages
+	return profile.Packages
 }
 
 // UsesSystemd reports whether the selected stage3 variant uses systemd.
-func (c *Config) UsesSystemd() bool { return strings.Contains(c.Gentoo.Stage3Variant, "systemd") }
+func (cfg *Config) UsesSystemd() bool { return strings.Contains(cfg.Gentoo.Stage3Variant, "systemd") }
 
 // UsesMusl reports whether the selected stage3 variant is musl-based.
-func (c *Config) UsesMusl() bool { return strings.Contains(c.Gentoo.Stage3Variant, "musl") }
+func (cfg *Config) UsesMusl() bool { return strings.Contains(cfg.Gentoo.Stage3Variant, "musl") }
 
 // Stage3BaseName returns "stage3-$arch-$variant".
-func (c *Config) Stage3BaseName() string {
-	return fmt.Sprintf("stage3-%s-%s", c.Gentoo.Arch, c.Gentoo.Stage3Variant)
+func (cfg *Config) Stage3BaseName() string {
+	return fmt.Sprintf("stage3-%s-%s", cfg.Gentoo.Arch, cfg.Gentoo.Stage3Variant)
 }
 
 // Stage3BaseNameCustom handles the x32 / x86-subarch naming special case.
-func (c *Config) Stage3BaseNameCustom() string {
-	if strings.Contains(c.Gentoo.Stage3Variant, "x32") {
-		return "stage3-" + c.Gentoo.Stage3Variant
+func (cfg *Config) Stage3BaseNameCustom() string {
+	if strings.Contains(cfg.Gentoo.Stage3Variant, "x32") {
+		return "stage3-" + cfg.Gentoo.Stage3Variant
 	}
-	return fmt.Sprintf("stage3-%s-%s", c.Gentoo.Subarch, c.Gentoo.Stage3Variant)
+	return fmt.Sprintf("stage3-%s-%s", cfg.Gentoo.Subarch, cfg.Gentoo.Stage3Variant)
 }
 
 // Stage3BaseNameFinal picks the basename actually used for downloads.
-func (c *Config) Stage3BaseNameFinal() string {
-	if (c.Gentoo.Arch == "amd64" && strings.Contains(c.Gentoo.Stage3Variant, "x32")) ||
-		(c.Gentoo.Arch == "x86" && c.Gentoo.Subarch != "") {
-		return c.Stage3BaseNameCustom()
+func (cfg *Config) Stage3BaseNameFinal() string {
+	if (cfg.Gentoo.Arch == "amd64" && strings.Contains(cfg.Gentoo.Stage3Variant, "x32")) ||
+		(cfg.Gentoo.Arch == "x86" && cfg.Gentoo.Subarch != "") {
+		return cfg.Stage3BaseNameCustom()
 	}
-	return c.Stage3BaseName()
+	return cfg.Stage3BaseName()
 }
 
 var hostnameRe = regexp.MustCompile(
@@ -500,114 +500,114 @@ var keymapRe = regexp.MustCompile(`^[0-9A-Za-z-]*$`)
 
 // Validate checks semantic correctness of the configuration
 // (everything checkable without touching disks).
-func (c *Config) Validate() []error {
+func (cfg *Config) Validate() []error {
 	var errs []error
 	addf := func(format string, args ...any) {
 		errs = append(errs, fmt.Errorf(format, args...))
 	}
 
-	if !keymapRe.MatchString(c.System.Keymap) {
-		addf("KEYMAP %q contains invalid characters", c.System.Keymap)
+	if !keymapRe.MatchString(cfg.System.Keymap) {
+		addf("KEYMAP %q contains invalid characters", cfg.System.Keymap)
 	}
-	if !hostnameRe.MatchString(c.System.Hostname) {
-		addf("%q is not a valid hostname", c.System.Hostname)
+	if !hostnameRe.MatchString(cfg.System.Hostname) {
+		addf("%q is not a valid hostname", cfg.System.Hostname)
 	}
 
-	switch c.System.Locale {
+	switch cfg.System.Locale {
 	case "":
 		addf("no default locale set")
 	}
-	if len(c.System.Locales) == 0 {
+	if len(cfg.System.Locales) == 0 {
 		addf("no locales to generate")
 	}
 
 	validScheme := false
-	for _, s := range Schemes {
-		if s.Name == c.Disk.Scheme {
+	for _, scheme := range Schemes {
+		if scheme.Name == cfg.Disk.Scheme {
 			validScheme = true
 			break
 		}
 	}
 	if !validScheme {
-		addf("unknown partitioning scheme %q", c.Disk.Scheme)
+		addf("unknown partitioning scheme %q", cfg.Disk.Scheme)
 		return errs
 	}
 
-	if c.Disk.Scheme != SchemeCustom {
-		if c.Disk.BootType != "efi" && c.Disk.BootType != "bios" {
-			addf("invalid boot type %q", c.Disk.BootType)
+	if cfg.Disk.Scheme != SchemeCustom {
+		if cfg.Disk.BootType != "efi" && cfg.Disk.BootType != "bios" {
+			addf("invalid boot type %q", cfg.Disk.BootType)
 		}
 		multi := map[string]bool{
 			SchemeZFSCentric: true, SchemeBtrfs: true,
 			SchemeRaid0Luks: true, SchemeRaid1Luks: true,
-		}[c.Disk.Scheme]
-		single := map[string]bool{SchemeClassic: true, SchemeExisting: true}[c.Disk.Scheme]
+		}[cfg.Disk.Scheme]
+		single := map[string]bool{SchemeClassic: true, SchemeExisting: true}[cfg.Disk.Scheme]
 
-		if single && c.Disk.Device == "" {
-			addf("no device configured for scheme %q", c.Disk.Scheme)
+		if single && cfg.Disk.Device == "" {
+			addf("no device configured for scheme %q", cfg.Disk.Scheme)
 		}
-		if multi && len(c.Disk.Devices) == 0 {
-			addf("no devices configured for scheme %q", c.Disk.Scheme)
+		if multi && len(cfg.Disk.Devices) == 0 {
+			addf("no devices configured for scheme %q", cfg.Disk.Scheme)
 		}
-		if multi && c.Disk.Scheme != SchemeZFSCentric && c.Disk.Scheme != SchemeBtrfs &&
-			len(c.Disk.Devices) < 2 {
-			addf("scheme %q needs at least 2 devices", c.Disk.Scheme)
+		if multi && cfg.Disk.Scheme != SchemeZFSCentric && cfg.Disk.Scheme != SchemeBtrfs &&
+			len(cfg.Disk.Devices) < 2 {
+			addf("scheme %q needs at least 2 devices", cfg.Disk.Scheme)
 		}
-		if c.Disk.Scheme == SchemeExisting && c.Disk.BootDevice == "" {
+		if cfg.Disk.Scheme == SchemeExisting && cfg.Disk.BootDevice == "" {
 			addf("existing_partitions needs boot_device")
 		}
-		if c.Disk.UseSwap && c.Disk.SwapSize == "" && c.Disk.Scheme != SchemeExisting {
+		if cfg.Disk.UseSwap && cfg.Disk.SwapSize == "" && cfg.Disk.Scheme != SchemeExisting {
 			addf("swap enabled but no swap size given")
 		}
 	}
 
-	switch c.Gentoo.Arch {
+	switch cfg.Gentoo.Arch {
 	case "x86":
 	default:
-		if c.Gentoo.Subarch != "" {
+		if cfg.Gentoo.Subarch != "" {
 			addf("subarch only valid for x86")
 		}
 	}
 	found := false
-	for _, a := range Archs {
-		if a == c.Gentoo.Arch {
+	for _, arch := range Archs {
+		if arch == cfg.Gentoo.Arch {
 			found = true
 		}
 	}
 	if !found {
-		addf("unknown architecture %q", c.Gentoo.Arch)
+		addf("unknown architecture %q", cfg.Gentoo.Arch)
 	}
 
 	vfound := false
-	for _, v := range Stage3Variants {
-		if v.ID == c.Gentoo.Stage3Variant {
+	for _, variant := range Stage3Variants {
+		if variant.ID == cfg.Gentoo.Stage3Variant {
 			vfound = true
 		}
 	}
 	if !vfound {
-		addf("unknown stage3 variant %q", c.Gentoo.Stage3Variant)
-	} else if c.UsesSystemd() != c.System.SystemdNetworkd {
+		addf("unknown stage3 variant %q", cfg.Gentoo.Stage3Variant)
+	} else if cfg.UsesSystemd() != cfg.System.SystemdNetworkd {
 		// networkd options only apply to systemd; not fatal but suspicious.
 	}
 
-	if c.Gentoo.Profile != "" && LookupProfile(c.Gentoo.Profile) == nil {
-		addf("unknown profile %q", c.Gentoo.Profile)
-	} else if c.Gentoo.Profile != "" && profileCompatVariant(c.Gentoo.Stage3Variant) {
+	if cfg.Gentoo.Profile != "" && LookupProfile(cfg.Gentoo.Profile) == nil {
+		addf("unknown profile %q", cfg.Gentoo.Profile)
+	} else if cfg.Gentoo.Profile != "" && profileCompatVariant(cfg.Gentoo.Stage3Variant) {
 		// The stage3 variant and the eselect profile must agree on the init
 		// system. Exotic variants (musl, hardened, x32, llvm, ...) have no
 		// matching profile in the catalog, so the check is skipped for them.
-		variantInit, profileInit := initName(c.UsesSystemd()), initName(ProfileUsesSystemd(c.Gentoo.Profile))
-		if c.UsesSystemd() != ProfileUsesSystemd(c.Gentoo.Profile) {
+		variantInit, profileInit := initName(cfg.UsesSystemd()), initName(ProfileUsesSystemd(cfg.Gentoo.Profile))
+		if cfg.UsesSystemd() != ProfileUsesSystemd(cfg.Gentoo.Profile) {
 			addf("stage3 variant %q uses %s but profile %q selects %s (init mismatch)",
-				c.Gentoo.Stage3Variant, variantInit, c.Gentoo.Profile, profileInit)
+				cfg.Gentoo.Stage3Variant, variantInit, cfg.Gentoo.Profile, profileInit)
 		}
 	}
 
-	if c.Packages.KernelType != "bin" && c.Packages.KernelType != "source" {
-		addf("invalid kernel type %q", c.Packages.KernelType)
+	if cfg.Packages.KernelType != "bin" && cfg.Packages.KernelType != "source" {
+		addf("invalid kernel type %q", cfg.Packages.KernelType)
 	}
-	if c.Gentoo.PortageSyncType != "git" && c.Gentoo.PortageSyncType != "rsync" {
-		addf("invalid portage sync type %q", c.Gentoo.PortageSyncType)
+	if cfg.Gentoo.PortageSyncType != "git" && cfg.Gentoo.PortageSyncType != "rsync" {
+		addf("invalid portage sync type %q", cfg.Gentoo.PortageSyncType)
 	}
 	return errs
 }
@@ -618,8 +618,8 @@ func (c *Config) Validate() []error {
 // nomultilib, selinux) have no matching profile in the catalog, so init
 // consistency with a selected profile cannot be enforced for them.
 func profileCompatVariant(id string) bool {
-	for _, v := range Stage3Variants {
-		if v.ID != id {
+	for _, variant := range Stage3Variants {
+		if variant.ID != id {
 			continue
 		}
 		for _, exotic := range []string{"musl", "hardened", "x32", "llvm", "nomultilib", "selinux"} {
@@ -642,13 +642,13 @@ func initName(systemd bool) string {
 // Advisories returns non-fatal warnings about the configuration. Unlike
 // Validate, these do not block installation but are surfaced to the user for
 // attention (e.g. desktop alignment between the stage3 variant and profile).
-func (c *Config) Advisories() []string {
+func (cfg *Config) Advisories() []string {
 	var warns []string
-	if c.Gentoo.Profile == "" {
+	if cfg.Gentoo.Profile == "" {
 		return warns
 	}
-	variantDesktop := strings.Contains(c.Gentoo.Stage3Variant, "desktop")
-	profileDesktop := strings.Contains(c.Gentoo.Profile, "/desktop")
+	variantDesktop := strings.Contains(cfg.Gentoo.Stage3Variant, "desktop")
+	profileDesktop := strings.Contains(cfg.Gentoo.Profile, "/desktop")
 	if variantDesktop != profileDesktop {
 		warns = append(warns, "desktop stage3 variant and non-desktop profile (or vice versa) "+
 			"are misaligned; the base package set may not match your intended desktop")

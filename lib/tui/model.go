@@ -167,12 +167,14 @@ const (
 	stErr
 )
 
-func (m *Model) setStatusErr(s string) { m.status, m.statusKind = s, stErr }
+func (model *Model) setStatusErr(statusText string) {
+	model.status, model.statusKind = statusText, stErr
+}
 
 type savedClearMsg struct{}
 
-func clearSavedAfter(d time.Duration) tea.Cmd {
-	return tea.Tick(d, func(time.Time) tea.Msg { return savedClearMsg{} })
+func clearSavedAfter(duration time.Duration) tea.Cmd {
+	return tea.Tick(duration, func(time.Time) tea.Msg { return savedClearMsg{} })
 }
 
 // MirrorProbeMsg carries the result of an asynchronous mirror reachability
@@ -184,8 +186,8 @@ type MirrorProbeMsg struct {
 
 // mirrorProbeCmd probes the currently selected Gentoo mirror in the
 // background and returns the result as a MirrorProbeMsg.
-func (m *Model) mirrorProbeCmd() tea.Cmd {
-	mirror := m.cfg.Gentoo.Mirror
+func (model *Model) mirrorProbeCmd() tea.Cmd {
+	mirror := model.cfg.Gentoo.Mirror
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -196,7 +198,7 @@ func (m *Model) mirrorProbeCmd() tea.Cmd {
 
 // mirrorTickCmd schedules the next periodic mirror probe so the indicator
 // recovers once the live ISO network (DHCP) comes up.
-func (m *Model) mirrorTickCmd() tea.Cmd {
+func (model *Model) mirrorTickCmd() tea.Cmd {
 	return tea.Tick(mirrorPollInterval, func(time.Time) tea.Msg { return mirrorTickMsg{} })
 }
 
@@ -204,49 +206,49 @@ type mirrorTickMsg struct{}
 
 // probeMirror marks the mirror as "checking" (unless it is already ok) and
 // kicks off a probe plus the periodic re-check.
-func (m *Model) probeMirror() tea.Cmd {
-	if m.mirrorState != mirrorOK {
-		m.mirrorState = mirrorChecking
+func (model *Model) probeMirror() tea.Cmd {
+	if model.mirrorState != mirrorOK {
+		model.mirrorState = mirrorChecking
 	}
-	return tea.Batch(m.mirrorProbeCmd(), m.mirrorTickCmd())
+	return tea.Batch(model.mirrorProbeCmd(), model.mirrorTickCmd())
 }
 
 // New builds the configurator model.
 func New(cfg *config.Config, cfgPath string) *Model {
-	m := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI(),
+	model := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI(),
 		mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror),
 		rawFollow: true, rawDirty: true}
-	m.tabs = buildTabs(m)
-	for range m.tabs {
-		m.cursors = append(m.cursors, 0)
-		m.scrollTop = append(m.scrollTop, 0)
+	model.tabs = buildTabs(model)
+	for range model.tabs {
+		model.cursors = append(model.cursors, 0)
+		model.scrollTop = append(model.scrollTop, 0)
 	}
-	m.clampCursor(m.active)
+	model.clampCursor(model.active)
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	m.spinner = sp
-	return m
+	model.spinner = sp
+	return model
 }
 
 // SetHasEFI overrides the host-firmware probe for the install pre-flight
 // checks. Production leaves it at the sysinfo.HasEFI result probed in New;
 // tests use it to simulate a BIOS-booted live system.
-func (m *Model) SetHasEFI(has bool) { m.hasEFI = has }
+func (model *Model) SetHasEFI(has bool) { model.hasEFI = has }
 
 // mirrorHostName returns the host portion of the mirror URL for display,
 // falling back to "mirror" when the URL cannot be parsed.
 func mirrorHostName(mirror string) string {
-	if h := sysinfo.MirrorHost(mirror); h != "" {
-		return h
+	if host := sysinfo.MirrorHost(mirror); host != "" {
+		return host
 	}
 	return "mirror"
 }
 
-func (m *Model) markDirty() { m.dirty = true }
+func (model *Model) markDirty() { model.dirty = true }
 
 // Init implements tea.Model.
-func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.probeMirror(), winsizeTickCmd())
+func (model *Model) Init() tea.Cmd {
+	return tea.Batch(model.probeMirror(), winsizeTickCmd())
 }
 
 type WinsizeTickMsg struct{}
@@ -260,21 +262,21 @@ func winsizeTickCmd() tea.Cmd {
 
 // syncWinsizeFromKernel applies the kernel-known size when it is valid
 // and differs; it reports whether the model changed.
-func (m *Model) syncWinsizeFromKernel() bool {
+func (model *Model) syncWinsizeFromKernel() bool {
 	cols, rows, ok := live.GetWinsize()
-	if !ok || (cols == m.width && rows == m.height) {
+	if !ok || (cols == model.width && rows == model.height) {
 		return false
 	}
-	m.width, m.height = cols, rows
+	model.width, model.height = cols, rows
 	return true
 }
 
 // visibleRows returns indexes of visible fields for a tab.
-func (m *Model) visibleRows(tab int) []int {
+func (model *Model) visibleRows(tab int) []int {
 	var out []int
-	for i, f := range m.tabs[tab].fields {
-		if visible(f, m.cfg) {
-			out = append(out, i)
+	for index, field := range model.tabs[tab].fields {
+		if visible(field, model.cfg) {
+			out = append(out, index)
 		}
 	}
 	return out
@@ -282,290 +284,290 @@ func (m *Model) visibleRows(tab int) []int {
 
 // clampCursor keeps the active tab's cursor on a selectable (non-separator)
 // row so section titles are never focused.
-func (m *Model) clampCursor(tab int) {
-	rows := m.visibleRows(tab)
+func (model *Model) clampCursor(tab int) {
+	rows := model.visibleRows(tab)
 	if len(rows) == 0 {
 		return
 	}
-	c := m.cursors[tab]
-	if c > len(rows)-1 {
-		c = len(rows) - 1
+	cursor := model.cursors[tab]
+	if cursor > len(rows)-1 {
+		cursor = len(rows) - 1
 	}
-	for c > 0 && m.tabs[tab].fields[rows[c]].kind == kSeparator {
-		c--
+	for cursor > 0 && model.tabs[tab].fields[rows[cursor]].kind == kSeparator {
+		cursor--
 	}
-	if m.cursors[tab] != c {
-		m.cursors[tab] = c
+	if model.cursors[tab] != cursor {
+		model.cursors[tab] = cursor
 	}
 }
 
 // Update implements tea.Model.
-func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Check quit first so that every message type honours it, including
 	// key messages that would otherwise return early from the switch.
-	if m.quitting {
-		return m, tea.Quit
+	if model.quitting {
+		return model, tea.Quit
 	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-		m.winsizeStable = 0
+		model.width, model.height = msg.Width, msg.Height
+		model.winsizeStable = 0
 
 	case WinsizeTickMsg:
-		if m.syncWinsizeFromKernel() {
-			m.winsizeStable = 0
+		if model.syncWinsizeFromKernel() {
+			model.winsizeStable = 0
 		} else {
-			m.winsizeStable++
+			model.winsizeStable++
 		}
-		if m.winsizeStable < winsizeStableTicks {
-			return m, winsizeTickCmd()
+		if model.winsizeStable < winsizeStableTicks {
+			return model, winsizeTickCmd()
 		}
-		return m, nil
+		return model, nil
 
 	case spinner.TickMsg:
-		if m.instState == instRunning {
+		if model.instState == instRunning {
 			var cmd tea.Cmd
-			m.spinner, cmd = m.spinner.Update(msg)
-			m.spinOn = true
-			return m, tea.Batch(cmd, m.spinner.Tick)
+			model.spinner, cmd = model.spinner.Update(msg)
+			model.spinOn = true
+			return model, tea.Batch(cmd, model.spinner.Tick)
 		}
-		m.spinOn = false
-		return m, nil
+		model.spinOn = false
+		return model, nil
 
 	case InstallLineMsg:
-		m.updateInstallMsg(msg)
+		model.updateInstallMsg(msg)
 	case InstallStartMsg:
-		m.beginInstall()
-		return m, m.startSpinner()
+		model.beginInstall()
+		return model, model.startSpinner()
 	case InstallFailedMsg:
-		m.updateInstallMsg(msg)
+		model.updateInstallMsg(msg)
 	case InstallDoneMsg:
-		m.updateInstallMsg(msg)
+		model.updateInstallMsg(msg)
 
 	case savedClearMsg:
-		m.savedFlash = false
+		model.savedFlash = false
 
 	case MirrorProbeMsg:
 		if msg.OK {
-			m.mirrorState = mirrorOK
-			m.mirrorNote = ""
+			model.mirrorState = mirrorOK
+			model.mirrorNote = ""
 		} else {
-			m.mirrorState = mirrorDown
-			m.mirrorNote = msg.Note
-			if m.mirrorNote == "" {
-				m.mirrorNote = "unreachable"
+			model.mirrorState = mirrorDown
+			model.mirrorNote = msg.Note
+			if model.mirrorNote == "" {
+				model.mirrorNote = "unreachable"
 			}
 			if !live.NetworkReady() {
-				m.mirrorNote = "no network — DHCP still configuring"
+				model.mirrorNote = "no network — DHCP still configuring"
 			}
 		}
-		m.mirrorHost = mirrorHostName(m.cfg.Gentoo.Mirror)
-		return m, nil
+		model.mirrorHost = mirrorHostName(model.cfg.Gentoo.Mirror)
+		return model, nil
 
 	case mirrorTickMsg:
 		// The ticker is strictly self-renewing (one tick arms exactly one
 		// successor tick and one probe), so periodic re-probes run at a
 		// steady cadence — including while the mirror is unreachable — and
 		// the indicator recovers automatically once DHCP comes up.
-		if m.mirrorState != mirrorOK {
-			m.mirrorState = mirrorChecking
+		if model.mirrorState != mirrorOK {
+			model.mirrorState = mirrorChecking
 		}
-		return m, tea.Batch(m.mirrorProbeCmd(), m.mirrorTickCmd())
+		return model, tea.Batch(model.mirrorProbeCmd(), model.mirrorTickCmd())
 
 	case tea.KeyMsg:
-		if m.overlay.kind != ovNone {
-			return m.updateOverlay(msg)
+		if model.overlay.kind != ovNone {
+			return model.updateOverlay(msg)
 		}
-		if m.installing {
-			return m.updateInstallKeys(msg)
+		if model.installing {
+			return model.updateInstallKeys(msg)
 		}
-		return m.updateGlobal(msg)
+		return model.updateGlobal(msg)
 	}
 
 	// Keep the spinner alive while an install is running.
-	if cmd := m.startSpinner(); cmd != nil {
-		return m, cmd
+	if cmd := model.startSpinner(); cmd != nil {
+		return model, cmd
 	}
-	return m, nil
+	return model, nil
 }
 
 // startSpinner schedules the first spinner tick once per run; subsequent
 // ticks reschedule themselves until the install stops running.
-func (m *Model) startSpinner() tea.Cmd {
-	if m.instState == instRunning && !m.spinOn {
-		m.spinOn = true
-		return m.spinner.Tick
+func (model *Model) startSpinner() tea.Cmd {
+	if model.instState == instRunning && !model.spinOn {
+		model.spinOn = true
+		return model.spinner.Tick
 	}
 	return nil
 }
 
-func (m *Model) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (model *Model) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
-		m.quitNow()
-		return m, tea.Quit
+		model.quitNow()
+		return model, tea.Quit
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		n := int(msg.Runes[0] - '1')
-		if n < len(m.tabs) {
-			m.active = n
+		tabIndex := int(msg.Runes[0] - '1')
+		if tabIndex < len(model.tabs) {
+			model.active = tabIndex
 		}
-		return m, nil
+		return model, nil
 	case "tab", "shift+tab", "right", "left", "h", "l":
-		d := 1
+		dir := 1
 		if msg.String() == "shift+tab" || msg.String() == "left" || msg.String() == "h" {
-			d = -1
+			dir = -1
 		}
-		m.active = (m.active + d + len(m.tabs)) % len(m.tabs)
-		return m, nil
+		model.active = (model.active + dir + len(model.tabs)) % len(model.tabs)
+		return model, nil
 	case "j", "down":
-		rows := m.visibleRows(m.active)
-		for len(rows) > 0 && m.cursors[m.active] < len(rows)-1 {
-			m.cursors[m.active]++
-			if m.tabs[m.active].fields[rows[m.cursors[m.active]]].kind != kSeparator {
+		rows := model.visibleRows(model.active)
+		for len(rows) > 0 && model.cursors[model.active] < len(rows)-1 {
+			model.cursors[model.active]++
+			if model.tabs[model.active].fields[rows[model.cursors[model.active]]].kind != kSeparator {
 				break
 			}
 		}
-		return m, nil
+		return model, nil
 	case "k", "up":
-		rows := m.visibleRows(m.active)
-		for m.cursors[m.active] > 0 {
-			m.cursors[m.active]--
-			if m.tabs[m.active].fields[rows[m.cursors[m.active]]].kind != kSeparator {
+		rows := model.visibleRows(model.active)
+		for model.cursors[model.active] > 0 {
+			model.cursors[model.active]--
+			if model.tabs[model.active].fields[rows[model.cursors[model.active]]].kind != kSeparator {
 				break
 			}
 		}
-		return m, nil
+		return model, nil
 	case "enter", " ", "space":
-		return m.activateRow()
+		return model.activateRow()
 	case "?":
-		return m.showRowHelp()
+		return model.showRowHelp()
 	case "i":
-		if m.tabs[m.active].name == "Install" {
-			if m.instState != instIdle {
-				m.installing = true // return to a paused/finished run
-				return m, nil
+		if model.tabs[model.active].name == "Install" {
+			if model.instState != instIdle {
+				model.installing = true // return to a paused/finished run
+				return model, nil
 			}
-			return m.confirmInstall()
+			return model.confirmInstall()
 		}
 	case "d":
-		if m.tabs[m.active].name == "Install" && m.instState == instIdle {
-			return m.startDemo()
+		if model.tabs[model.active].name == "Install" && model.instState == instIdle {
+			return model.startDemo()
 		}
 	case "v":
-		m.openConfigView()
-		return m, nil
+		model.openConfigView()
+		return model, nil
 	case "s":
-		return m.save()
+		return model.save()
 	case "S":
-		return m.saveAs()
+		return model.saveAs()
 	case "q", "esc":
-		return m.confirmQuit()
+		return model.confirmQuit()
 	}
-	return m, nil
+	return model, nil
 }
 
-func (m *Model) currentField() *field {
-	rows := m.visibleRows(m.active)
+func (model *Model) currentField() *field {
+	rows := model.visibleRows(model.active)
 	if len(rows) == 0 {
 		return nil
 	}
-	idx := rows[min(m.cursors[m.active], len(rows)-1)]
-	return m.tabs[m.active].fields[idx]
+	idx := rows[min(model.cursors[model.active], len(rows)-1)]
+	return model.tabs[model.active].fields[idx]
 }
 
-func (m *Model) activateRow() (tea.Model, tea.Cmd) {
-	f := m.currentField()
-	if f == nil || (m.tabs[m.active].render != nil && f.label == "") {
-		return m, nil
+func (model *Model) activateRow() (tea.Model, tea.Cmd) {
+	field := model.currentField()
+	if field == nil || (model.tabs[model.active].render != nil && field.label == "") {
+		return model, nil
 	}
-	switch f.kind {
+	switch field.kind {
 	case kToggle:
-		f.setBool(m.cfg, !f.getBool(m.cfg))
-		if f.label == "Different initramfs keymap" && f.getBool(m.cfg) &&
-			strings.TrimSpace(m.cfg.System.KeymapInitramfs) == "" {
-			m.cfg.System.KeymapInitramfs = m.cfg.System.Keymap
+		field.setBool(model.cfg, !field.getBool(model.cfg))
+		if field.label == "Different initramfs keymap" && field.getBool(model.cfg) &&
+			strings.TrimSpace(model.cfg.System.KeymapInitramfs) == "" {
+			model.cfg.System.KeymapInitramfs = model.cfg.System.Keymap
 		}
-		m.markDirty()
-		m.status = ""
+		model.markDirty()
+		model.status = ""
 	case kText, kMultiText:
-		onDone := func(mm *Model, v string) {
-			f.setText(mm.cfg, v)
+		onDone := func(mm *Model, value string) {
+			field.setText(mm.cfg, value)
 			mm.dirty = true
 			mm.status = ""
-			if f.watchMirror {
+			if field.watchMirror {
 				mm.mirrorState = mirrorChecking
 				mm.mirrorHost = ""
 				mm.deferredCmd = tea.Batch(mm.mirrorProbeCmd(), mm.mirrorTickCmd())
 			}
 		}
-		m.openText("Edit "+f.label, f.getText(m.cfg), f.multi, onDone)
+		model.openText("Edit "+field.label, field.getText(model.cfg), field.multi, onDone)
 	case kChoice:
-		if f.onPick != nil {
-			f.onPick(m, f, "") // custom pickers manage themselves
-			return m, nil
+		if field.onPick != nil {
+			field.onPick(model, field, "") // custom pickers manage themselves
+			return model, nil
 		}
-		m.openPicker(f.label, f.options(m.cfg), f.getChoice(m.cfg), f.filter,
-			func(mm *Model, v string) {
-				f.setChoice(mm.cfg, v)
+		model.openPicker(field.label, field.options(model.cfg), field.getChoice(model.cfg), field.filter,
+			func(mm *Model, value string) {
+				field.setChoice(mm.cfg, value)
 				mm.dirty = true
 				mm.status = ""
 			})
 	case kMultiChoice:
-		m.openMultiPicker(f.label, f.options(m.cfg), f.getStrings(m.cfg),
+		model.openMultiPicker(field.label, field.options(model.cfg), field.getStrings(model.cfg),
 			func(mm *Model, vals []string) {
-				f.setStrings(mm.cfg, vals)
+				field.setStrings(mm.cfg, vals)
 				mm.dirty = true
 				mm.status = ""
 			})
 	case kReadOnly:
 		// read-only rows cannot be edited; a custom handler (e.g. opening a
 		// picker or modal) wins, otherwise show the field's help.
-		if f.onPick != nil {
-			f.onPick(m, f, "")
-			return m, nil
+		if field.onPick != nil {
+			field.onPick(model, field, "")
+			return model, nil
 		}
-		m.openHelp(f.label, f.help)
+		model.openHelp(field.label, field.help)
 	case kSeparator:
 	}
-	m.clampCursor(m.active)
-	return m, nil
+	model.clampCursor(model.active)
+	return model, nil
 }
 
-func (m *Model) showRowHelp() (tea.Model, tea.Cmd) {
-	if m.tabs[m.active].render != nil {
-		m.openHelp(m.tabs[m.active].name, overviewHelp)
-		return m, nil
+func (model *Model) showRowHelp() (tea.Model, tea.Cmd) {
+	if model.tabs[model.active].render != nil {
+		model.openHelp(model.tabs[model.active].name, overviewHelp)
+		return model, nil
 	}
-	f := m.currentField()
-	if f == nil {
-		return m, nil
+	field := model.currentField()
+	if field == nil {
+		return model, nil
 	}
-	m.openHelp(f.label, f.help)
-	return m, nil
+	model.openHelp(field.label, field.help)
+	return model, nil
 }
 
-func (m *Model) save() (tea.Model, tea.Cmd) {
-	path := config.ResolveSavePath(m.cfgPath)
-	if m.cfgPath != path {
-		m.cfgPath = path
+func (model *Model) save() (tea.Model, tea.Cmd) {
+	path := config.ResolveSavePath(model.cfgPath)
+	if model.cfgPath != path {
+		model.cfgPath = path
 	}
-	if err := m.cfg.Save(m.cfgPath); err != nil {
-		m.setStatusErr("save failed: " + err.Error())
-		return m, nil
+	if err := model.cfg.Save(model.cfgPath); err != nil {
+		model.setStatusErr("save failed: " + err.Error())
+		return model, nil
 	}
-	m.dirty = false
-	m.status = ""
-	m.savedFlash = true
-	return m, clearSavedAfter(5 * time.Second)
+	model.dirty = false
+	model.status = ""
+	model.savedFlash = true
+	return model, clearSavedAfter(5 * time.Second)
 }
 
-func (m *Model) saveAs() (tea.Model, tea.Cmd) {
-	m.openText("Save configuration as", config.ResolveSavePath(m.cfgPath), false, func(mm *Model, v string) {
-		if strings.TrimSpace(v) == "" {
+func (model *Model) saveAs() (tea.Model, tea.Cmd) {
+	model.openText("Save configuration as", config.ResolveSavePath(model.cfgPath), false, func(mm *Model, value string) {
+		if strings.TrimSpace(value) == "" {
 			return
 		}
-		mm.cfgPath = v
+		mm.cfgPath = value
 		if err := mm.cfg.Save(mm.cfgPath); err != nil {
 			mm.setStatusErr("save failed: " + err.Error())
 		} else {
@@ -575,43 +577,43 @@ func (m *Model) saveAs() (tea.Model, tea.Cmd) {
 			mm.deferredCmd = clearSavedAfter(5 * time.Second)
 		}
 	})
-	return m, nil
+	return model, nil
 }
 
 // quitNow flags the model as quitting; the next Update call returns tea.Quit.
-func (m *Model) quitNow() {
-	m.quitting = true
+func (model *Model) quitNow() {
+	model.quitting = true
 }
 
-func (m *Model) confirmQuit() (tea.Model, tea.Cmd) {
-	if m.instState == instRunning || m.instState == instWaiting {
-		m.overlay = overlay{
+func (model *Model) confirmQuit() (tea.Model, tea.Cmd) {
+	if model.instState == instRunning || model.instState == instWaiting {
+		model.overlay = overlay{
 			kind:  ovButtons,
 			title: eWarn + " Installation in progress",
 			body: "An installation is currently running. Quitting will NOT stop it — " +
 				"background processes may keep modifying the target disks.",
 			buttons: []string{"Stay", "Quit anyway"},
 			btnCur:  0,
-			onBtn: func(mm *Model, i int) {
-				if i == 1 {
+			onBtn: func(mm *Model, buttonIndex int) {
+				if buttonIndex == 1 {
 					mm.quitNow()
 				}
 			},
 		}
-		return m, nil
+		return model, nil
 	}
-	if !m.dirty {
-		m.quitNow()
-		return m, tea.Quit
+	if !model.dirty {
+		model.quitNow()
+		return model, tea.Quit
 	}
-	m.overlay = overlay{
+	model.overlay = overlay{
 		kind:    ovButtons,
 		title:   eWarn + " Unsaved changes",
 		body:    "Do you want to save your configuration before quitting?",
 		buttons: []string{eSave + " Save", "🗑 Discard", "Back"},
 		btnCur:  0,
-		onBtn: func(mm *Model, i int) {
-			switch i {
+		onBtn: func(mm *Model, buttonIndex int) {
+			switch buttonIndex {
 			case 0:
 				path := config.ResolveSavePath(mm.cfgPath)
 				if mm.cfgPath != path {
@@ -629,27 +631,27 @@ func (m *Model) confirmQuit() (tea.Model, tea.Cmd) {
 			}
 		},
 	}
-	return m, nil
+	return model, nil
 }
 
 // View implements tea.Model.
-func (m *Model) View() string {
-	if m.width == 0 {
+func (model *Model) View() string {
+	if model.width == 0 {
 		// Unknown size (e.g. serial ttyS0 with no winsize yet): assume a
 		// conservative 80x24 so first frames fit instead of emitting a
 		// 100-column layout clipped by the host terminal.
-		m.width, m.height = 80, 24
+		model.width, model.height = 80, 24
 	}
 
-	if m.width < minWidth || m.height < minHeight {
-		return m.renderTooSmall()
+	if model.width < minWidth || model.height < minHeight {
+		return model.renderTooSmall()
 	}
 
-	if m.installing {
-		out := m.renderInstallView()
-		if m.overlay.kind != ovNone {
-			box := m.renderOverlay()
-			out = lipgloss.Place(m.width, m.height,
+	if model.installing {
+		out := model.renderInstallView()
+		if model.overlay.kind != ovNone {
+			box := model.renderOverlay()
+			out = lipgloss.Place(model.width, model.height,
 				lipgloss.Center, lipgloss.Center, box)
 		}
 		return out
@@ -659,10 +661,10 @@ func (m *Model) View() string {
 	// chrome (frame + optional sidebar), never off width brackets.
 	// The tab strip keeps the full frame budget (it centers the header);
 	// fields and rules use the pane budget below.
-	inner := maxInt(1, m.width-8)
-	tabs := m.renderTabBarMax(inner)
-	cw := m.contentWidth()
-	mirror, path := m.mirrorLine(), m.pathLine()
+	inner := maxInt(1, model.width-8)
+	tabs := model.renderTabBarMax(inner)
+	cw := model.contentWidth()
+	mirror, path := model.mirrorLine(), model.pathLine()
 	var pathBox string
 	if lipgloss.Width(mirror)+1+lipgloss.Width(path) <= cw {
 		pathBox = lipgloss.JoinHorizontal(lipgloss.Top, mirror, " ", path)
@@ -673,15 +675,15 @@ func (m *Model) View() string {
 	// Render the status message to the right of the path box when it
 	// fits, otherwise on its own row.
 	pathLine := pathBox
-	if m.status != "" {
+	if model.status != "" {
 		st := helpStyle
-		switch m.statusKind {
+		switch model.statusKind {
 		case stOK:
 			st = okStyle
 		case stErr:
 			st = errorStyle
 		}
-		statusText := st.Render(truncateRunes(m.status, maxInt(12, m.width/4)))
+		statusText := st.Render(truncateRunes(model.status, maxInt(12, model.width/4)))
 		joined := lipgloss.JoinHorizontal(lipgloss.Top, pathBox, "  ", statusText)
 		if lipgloss.Width(joined) <= cw {
 			pathLine = joined
@@ -690,19 +692,19 @@ func (m *Model) View() string {
 		}
 	}
 
-	var b strings.Builder
-	if m.tabs[m.active].render != nil {
-		b.WriteString(m.tabs[m.active].render(m))
+	var body strings.Builder
+	if model.tabs[model.active].render != nil {
+		body.WriteString(model.tabs[model.active].render(model))
 	} else {
-		b.WriteString(m.renderFields())
+		body.WriteString(model.renderFields())
 	}
-	rawBody := b.String()
+	rawBody := body.String()
 
 	// Header budget: tab bar, bordered path line, blank separator, and the
 	// two rows consumed by the window frame.
 	header := lipgloss.JoinVertical(lipgloss.Top, tabs, pathLine)
 	reserved := lipgloss.Height(header) + 1 + 2
-	maxLines := m.height - reserved
+	maxLines := model.height - reserved
 	lines := strings.Split(rawBody, "\n")
 	if maxLines > 0 && len(lines) > maxLines {
 		rawBody = strings.Join(lines[:maxLines], "\n")
@@ -713,34 +715,34 @@ func (m *Model) View() string {
 	right := lipgloss.JoinVertical(lipgloss.Top, header, "", main)
 
 	var out string
-	if left, ok := m.sidebar(); ok {
+	if left, ok := model.sidebar(); ok {
 		// Static divider height: the full terminal (or more if content
 		// overflows), so it does not change size when switching tabs.
-		H := maxInt(m.height,
+		totalHeight := maxInt(model.height,
 			maxInt(lipgloss.Height(left), lipgloss.Height(right)))
-		padTo := func(s string, n int) string {
-			lines := strings.Split(s, "\n")
-			for len(lines) < n {
+		padTo := func(str string, targetLines int) string {
+			lines := strings.Split(str, "\n")
+			for len(lines) < targetLines {
 				lines = append(lines, "")
 			}
 			return strings.Join(lines, "\n")
 		}
-		left = padTo(left, H)
-		right = padTo(right, H)
-		divider := helpStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", H), "\n"))
+		left = padTo(left, totalHeight)
+		right = padTo(right, totalHeight)
+		divider := helpStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", totalHeight), "\n"))
 		cols := lipgloss.JoinHorizontal(lipgloss.Top,
 			lipgloss.NewStyle().PaddingRight(1).Render(left),
 			divider,
 			lipgloss.NewStyle().PaddingLeft(1).Render(right))
-		out = m.frameWindow(cols)
+		out = model.frameWindow(cols)
 	} else {
 		// Single column: sidebar hidden, main pane spans the window.
-		out = m.frameWindow(right)
+		out = model.frameWindow(right)
 	}
 
-	if m.overlay.kind != ovNone {
-		box := m.renderOverlay()
-		out = lipgloss.Place(m.width, m.height,
+	if model.overlay.kind != ovNone {
+		box := model.renderOverlay()
+		out = lipgloss.Place(model.width, model.height,
 			lipgloss.Center, lipgloss.Center, box)
 	}
 	return out
@@ -750,9 +752,9 @@ func (m *Model) View() string {
 // main pane, and reports whether it does. The layout measures chrome
 // instead of branching on width brackets, so live serial and normal
 // binary renders share one path.
-func (m *Model) sidebar() (string, bool) {
-	inner := maxInt(1, m.width-8) // frameWindow budget: border + padding
-	left := lipgloss.JoinVertical(lipgloss.Top, renderLogo(), "", m.renderHints())
+func (model *Model) sidebar() (string, bool) {
+	inner := maxInt(1, model.width-8) // frameWindow budget: border + padding
+	left := lipgloss.JoinVertical(lipgloss.Top, renderLogo(), "", model.renderHints())
 	// Sidebar + divider + side paddings must leave minMainWidth for content.
 	if lipgloss.Width(left)+3+minMainWidth > inner {
 		return "", false
@@ -762,9 +764,9 @@ func (m *Model) sidebar() (string, bool) {
 
 // contentWidth is the usable width of the main pane: the frame budget
 // minus the sidebar when shown.
-func (m *Model) contentWidth() int {
-	inner := maxInt(1, m.width-8)
-	if left, ok := m.sidebar(); ok {
+func (model *Model) contentWidth() int {
+	inner := maxInt(1, model.width-8)
+	if left, ok := model.sidebar(); ok {
 		return maxInt(1, inner-lipgloss.Width(left)-3)
 	}
 	return inner
@@ -774,16 +776,16 @@ func (m *Model) contentWidth() int {
 // inner area to the terminal minus the border (2 rows) and side padding
 // (2 columns). Content lines wider than the inner width are clipped rather
 // than wrapped, so lipgloss never folds a row onto the next.
-func (m *Model) frameWindow(content string) string {
-	iw, ih := maxInt(1, m.width-4), maxInt(1, m.height-2)
-	inner := maxInt(1, m.width-8) // border (2 cols) + window padding (2 cols)
+func (model *Model) frameWindow(content string) string {
+	iw, ih := maxInt(1, model.width-4), maxInt(1, model.height-2)
+	inner := maxInt(1, model.width-8) // border (2 cols) + window padding (2 cols)
 	lines := strings.Split(content, "\n")
 	if len(lines) > ih {
 		lines = lines[:ih]
 	}
-	for i, ln := range lines {
-		if w := lipgloss.Width(ln); w > inner {
-			lines[i] = truncateToWidth(ln, inner)
+	for index, line := range lines {
+		if lineWidth := lipgloss.Width(line); lineWidth > inner {
+			lines[index] = truncateToWidth(line, inner)
 		}
 	}
 	content = strings.Join(lines, "\n")
@@ -794,95 +796,95 @@ func (m *Model) frameWindow(content string) string {
 // renderTooSmall shows a centered notice instead of the UI when the
 // terminal is below the minimum size (see minWidth/minHeight), mirroring
 // the behavior of btop.
-func (m *Model) renderTooSmall() string {
+func (model *Model) renderTooSmall() string {
 	msg := tooSmallStyle.Render("Terminal too small — resize to at least " +
 		fmt.Sprintf("%dx%d", minWidth, minHeight))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
+	return lipgloss.Place(model.width, model.height, lipgloss.Center, lipgloss.Center, msg)
 }
 
 // truncateToWidth trims s to w visible columns, splitting within a line.
 // ANSI SGR escape sequences are copied through verbatim and never counted
 // against the width budget, so styled text is truncated only at glyph
 // boundaries (escaping like this keeps the surrounding box borders intact).
-func truncateToWidth(s string, w int) string {
-	var b strings.Builder
-	n := 0
-	d := []byte(s)
-	for i := 0; i < len(d); {
-		if d[i] == '\x1b' {
-			// CSI (m, K, J, H, …): consume params + final byte verbatim.
-			if i+1 < len(d) && d[i+1] == '[' {
-				j := i + 2
-				for j < len(d) && !(d[j] >= 0x40 && d[j] <= 0x7e) {
-					j++
+func truncateToWidth(str string, width int) string {
+	var out strings.Builder
+	used := 0
+	data := []byte(str)
+	for pos := 0; pos < len(data); {
+		if data[pos] == '\x1b' {
+			// CSI (model, K, J, H, …): consume params + final byte verbatim.
+			if pos+1 < len(data) && data[pos+1] == '[' {
+				end := pos + 2
+				for end < len(data) && !(data[end] >= 0x40 && data[end] <= 0x7e) {
+					end++
 				}
-				if j >= len(d) {
-					return b.String()
+				if end >= len(data) {
+					return out.String()
 				}
-				b.Write(d[i : j+1])
-				i = j + 1
+				out.Write(data[pos : end+1])
+				pos = end + 1
 				continue
 			}
 			// OSC: skip until BEL or ST, carrying it across verbatim.
-			if i+1 < len(d) && d[i+1] == ']' {
-				j := i + 2
-				for j < len(d) && d[j] != 0x07 && !(d[j] == '\x1b' && j+1 < len(d) && d[j+1] == '\\') {
-					j++
+			if pos+1 < len(data) && data[pos+1] == ']' {
+				end := pos + 2
+				for end < len(data) && data[end] != 0x07 && !(data[end] == '\x1b' && end+1 < len(data) && data[end+1] == '\\') {
+					end++
 				}
-				if j >= len(d) {
-					return b.String()
+				if end >= len(data) {
+					return out.String()
 				}
-				if d[j] == 0x07 {
-					j++
+				if data[end] == 0x07 {
+					end++
 				} else {
-					j += 2
+					end += 2
 				}
-				b.Write(d[i:j])
-				i = j
+				out.Write(data[pos:end])
+				pos = end
 				continue
 			}
-			i++ // lone ESC: consume the byte that follows
+			pos++ // lone ESC: consume the byte that follows
 			continue
 		}
-		r, size := utf8.DecodeRune(d[i:])
-		if r == utf8.RuneError && size < 2 {
-			i++ // invalid byte: skip so the loop always advances
+		runeVal, size := utf8.DecodeRune(data[pos:])
+		if runeVal == utf8.RuneError && size < 2 {
+			pos++ // invalid byte: skip so the loop always advances
 			continue
 		}
-		rw := runewidth.RuneWidth(r)
+		rw := runewidth.RuneWidth(runeVal)
 		if rw < 1 {
 			rw = 1
 		}
-		if n+rw > w {
+		if used+rw > width {
 			break
 		}
-		b.Write(d[i : i+size])
-		n += rw
-		i += size
+		out.Write(data[pos : pos+size])
+		used += rw
+		pos += size
 	}
-	return b.String()
+	return out.String()
 }
 
-func (m *Model) renderTabBar() string {
-	return m.renderTabBarMax(maxInt(1, m.width-8))
+func (model *Model) renderTabBar() string {
+	return model.renderTabBarMax(maxInt(1, model.width-8))
 }
 
 // tabStripParts renders one tab box per tab. Compact drops the emoji and
 // box padding so all six tabs fit narrow windows (numbered labels keep
 // the 1-6 keyboard mapping visible).
-func (m *Model) tabStripParts(compact bool) []string {
-	parts := make([]string, len(m.tabs))
-	for i, t := range m.tabs {
-		label := tabEmoji(t.name) + " " + t.name
+func (model *Model) tabStripParts(compact bool) []string {
+	parts := make([]string, len(model.tabs))
+	for index, tab := range model.tabs {
+		label := tabEmoji(tab.name) + " " + tab.name
 		active, inactive := tabActiveBorderStyle, tabInactiveBorderStyle
 		if compact {
-			label = fmt.Sprintf("%d %s", i+1, t.name)
+			label = fmt.Sprintf("%d %s", index+1, tab.name)
 			active, inactive = active.Padding(0, 0), inactive.Padding(0, 0)
 		}
-		if i == m.active {
-			parts[i] = active.Render(label)
+		if index == model.active {
+			parts[index] = active.Render(label)
 		} else {
-			parts[i] = inactive.Render(label)
+			parts[index] = inactive.Render(label)
 		}
 	}
 	return parts
@@ -892,55 +894,55 @@ func (m *Model) tabStripParts(compact bool) []string {
 // The full strip is returned when it fits, else the compact strip (all six
 // tabs, no emoji), else a window around the active tab with ellipsis
 // markers so the active tab is never the part clipped off.
-func (m *Model) renderTabBarMax(maxW int) string {
-	parts := m.tabStripParts(false)
+func (model *Model) renderTabBarMax(maxW int) string {
+	parts := model.tabStripParts(false)
 	if stripWidth(parts) <= maxW {
 		return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 	}
-	parts = m.tabStripParts(true)
+	parts = model.tabStripParts(true)
 	if stripWidth(parts) <= maxW {
 		return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 	}
 	widths := make([]int, len(parts))
-	for i := range parts {
-		widths[i] = lipgloss.Width(parts[i])
+	for index := range parts {
+		widths[index] = lipgloss.Width(parts[index])
 	}
 	ellipsisL := unsetStyle.Render("…")
 	ellipsisR := unsetStyle.Render("…")
 	ew := lipgloss.Width(ellipsisL) + lipgloss.Width(ellipsisR)
 	// Expand outward from the active tab while the window fits.
-	s, e := m.active, m.active+1
-	used := widths[m.active]
+	start, end := model.active, model.active+1
+	used := widths[model.active]
 	for {
 		grew := false
-		if s > 0 && used+widths[s-1]+ew <= maxW {
-			s--
-			used += widths[s]
+		if start > 0 && used+widths[start-1]+ew <= maxW {
+			start--
+			used += widths[start]
 			grew = true
 		}
-		if e < len(parts) && used+widths[e]+ew <= maxW {
-			used += widths[e]
-			e++
+		if end < len(parts) && used+widths[end]+ew <= maxW {
+			used += widths[end]
+			end++
 			grew = true
 		}
 		if !grew {
 			break
 		}
 	}
-	out := lipgloss.JoinHorizontal(lipgloss.Top, parts[s:e]...)
-	if s > 0 {
+	out := lipgloss.JoinHorizontal(lipgloss.Top, parts[start:end]...)
+	if start > 0 {
 		out = lipgloss.JoinHorizontal(lipgloss.Top, ellipsisL, out)
 	}
-	if e < len(parts) {
+	if end < len(parts) {
 		out = lipgloss.JoinHorizontal(lipgloss.Top, out, ellipsisR)
 	}
 	// Per-line safety: the strip is multi-row (borders), so a whole-string
 	// cut would slice rows apart. The window above already fits by
 	// construction; this only guards rounding.
 	lines := strings.Split(out, "\n")
-	for i, ln := range lines {
-		if lipgloss.Width(ln) > maxW {
-			lines[i] = truncateToWidth(ln, maxW)
+	for index, line := range lines {
+		if lipgloss.Width(line) > maxW {
+			lines[index] = truncateToWidth(line, maxW)
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -948,51 +950,51 @@ func (m *Model) renderTabBarMax(maxW int) string {
 
 func stripWidth(parts []string) int {
 	total := 0
-	for _, p := range parts {
-		total += lipgloss.Width(p)
+	for _, part := range parts {
+		total += lipgloss.Width(part)
 	}
 	return total
 }
 
 // bodyWidth is the usable width of the main pane (contentWidth, capped);
 // used for rules and value truncation.
-func (m *Model) bodyWidth() int {
-	return maxInt(40, minInt(90, m.contentWidth()))
+func (model *Model) bodyWidth() int {
+	return maxInt(40, minInt(90, model.contentWidth()))
 }
 
 // labelWidth computes the padded label column width for the active tab's
 // visible rows so no label ever gets truncated.
-func (m *Model) labelWidth() int {
-	w := 0
-	for _, idx := range m.visibleRows(m.active) {
-		f := m.tabs[m.active].fields[idx]
-		if f.kind == kSeparator {
+func (model *Model) labelWidth() int {
+	maxLabel := 0
+	for _, idx := range model.visibleRows(model.active) {
+		field := model.tabs[model.active].fields[idx]
+		if field.kind == kSeparator {
 			continue
 		}
-		if lw := lipgloss.Width(f.label); lw > w {
-			w = lw
+		if lw := lipgloss.Width(field.label); lw > maxLabel {
+			maxLabel = lw
 		}
 	}
-	return minInt(maxInt(w, 22)+2, maxInt(24, m.bodyWidth()/2))
+	return minInt(maxInt(maxLabel, 22)+2, maxInt(24, model.bodyWidth()/2))
 }
 
 // mirrorLine renders the mirror reachability indicator as a bordered box
 // shown to the left of the config file path. It shows the mirror host with a
 // red ✗ and short diagnostic when down (the live ISO shows "no network" while
 // DHCP is still coming up), and "..." while a probe is in flight.
-func (m *Model) mirrorLine() string {
-	host := m.mirrorHost
+func (model *Model) mirrorLine() string {
+	host := model.mirrorHost
 	if host == "" {
-		host = mirrorHostName(m.cfg.Gentoo.Mirror)
+		host = mirrorHostName(model.cfg.Gentoo.Mirror)
 	}
 	host = truncateRunes(host, 28)
-	switch m.mirrorState {
+	switch model.mirrorState {
 	case mirrorChecking, mirrorUnknown:
 		return mirrorBoxWarnStyle.Render(host + " ...")
 	case mirrorOK:
 		return mirrorBoxValidStyle.Render(host)
 	default: // mirrorDown
-		note := m.mirrorNote
+		note := model.mirrorNote
 		if note == "" {
 			note = "unreachable"
 		}
@@ -1004,40 +1006,40 @@ func (m *Model) mirrorLine() string {
 // reflects the current state: red on validation errors or an error status
 // message, yellow while the configuration is unsaved, amber with
 // advisories, green otherwise. The saved ✓ only appears briefly after saving.
-func (m *Model) pathLine() string {
+func (model *Model) pathLine() string {
 	mark := ""
 	box := cfgBoxValidStyle
-	errs := m.cfg.Validate()
+	errs := model.cfg.Validate()
 	switch {
-	case m.statusKind == stErr, len(errs) > 0:
+	case model.statusKind == stErr, len(errs) > 0:
 		box = cfgBoxInvalidStyle
 		mark = errorStyle.Render("✗")
-	case m.dirty:
+	case model.dirty:
 		box = cfgBoxWarnStyle
-	case len(m.cfg.Advisories()) > 0:
+	case len(model.cfg.Advisories()) > 0:
 		box = cfgBoxWarnStyle
 		mark = warnStyle.Render("⚠")
-	case m.savedFlash:
+	case model.savedFlash:
 		mark = okStyle.Render("✓")
 	}
-	path := m.cfgPath
-	if m.dirty {
+	path := model.cfgPath
+	if model.dirty {
 		path += " " + dirtyStyle.Render("⚠")
 	}
-	s := path
+	text := path
 	if mark != "" {
-		s += " " + mark
+		text += " " + mark
 	}
-	return box.Render(s)
+	return box.Render(text)
 }
 
-func (m *Model) renderFields() string {
-	rows := m.visibleRows(m.active)
-	cur := m.cursors[m.active]
+func (model *Model) renderFields() string {
+	rows := model.visibleRows(model.active)
+	cur := model.cursors[model.active]
 
 	// Scroll window. Leaves room for masthead, path line and status.
 	const viewportPad = 4
-	maxRows := m.height - 11
+	maxRows := model.height - 11
 	if maxRows < 5 {
 		maxRows = 5
 	}
@@ -1063,22 +1065,22 @@ func (m *Model) renderFields() string {
 		}
 	}
 
-	labelW := m.labelWidth()
-	bodyW := m.bodyWidth()
+	labelW := model.labelWidth()
+	bodyW := model.bodyWidth()
 	trunc := lipgloss.NewStyle().MaxWidth(bodyW)
 
-	var b strings.Builder
+	var body strings.Builder
 	first := true
 	for ri, rowIdx := range rows {
 		if ri < start || ri >= end {
 			continue
 		}
-		f := m.tabs[m.active].fields[rowIdx]
-		if f.kind == kSeparator {
+		field := model.tabs[model.active].fields[rowIdx]
+		if field.kind == kSeparator {
 			if !first {
-				b.WriteString("\n")
+				body.WriteString("\n")
 			}
-			b.WriteString(sectionRule(f.label, bodyW) + "\n")
+			body.WriteString(sectionRule(field.label, bodyW) + "\n")
 			first = false
 			continue
 		}
@@ -1089,35 +1091,35 @@ func (m *Model) renderFields() string {
 			marker = rowCursorStyle.Render("▌ ")
 			style = selectedRowStyle
 		}
-		label := f.label
+		label := field.label
 		if pad := labelW - lipgloss.Width(label); pad > 0 {
 			label += strings.Repeat(" ", pad)
 		} else if pad < 0 {
 			label = truncateRunes(label, -pad-1) + "…"
 		}
-		line := marker + style.Render(label) + " " + summaryOf(f, m.cfg)
-		b.WriteString(trunc.Render(line) + "\n")
+		line := marker + style.Render(label) + " " + summaryOf(field, model.cfg)
+		body.WriteString(trunc.Render(line) + "\n")
 	}
-	return b.String()
+	return body.String()
 }
 
 // sectionRule renders a titled section separator: "── Title ─────".
 func sectionRule(title string, width int) string {
-	t := titleStyle.Render(title)
-	used := lipgloss.Width(t) + 1
+	styledTitle := titleStyle.Render(title)
+	used := lipgloss.Width(styledTitle) + 1
 	rule := ""
-	if n := width - used; n > 2 {
-		rule = treeGlyphStyle.Render(" " + strings.Repeat("─", n))
+	if remaining := width - used; remaining > 2 {
+		rule = treeGlyphStyle.Render(" " + strings.Repeat("─", remaining))
 	}
-	return t + rule
+	return styledTitle + rule
 }
 
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
+func truncateRunes(text string, max int) string {
+	runes := []rune(text)
+	if len(runes) <= max {
+		return text
 	}
-	return string(r[:n])
+	return string(runes[:max])
 }
 
 // logoArt is a Gentoo gull ASCII art.
@@ -1148,8 +1150,8 @@ var logoArt = []string{
 // renderLogo returns the colored logo block shown left of the tab row.
 func renderLogo() string {
 	lines := make([]string, len(logoArt))
-	for i, l := range logoArt {
-		lines[i] = logoStyle.Render(l)
+	for index, line := range logoArt {
+		lines[index] = logoStyle.Render(line)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1157,15 +1159,15 @@ func renderLogo() string {
 // renderHints builds the left-hand vertical hint column in pVPN style:
 // bracketed bold keys with dim action labels and the color-coded status
 // message at the end.
-func (m *Model) renderHints() string {
-	onInstall := m.tabs[m.active].name == "Install"
+func (model *Model) renderHints() string {
+	onInstall := model.tabs[model.active].name == "Install"
 	hints := [][2]string{
 		{"↑/k ↓/j", "move"},
 		{"Enter", "edit"},
 		{"?", "help"},
 		{"s", "save"},
 		{"S", "save as"},
-		{"1-" + fmt.Sprint(len(m.tabs)), "tabs"},
+		{"1-" + fmt.Sprint(len(model.tabs)), "tabs"},
 	}
 	if onInstall {
 		hints = append(hints, [2]string{"i", "install"}, [2]string{"d", "demo"},
@@ -1174,20 +1176,20 @@ func (m *Model) renderHints() string {
 	hints = append(hints, [2]string{"q", "quit"})
 
 	keyW := 0
-	for _, h := range hints {
-		if w := lipgloss.Width("[" + h[0] + "]"); w > keyW {
-			keyW = w
+	for _, hint := range hints {
+		if hintWidth := lipgloss.Width("[" + hint[0] + "]"); hintWidth > keyW {
+			keyW = hintWidth
 		}
 	}
-	var b strings.Builder
-	for i, h := range hints {
-		if i > 0 {
-			b.WriteString("\n")
+	var body strings.Builder
+	for index, hint := range hints {
+		if index > 0 {
+			body.WriteString("\n")
 		}
-		key := helpStyle.Render("[") + hintKeyStyle.Render(h[0]) + helpStyle.Render("]")
-		pad := strings.Repeat(" ", keyW-lipgloss.Width("["+h[0]+"]"))
-		label := h[1]
-		switch h[0] {
+		key := helpStyle.Render("[") + hintKeyStyle.Render(hint[0]) + helpStyle.Render("]")
+		pad := strings.Repeat(" ", keyW-lipgloss.Width("["+hint[0]+"]"))
+		label := hint[1]
+		switch hint[0] {
 		case "install":
 			label = "install 🚀"
 		case "demo":
@@ -1197,20 +1199,20 @@ func (m *Model) renderHints() string {
 		case "save":
 			label = "save " + eSave
 		}
-		b.WriteString(key + pad + " " + helpStyle.Render(label))
+		body.WriteString(key + pad + " " + helpStyle.Render(label))
 	}
-	return b.String()
+	return body.String()
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
+func minInt(left, right int) int {
+	if left < right {
+		return left
 	}
-	return b
+	return right
 }
-func maxInt(a, b int) int {
-	if a > b {
-		return a
+func maxInt(left, right int) int {
+	if left > right {
+		return left
 	}
-	return b
+	return right
 }

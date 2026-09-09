@@ -30,7 +30,7 @@ const (
 
 // Context carries all state through the install phases.
 type Context struct {
-	R *Runner
+	Runner *Runner
 
 	Cfg    *config.Config
 	Layout *disklayout.Layout
@@ -103,7 +103,7 @@ func ConfigInBind() string { return filepath.Join(RepoBind, "config.toml") }
 // StageBind copies the gentooinstall binary and the config file into the bind
 // directory so both are reachable from within the chroot. This replaces
 // the bash repo-dir bind mount.
-func StageBind(c *Context) error {
+func StageBind(ctx *Context) error {
 	if err := os.MkdirAll(RepoBind, 0o755); err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func StageBind(c *Context) error {
 		return err
 	}
 
-	cfgData, err := os.ReadFile(c.SourceConfig)
+	cfgData, err := os.ReadFile(ctx.SourceConfig)
 	if err != nil {
 		return fmt.Errorf("could not read config: %w", err)
 	}
@@ -127,4 +127,4 @@ func StageBind(c *Context) error {
 }
 
 // IsEFI resolves the boot mode from layout roles.
-func (c *Context) IsEFI() bool { return c.Layout.EFIID != "" }
+func (ctx *Context) IsEFI() bool { return ctx.Layout.EFIID != "" }

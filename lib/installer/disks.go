@@ -11,8 +11,8 @@ import (
 )
 
 // resolveID resolves a layout id, returning a canonicalized device path.
-func resolveID(c *Context, id string) (string, error) {
-	dev, err := c.Resolver.ResolveDevice(id)
+func resolveID(ctx *Context, id string) (string, error) {
+	dev, err := ctx.Resolver.ResolveDevice(id)
 	if err != nil {
 		return "", fmt.Errorf("could not resolve device with id=%s: %w", id, err)
 	}
@@ -22,83 +22,83 @@ func resolveID(c *Context, id string) (string, error) {
 // describeDevices renders "dev (id), dev2 (id2)" for log messages.
 func describeDevices(devs []string, ids []string) string {
 	var parts []string
-	for i, d := range devs {
-		if i < len(ids) {
-			parts = append(parts, fmt.Sprintf("%s (%s)", d, ids[i]))
+	for index, dev := range devs {
+		if index < len(ids) {
+			parts = append(parts, fmt.Sprintf("%s (%s)", dev, ids[index]))
 		} else {
-			parts = append(parts, d)
+			parts = append(parts, dev)
 		}
 	}
 	return strings.Join(parts, ", ")
 }
 
-func wipefs(c *Context, devices ...string) error {
+func wipefs(ctx *Context, devices ...string) error {
 	args := append([]string{"wipefs", "--quiet", "--all", "--force"}, devices...)
-	if err := c.R.Try(args[0], args[1:]...); err != nil {
+	if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
 		return fmt.Errorf("could not erase previous file system signatures: %w", err)
 	}
 	return nil
 }
 
-func partprobe(c *Context, device string) {
-	if c.R.HasProgram("partprobe") {
-		_ = c.R.Run("partprobe", device)
+func partprobe(ctx *Context, device string) {
+	if ctx.Runner.HasProgram("partprobe") {
+		_ = ctx.Runner.Run("partprobe", device)
 	}
 }
 
 // waitPartition waits for the newly created partition node to appear.
 // The device is re-resolved on every attempt: partprobe events can lag
 // slightly, and blkid reports "not found yet" (exit status 2) meanwhile.
-func waitPartition(c *Context, newID string) error {
+func waitPartition(ctx *Context, newID string) error {
 	// When a command executor is installed (capture/testing mode) no device
 	// node can exist, so there is nothing to wait for; skip the retry loop
 	// and its sleeps so capture tests are fast and deterministic.
-	if c.R.Exec != nil {
+	if ctx.Runner.Exec != nil {
 		return nil
 	}
-	for i := 1; i <= 10; i++ {
-		dev, err := resolveID(c, newID)
+	for attempt := 1; attempt <= 10; attempt++ {
+		dev, err := resolveID(ctx, newID)
 		if err == nil {
 			if _, statErr := os.Stat(dev); statErr == nil {
-				fmt.Fprintln(c.R.stderr())
+				fmt.Fprintln(ctx.Runner.stderr())
 				return nil
 			}
 		}
-		if i == 1 {
-			fmt.Fprintf(c.R.stderr(), "Waiting for partition (%s) to appear...", newID)
+		if attempt == 1 {
+			fmt.Fprintf(ctx.Runner.stderr(), "Waiting for partition (%s) to appear...", newID)
 		}
-		fmt.Fprintf(c.R.stderr(), " %d", 11-i)
+		fmt.Fprintf(ctx.Runner.stderr(), " %d", 11-attempt)
 		time.Sleep(time.Second)
 	}
-	fmt.Fprintln(c.R.stderr())
+	fmt.Fprintln(ctx.Runner.stderr())
 	return fmt.Errorf("partition (%s) did not appear within 10s "+
 		"(run partprobe and check dmesg for kernel partition events)", newID)
 }
 
 // ApplyDiskActions executes the layout's action list in order
 // (port of apply_disk_actions and all disk_* functions).
-func ApplyDiskActions(c *Context) error {
-	for _, a := range c.Layout.Actions {
+func ApplyDiskActions(ctx *Context) error {
+	for _, action := range ctx.Layout.Actions {
 		var err error
-		switch a.Action {
+		switch action.Action {
 		case disklayout.ActExisting, disklayout.ActCreateDummy:
 			// no-op
 		case disklayout.ActCreateGPT:
-			err = actCreateGPT(c, &a)
+			err = actCreateGPT(ctx, &action)
 		case disklayout.ActCreatePartition:
-			err = actCreatePartition(c, &a)
+			err = actCreatePartition(ctx, &action)
 		case disklayout.ActCreateRaid:
-			err = actCreateRaid(c, &a)
+			err = actCreateRaid(ctx, &action)
 		case disklayout.ActCreateLuks:
-			err = actCreateLuks(c, &a)
+			err = actCreateLuks(ctx, &action)
 		case disklayout.ActFormat:
-			err = actFormat(c, &a)
+			err = actFormat(ctx, &action)
 		case disklayout.ActFormatZFS:
-			err = actFormatZFS(c, &a)
+			err = actFormatZFS(ctx, &action)
 		case disklayout.ActFormatBtrfs:
-			err = actFormatBtrfs(c, &a)
+			err = actFormatBtrfs(ctx, &action)
 		default:
-			c.R.logf("Ignoring invalid action: %s", a.Action)
+			ctx.Runner.logf("Ignoring invalid action: %s", action.Action)
 		}
 		if err != nil {
 			return err
@@ -107,94 +107,94 @@ func ApplyDiskActions(c *Context) error {
 	return nil
 }
 
-func operandDevice(c *Context, a *disklayout.Action) (string, string, error) {
+func operandDevice(ctx *Context, action *disklayout.Action) (string, string, error) {
 	// Returns (device, description, error)
-	if a.ID != "" {
-		dev, err := resolveID(c, a.ID)
+	if action.ID != "" {
+		dev, err := resolveID(ctx, action.ID)
 		if err != nil {
 			return "", "", err
 		}
-		return dev, fmt.Sprintf("%s (%s)", dev, a.ID), nil
+		return dev, fmt.Sprintf("%s (%s)", dev, action.ID), nil
 	}
-	return a.Device, a.Device, nil
+	return action.Device, action.Device, nil
 }
 
-func actCreateGPT(c *Context, a *disklayout.Action) error {
-	device, desc, err := operandDevice(c, a)
+func actCreateGPT(ctx *Context, action *disklayout.Action) error {
+	device, desc, err := operandDevice(ctx, action)
 	if err != nil {
 		return err
 	}
-	ptuuid, _ := c.Layout.UUIDOf(a.NewID)
-	c.R.logf("Creating new gpt partition table (%s) on %s", a.NewID, desc)
-	if err := wipefs(c, device); err != nil {
+	ptuuid, _ := ctx.Layout.UUIDOf(action.NewID)
+	ctx.Runner.logf("Creating new gpt partition table (%s) on %s", action.NewID, desc)
+	if err := wipefs(ctx, device); err != nil {
 		return err
 	}
-	if err := c.R.Try("sgdisk", "-Z", "-U", ptuuid, device); err != nil {
+	if err := ctx.Runner.Try("sgdisk", "-Z", "-U", ptuuid, device); err != nil {
 		return fmt.Errorf("could not create new gpt partition table (%s) on '%s': %w",
-			a.NewID, device, err)
+			action.NewID, device, err)
 	}
-	partprobe(c, device)
+	partprobe(ctx, device)
 	return nil
 }
 
-func actCreatePartition(c *Context, a *disklayout.Action) error {
-	device, err := resolveID(c, a.ID)
+func actCreatePartition(ctx *Context, action *disklayout.Action) error {
+	device, err := resolveID(ctx, action.ID)
 	if err != nil {
 		return err
 	}
-	argSize := "+" + a.Size
-	if a.Size == "remaining" {
+	argSize := "+" + action.Size
+	if action.Size == "remaining" {
 		argSize = "0"
 	}
-	code := disklayout.PartitionTypeCodes[a.Type]
-	partuuid, _ := c.Layout.UUIDOf(a.NewID)
+	code := disklayout.PartitionTypeCodes[action.Type]
+	partuuid, _ := ctx.Layout.UUIDOf(action.NewID)
 
 	args := []string{
 		"-n", "0:0:" + argSize,
 		"-t", "0:" + code,
 		"-u", "0:" + partuuid,
 	}
-	if a.Type == "bios" {
+	if action.Type == "bios" {
 		args = append(args, "--attributes=0:set:2")
 	}
 	args = append(args, device)
 
-	c.R.logf("Creating partition (%s) with type=%s, size=%s on %s",
-		a.NewID, a.Type, a.Size, device)
-	if err := c.R.Try("sgdisk", args...); err != nil {
+	ctx.Runner.logf("Creating partition (%s) with type=%s, size=%s on %s",
+		action.NewID, action.Type, action.Size, device)
+	if err := ctx.Runner.Try("sgdisk", args...); err != nil {
 		return fmt.Errorf("could not create new gpt partition (%s) on '%s' (%s): %w",
-			a.NewID, device, a.ID, err)
+			action.NewID, device, action.ID, err)
 	}
-	partprobe(c, device)
-	return waitPartition(c, a.NewID)
+	partprobe(ctx, device)
+	return waitPartition(ctx, action.NewID)
 }
 
-func actCreateRaid(c *Context, a *disklayout.Action) error {
-	devs := make([]string, 0, len(a.IDs))
-	for _, id := range a.IDs {
-		dev, err := resolveID(c, id)
+func actCreateRaid(ctx *Context, action *disklayout.Action) error {
+	devs := make([]string, 0, len(action.IDs))
+	for _, id := range action.IDs {
+		dev, err := resolveID(ctx, id)
 		if err != nil {
 			return err
 		}
 		devs = append(devs, dev)
 	}
-	desc := describeDevices(devs, a.IDs)
-	mddevice := "/dev/md/" + a.Name
-	uuid, _ := c.Layout.UUIDOf(a.NewID)
+	desc := describeDevices(devs, action.IDs)
+	mddevice := "/dev/md/" + action.Name
+	uuid, _ := ctx.Layout.UUIDOf(action.NewID)
 
 	metadata := "1.2"
-	if a.Level == 1 && a.Name == "efi" {
+	if action.Level == 1 && action.Name == "efi" {
 		metadata = "1.0"
 	}
 
-	c.R.logf("Creating raid%d (%s) on %s", a.Level, a.NewID, desc)
+	ctx.Runner.logf("Creating raid%d (%s) on %s", action.Level, action.NewID, desc)
 	args := []string{
 		"--create", mddevice,
 		"--verbose",
-		fmt.Sprintf("--level=%d", a.Level),
+		fmt.Sprintf("--level=%d", action.Level),
 		fmt.Sprintf("--raid-devices=%d", len(devs)),
 		"--uuid=" + uuid,
-		"--homehost=" + c.Cfg.System.Hostname,
+		"--homehost=" + ctx.Cfg.System.Hostname,
 	}
 	if metadata == "1.0" {
 		args = append(args, "--metadata=1.0")
@@ -202,21 +202,21 @@ func actCreateRaid(c *Context, a *disklayout.Action) error {
 		args = append(args, "--metadata=1.2")
 	}
 	args = append(args, devs...)
-	if err := c.R.Try("mdadm", args...); err != nil {
+	if err := ctx.Runner.Try("mdadm", args...); err != nil {
 		return fmt.Errorf("could not create raid%d array '%s' (%s) on %s: %w",
-			a.Level, mddevice, a.NewID, desc, err)
+			action.Level, mddevice, action.NewID, desc, err)
 	}
 	return nil
 }
 
-func actCreateLuks(c *Context, a *disklayout.Action) error {
-	device, desc, err := operandDevice(c, a)
+func actCreateLuks(ctx *Context, action *disklayout.Action) error {
+	device, desc, err := operandDevice(ctx, action)
 	if err != nil {
 		return err
 	}
-	uuid, _ := c.Layout.UUIDOf(a.NewID)
+	uuid, _ := ctx.Layout.UUIDOf(action.NewID)
 
-	c.R.logf("Creating luks (%s) on %s", a.NewID, desc)
+	ctx.Runner.logf("Creating luks (%s) on %s", action.NewID, desc)
 	formatArgs := []string{
 		"luksFormat",
 		"--type", "luks2",
@@ -230,134 +230,134 @@ func actCreateLuks(c *Context, a *disklayout.Action) error {
 		"--batch-mode",
 		device,
 	}
-	if err := runWithKey(c, formatArgs); err != nil {
+	if err := runWithKey(ctx, formatArgs); err != nil {
 		return fmt.Errorf("could not create luks on %s: %w", desc, err)
 	}
 
-	if err := c.mkdirAll(LuksHeaderBackupDir, 0o755); err != nil {
+	if err := ctx.mkdirAll(LuksHeaderBackupDir, 0o755); err != nil {
 		return fmt.Errorf("could not create luks header backup dir '%s': %w",
 			LuksHeaderBackupDir, err)
 	}
 	headerFile := filepath.Join(LuksHeaderBackupDir,
-		fmt.Sprintf("luks-header-%s-%s.img", a.NewID, strings.ToLower(uuid)))
-	_ = c.removeAll(headerFile)
-	if err := c.R.Try("cryptsetup", "luksHeaderBackup", device,
+		fmt.Sprintf("luks-header-%s-%s.img", action.NewID, strings.ToLower(uuid)))
+	_ = ctx.removeAll(headerFile)
+	if err := ctx.Runner.Try("cryptsetup", "luksHeaderBackup", device,
 		"--header-backup-file", headerFile); err != nil {
 		return fmt.Errorf("could not backup luks header on %s: %w", desc, err)
 	}
 
-	if err := runWithKey(c, []string{"open", "--type", "luks2",
-		"--key-file", "-", device, a.Name}); err != nil {
+	if err := runWithKey(ctx, []string{"open", "--type", "luks2",
+		"--key-file", "-", device, action.Name}); err != nil {
 		return fmt.Errorf("could not open luks encrypted device %s: %w", desc, err)
 	}
 	return nil
 }
 
 // runWithKey runs cryptsetup feeding the encryption key on stdin.
-func runWithKey(c *Context, args []string) error {
-	return c.R.RunWithStdin(c.EncryptionKey, "cryptsetup", args...)
+func runWithKey(ctx *Context, args []string) error {
+	return ctx.Runner.RunWithStdin(ctx.EncryptionKey, "cryptsetup", args...)
 }
 
-func initBtrfs(c *Context, device, desc string) error {
-	if err := c.mkdirAll("/btrfs", 0o755); err != nil {
+func initBtrfs(ctx *Context, device, desc string) error {
+	if err := ctx.mkdirAll("/btrfs", 0o755); err != nil {
 		return fmt.Errorf("could not create /btrfs directory: %w", err)
 	}
-	if err := c.R.Try("mount", device, "/btrfs"); err != nil {
+	if err := ctx.Runner.Try("mount", device, "/btrfs"); err != nil {
 		return fmt.Errorf("could not mount %s to /btrfs: %w", desc, err)
 	}
-	if err := c.R.Try("btrfs", "subvolume", "create", "/btrfs/root"); err != nil {
+	if err := ctx.Runner.Try("btrfs", "subvolume", "create", "/btrfs/root"); err != nil {
 		return fmt.Errorf("could not create btrfs subvolume /root on %s: %w", desc, err)
 	}
-	if err := c.R.Try("btrfs", "subvolume", "set-default", "/btrfs/root"); err != nil {
+	if err := ctx.Runner.Try("btrfs", "subvolume", "set-default", "/btrfs/root"); err != nil {
 		return fmt.Errorf("could not set default btrfs subvolume to /root on %s: %w", desc, err)
 	}
-	if err := c.R.Try("umount", "/btrfs"); err != nil {
+	if err := ctx.Runner.Try("umount", "/btrfs"); err != nil {
 		return fmt.Errorf("could not unmount btrfs on %s: %w", desc, err)
 	}
 	return nil
 }
 
-func actFormat(c *Context, a *disklayout.Action) error {
-	device, err := resolveID(c, a.ID)
+func actFormat(ctx *Context, action *disklayout.Action) error {
+	device, err := resolveID(ctx, action.ID)
 	if err != nil {
 		return err
 	}
-	c.R.logf("Formatting %s (%s) with %s", device, a.ID, a.Type)
-	if err := wipefs(c, device); err != nil {
+	ctx.Runner.logf("Formatting %s (%s) with %s", device, action.ID, action.Type)
+	if err := wipefs(ctx, device); err != nil {
 		return fmt.Errorf("could not erase previous file system signatures from '%s' (%s): %w",
-			device, a.ID, err)
+			device, action.ID, err)
 	}
 
-	switch a.Type {
+	switch action.Type {
 	case "bios", "efi":
 		args := []string{"mkfs.fat", "-F", "32"}
-		if a.Label != "" {
-			args = append(args, "-n", a.Label)
+		if action.Label != "" {
+			args = append(args, "-n", action.Label)
 		}
 		args = append(args, device)
-		if err := c.R.Try(args[0], args[1:]...); err != nil {
-			return fmt.Errorf("could not format device '%s' (%s): %w", device, a.ID, err)
+		if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
+			return fmt.Errorf("could not format device '%s' (%s): %w", device, action.ID, err)
 		}
 	case "swap":
 		args := []string{"mkswap"}
-		if a.Label != "" {
-			args = append(args, "-L", a.Label)
+		if action.Label != "" {
+			args = append(args, "-L", action.Label)
 		}
 		args = append(args, device)
-		if err := c.R.Try(args[0], args[1:]...); err != nil {
-			return fmt.Errorf("could not format device '%s' (%s): %w", device, a.ID, err)
+		if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
+			return fmt.Errorf("could not format device '%s' (%s): %w", device, action.ID, err)
 		}
 		// Try to disable an automatically enabled swap.
-		_ = c.R.Run("swapoff", device)
+		_ = ctx.Runner.Run("swapoff", device)
 	case "ext4":
 		args := []string{"mkfs.ext4", "-q"}
-		if a.Label != "" {
-			args = append(args, "-L", a.Label)
+		if action.Label != "" {
+			args = append(args, "-L", action.Label)
 		}
 		args = append(args, device)
-		if err := c.R.Try(args[0], args[1:]...); err != nil {
-			return fmt.Errorf("could not format device '%s' (%s): %w", device, a.ID, err)
+		if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
+			return fmt.Errorf("could not format device '%s' (%s): %w", device, action.ID, err)
 		}
 	case "btrfs":
 		args := []string{"mkfs.btrfs", "-q"}
-		if a.Label != "" {
-			args = append(args, "-L", a.Label)
+		if action.Label != "" {
+			args = append(args, "-L", action.Label)
 		}
 		args = append(args, device)
-		if err := c.R.Try(args[0], args[1:]...); err != nil {
-			return fmt.Errorf("could not format device '%s' (%s): %w", device, a.ID, err)
+		if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
+			return fmt.Errorf("could not format device '%s' (%s): %w", device, action.ID, err)
 		}
-		if err := initBtrfs(c, device, fmt.Sprintf("'%s' (%s)", device, a.ID)); err != nil {
+		if err := initBtrfs(ctx, device, fmt.Sprintf("'%s' (%s)", device, action.ID)); err != nil {
 			return err
 		}
 	default:
-		return fmt.Errorf("unknown filesystem type %q", a.Type)
+		return fmt.Errorf("unknown filesystem type %q", action.Type)
 	}
 	return nil
 }
 
-func actFormatZFS(c *Context, a *disklayout.Action) error {
-	devs := make([]string, 0, len(a.IDs))
-	for _, id := range a.IDs {
-		dev, err := resolveID(c, id)
+func actFormatZFS(ctx *Context, action *disklayout.Action) error {
+	devs := make([]string, 0, len(action.IDs))
+	for _, id := range action.IDs {
+		dev, err := resolveID(ctx, id)
 		if err != nil {
 			return err
 		}
 		devs = append(devs, dev)
 	}
-	desc := describeDevices(devs, a.IDs)
+	desc := describeDevices(devs, action.IDs)
 
-	if err := wipefs(c, devs...); err != nil {
+	if err := wipefs(ctx, devs...); err != nil {
 		return fmt.Errorf("could not erase previous file system signatures from %s: %w", desc, err)
 	}
 
-	if a.PoolType == "custom" {
+	if action.PoolType == "custom" {
 		return fmt.Errorf(
 			"custom zfs pool type requires manual pool creation; " +
 				"use pool_type=\"standard\" or partition via [disk.custom]")
 	}
 
-	c.R.logf("Creating zfs pool on %s", desc)
+	ctx.Runner.logf("Creating zfs pool on %s", desc)
 	args := []string{
 		"create",
 		"-R", RootMountpoint,
@@ -371,64 +371,64 @@ func actFormatZFS(c *Context, a *disklayout.Action) error {
 		"-O", "devices=off",
 	}
 	stdin := ""
-	if a.Encrypt {
+	if action.Encrypt {
 		args = append(args,
 			"-O", "encryption=aes-256-gcm",
 			"-O", "keyformat=passphrase",
 			"-O", "keylocation=prompt")
-		stdin = c.EncryptionKey + "\n"
+		stdin = ctx.EncryptionKey + "\n"
 	}
 	args = append(args, "rpool")
 	args = append(args, devs...)
 
-	if err := c.R.RunWithStdin(stdin, "zpool", args...); err != nil {
+	if err := ctx.Runner.RunWithStdin(stdin, "zpool", args...); err != nil {
 		return fmt.Errorf("could not create zfs pool on %s: %w", desc, err)
 	}
 
-	if a.Compress != "" {
-		if err := c.R.Try("zfs", "set", "compression="+a.Compress, "rpool"); err != nil {
+	if action.Compress != "" {
+		if err := ctx.Runner.Try("zfs", "set", "compression="+action.Compress, "rpool"); err != nil {
 			return fmt.Errorf("could not enable compression on dataset 'rpool': %w", err)
 		}
 	}
-	if err := c.R.Try("zfs", "create", "rpool/ROOT"); err != nil {
+	if err := ctx.Runner.Try("zfs", "create", "rpool/ROOT"); err != nil {
 		return fmt.Errorf("could not create zfs dataset 'rpool/ROOT': %w", err)
 	}
-	if err := c.R.Try("zfs", "create", "-o", "mountpoint=/", "rpool/ROOT/default"); err != nil {
+	if err := ctx.Runner.Try("zfs", "create", "-o", "mountpoint=/", "rpool/ROOT/default"); err != nil {
 		return fmt.Errorf("could not create zfs dataset 'rpool/ROOT/default': %w", err)
 	}
-	if err := c.R.Try("zpool", "set", "bootfs=rpool/ROOT/default", "rpool"); err != nil {
+	if err := ctx.Runner.Try("zpool", "set", "bootfs=rpool/ROOT/default", "rpool"); err != nil {
 		return fmt.Errorf("could not set zfs property bootfs on rpool: %w", err)
 	}
 	return nil
 }
 
-func actFormatBtrfs(c *Context, a *disklayout.Action) error {
-	devs := make([]string, 0, len(a.IDs))
-	for _, id := range a.IDs {
-		dev, err := resolveID(c, id)
+func actFormatBtrfs(ctx *Context, action *disklayout.Action) error {
+	devs := make([]string, 0, len(action.IDs))
+	for _, id := range action.IDs {
+		dev, err := resolveID(ctx, id)
 		if err != nil {
 			return err
 		}
 		devs = append(devs, dev)
 	}
-	desc := describeDevices(devs, a.IDs)
+	desc := describeDevices(devs, action.IDs)
 
-	if err := wipefs(c, devs...); err != nil {
+	if err := wipefs(ctx, devs...); err != nil {
 		return fmt.Errorf("could not erase previous file system signatures from %s: %w", desc, err)
 	}
 
 	args := []string{"mkfs.btrfs", "-q"}
-	if len(devs) > 1 && a.RaidType != "" {
-		args = append(args, "-d", a.RaidType)
+	if len(devs) > 1 && action.RaidType != "" {
+		args = append(args, "-d", action.RaidType)
 	}
-	if a.Label != "" {
-		args = append(args, "-L", a.Label)
+	if action.Label != "" {
+		args = append(args, "-L", action.Label)
 	}
 	args = append(args, devs...)
 
-	c.R.logf("Creating btrfs on %s", desc)
-	if err := c.R.Try(args[0], args[1:]...); err != nil {
+	ctx.Runner.logf("Creating btrfs on %s", desc)
+	if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
 		return fmt.Errorf("could not create btrfs on %s: %w", desc, err)
 	}
-	return initBtrfs(c, devs[0], fmt.Sprintf("btrfs array (%s)", desc))
+	return initBtrfs(ctx, devs[0], fmt.Sprintf("btrfs array (%s)", desc))
 }

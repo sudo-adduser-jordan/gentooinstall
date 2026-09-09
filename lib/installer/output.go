@@ -32,32 +32,32 @@ func NewLineTee(sink io.Writer, fn func(line string)) io.Writer {
 	return &lineTee{sink: sink, fn: fn}
 }
 
-func (t *lineTee) Write(p []byte) (int, error) {
-	n := len(p)
-	if t.sink != nil {
-		_, _ = t.sink.Write(p)
+func (tee *lineTee) Write(data []byte) (int, error) {
+	count := len(data)
+	if tee.sink != nil {
+		_, _ = tee.sink.Write(data)
 	}
-	t.buf.Write(p)
+	tee.buf.Write(data)
 	for {
-		line, err := t.buf.ReadString('\n')
+		line, err := tee.buf.ReadString('\n')
 		if err != nil || line == "" {
 			if line != "" {
-				t.buf.Reset()
-				t.buf.WriteString(line)
+				tee.buf.Reset()
+				tee.buf.WriteString(line)
 			}
 			break
 		}
-		t.emit(line)
+		tee.emit(line)
 	}
-	return n, nil
+	return count, nil
 }
 
-func (t *lineTee) emit(line string) {
+func (tee *lineTee) emit(line string) {
 	line = strings.TrimRight(line, "\n")
 	// Keep only the portion after the last carriage return so progress
 	// bars do not accumulate into one giant line.
-	if i := strings.LastIndexByte(line, '\r'); i >= 0 {
-		line = line[i+1:]
+	if index := strings.LastIndexByte(line, '\r'); index >= 0 {
+		line = line[index+1:]
 	}
 	if strings.TrimSpace(line) == "" {
 		return
@@ -65,19 +65,19 @@ func (t *lineTee) emit(line string) {
 	if len(line) > maxLineTeeLine {
 		line = line[:maxLineTeeLine]
 	}
-	if t.fn != nil {
-		t.fn(line)
+	if tee.fn != nil {
+		tee.fn(line)
 	}
 }
 
 // Flush emits a trailing partial line if one is buffered.
-func (t *lineTee) Flush() {
-	if t.buf.Len() == 0 {
+func (tee *lineTee) Flush() {
+	if tee.buf.Len() == 0 {
 		return
 	}
-	line := t.buf.String()
-	t.buf.Reset()
-	t.emit(line + "\n")
+	line := tee.buf.String()
+	tee.buf.Reset()
+	tee.emit(line + "\n")
 }
 
 // TailWriter mirrors every write to sink while retaining the last maxLines
@@ -99,25 +99,25 @@ func NewTailWriter(sink io.Writer, maxLines int) *TailWriter {
 	return &TailWriter{sink: sink, max: maxLines}
 }
 
-// Write mirrors p to the sink and retains complete lines for Tail.
-func (tw *TailWriter) Write(p []byte) (int, error) {
-	n := len(p)
+// Write mirrors data to the sink and retains complete lines for Tail.
+func (tw *TailWriter) Write(data []byte) (int, error) {
+	count := len(data)
 	if tw.sink != nil {
-		_, _ = tw.sink.Write(p)
+		_, _ = tw.sink.Write(data)
 	}
-	tw.buf += string(p)
+	tw.buf += string(data)
 	for {
-		i := strings.IndexByte(tw.buf, '\n')
-		if i < 0 {
+		index := strings.IndexByte(tw.buf, '\n')
+		if index < 0 {
 			break
 		}
-		line := strings.TrimRight(tw.buf[:i], "\r")
-		tw.buf = tw.buf[i+1:]
+		line := strings.TrimRight(tw.buf[:index], "\r")
+		tw.buf = tw.buf[index+1:]
 		if line != "" {
 			tw.push(line)
 		}
 	}
-	return n, nil
+	return count, nil
 }
 
 func (tw *TailWriter) push(line string) {

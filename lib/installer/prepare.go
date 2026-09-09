@@ -16,20 +16,20 @@ import (
 // the Go engine actually shells out to are listed: downloads (http), sha512
 // digests and guid generation are implemented in Go, so wget/sha512sum/
 // uuidgen/python3 from the bash port are deliberately absent.
-func WantedPrograms(c *Context) (required, wanted []string) {
+func WantedPrograms(ctx *Context) (required, wanted []string) {
 	required = []string{"gpg", "hwclock", "lsblk", "ntpd", "partprobe",
 		"sgdisk"}
 	wanted = []string{}
-	if c.Layout.Flags.UsedBtrfs {
+	if ctx.Layout.Flags.UsedBtrfs {
 		required = append(required, "btrfs")
 	}
-	if c.Layout.Flags.UsedZFS {
+	if ctx.Layout.Flags.UsedZFS {
 		required = append(required, "zfs")
 	}
-	if c.Layout.Flags.UsedRaid {
+	if ctx.Layout.Flags.UsedRaid {
 		required = append(required, "mdadm")
 	}
-	if c.Layout.Flags.UsedLuks {
+	if ctx.Layout.Flags.UsedLuks {
 		required = append(required, "cryptsetup")
 	}
 	if !HasProgram("rhash") {
@@ -39,12 +39,12 @@ func WantedPrograms(c *Context) (required, wanted []string) {
 }
 
 // CheckPrograms verifies all required programs are present.
-func CheckPrograms(c *Context) error {
-	req, want := WantedPrograms(c)
+func CheckPrograms(ctx *Context) error {
+	req, want := WantedPrograms(ctx)
 	var missing []string
-	for _, p := range req {
-		if !HasProgram(p) {
-			missing = append(missing, p)
+	for _, program := range req {
+		if !HasProgram(program) {
+			missing = append(missing, program)
 		}
 	}
 	if len(missing) > 0 {
@@ -52,28 +52,28 @@ func CheckPrograms(c *Context) error {
 	}
 	if len(want) > 0 {
 		var mw []string
-		for _, p := range want {
-			if !HasProgram(p) {
-				mw = append(mw, p)
+		for _, program := range want {
+			if !HasProgram(program) {
+				mw = append(mw, program)
 			}
 		}
 		if len(mw) > 0 {
-			c.R.logf("Missing optional programs: %s", strings.Join(mw, " "))
+			ctx.Runner.logf("Missing optional programs: %s", strings.Join(mw, " "))
 		}
 	}
 	return nil
 }
 
 // SyncTime synchronizes the system clock (port of sync_time).
-func SyncTime(c *Context) error {
-	c.R.log("Syncing time")
+func SyncTime(ctx *Context) error {
+	ctx.Runner.log("Syncing time")
 	switch {
 	case HasProgram("ntpd"):
-		if err := c.R.Try("ntpd", "-g", "-q"); err != nil {
+		if err := ctx.Runner.Try("ntpd", "-g", "-q"); err != nil {
 			return err
 		}
 	case HasProgram("chronyd"):
-		if err := c.R.Try("chronyd", "-q"); err != nil {
+		if err := ctx.Runner.Try("chronyd", "-q"); err != nil {
 			return err
 		}
 	default:
@@ -89,24 +89,24 @@ func SyncTime(c *Context) error {
 		if date == "" {
 			return fmt.Errorf("no Date header received")
 		}
-		if err := c.R.Try("date", "-s", date); err != nil {
+		if err := ctx.Runner.Try("date", "-s", date); err != nil {
 			return err
 		}
 	}
-	out, _ := c.R.QuietRun("date")
-	c.R.logf("Current date: %s", out)
-	c.R.log("Writing time to hardware clock")
-	return c.R.Try("hwclock", "--systohc", "--utc")
+	out, _ := ctx.Runner.QuietRun("date")
+	ctx.Runner.logf("Current date: %s", out)
+	ctx.Runner.log("Writing time to hardware clock")
+	return ctx.Runner.Try("hwclock", "--systohc", "--utc")
 }
 
 // PrepareEnvironment checks programs and syncs the clock
 // (port of prepare_installation_environment).
-func PrepareEnvironment(c *Context) error {
-	c.R.log("Preparing installation environment")
-	if err := CheckPrograms(c); err != nil {
+func PrepareEnvironment(ctx *Context) error {
+	ctx.Runner.log("Preparing installation environment")
+	if err := CheckPrograms(ctx); err != nil {
 		return err
 	}
-	return SyncTime(c)
+	return SyncTime(ctx)
 }
 
 // EncryptionKeyEnv is read before prompting.
@@ -114,15 +114,15 @@ const EncryptionKeyEnv = "GENTOO_INSTALL_ENCRYPTION_KEY"
 
 // EnsureEncryptionKey resolves the luks/zfs key from env or interactive
 // prompt (port of check_encryption_key).
-func EnsureEncryptionKey(c *Context, stdin io.Reader) error {
-	if !c.Layout.Flags.UsedEncryption {
+func EnsureEncryptionKey(ctx *Context, stdin io.Reader) error {
+	if !ctx.Layout.Flags.UsedEncryption {
 		return nil
 	}
 	key := os.Getenv(EncryptionKeyEnv)
 	if key == "" {
-		fmt.Fprintln(c.R.stderr(),
+		fmt.Fprintln(ctx.Runner.stderr(),
 			"[+] You have enabled encryption, but haven't specified a key in the environment variable "+EncryptionKeyEnv+".")
-		ok, err := AskYesNo(c.R, "Do you want to enter an encryption key now?", true)
+		ok, err := AskYesNo(ctx.Runner, "Do you want to enter an encryption key now?", true)
 		if err != nil {
 			return err
 		}
@@ -137,7 +137,7 @@ func EnsureEncryptionKey(c *Context, stdin io.Reader) error {
 				return err
 			}
 			if len(key) < 8 {
-				fmt.Fprintln(c.R.stderr(), "[!] Your encryption key must be at least 8 characters long.")
+				fmt.Fprintln(ctx.Runner.stderr(), "[!] Your encryption key must be at least 8 characters long.")
 				continue
 			}
 			again, err := readSecret(rd, "Repeat encryption key: ")
@@ -145,7 +145,7 @@ func EnsureEncryptionKey(c *Context, stdin io.Reader) error {
 				return err
 			}
 			if again != key {
-				fmt.Fprintln(c.R.stderr(), "[!] Encryption keys mismatch.")
+				fmt.Fprintln(ctx.Runner.stderr(), "[!] Encryption keys mismatch.")
 				continue
 			}
 			break
@@ -155,13 +155,13 @@ func EnsureEncryptionKey(c *Context, stdin io.Reader) error {
 	if len(key) < 8 {
 		return fmt.Errorf("your encryption key must be at least 8 characters long")
 	}
-	c.EncryptionKey = key
+	ctx.EncryptionKey = key
 	return nil
 }
 
-func stdinOrReader(r io.Reader) io.Reader {
-	if r != nil {
-		return r
+func stdinOrReader(reader io.Reader) io.Reader {
+	if reader != nil {
+		return reader
 	}
 	return os.Stdin
 }
@@ -179,14 +179,14 @@ func readSecret(rd *bufio.Reader, prompt string) (string, error) {
 
 // SHA512File hex-digests a file without loading it into memory.
 func SHA512File(path string) (string, error) {
-	f, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	h := sha512.New()
-	if _, err := io.Copy(h, f); err != nil {
+	defer file.Close()
+	hash := sha512.New()
+	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }

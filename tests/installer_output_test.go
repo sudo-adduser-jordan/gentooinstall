@@ -11,130 +11,130 @@ import (
 	"gentooinstall/lib/installer"
 )
 
-func TestLineTeeSplitsLines(t *testing.T) {
+func TestLineTeeSplitsLines(testingT *testing.T) {
 	var sink bytes.Buffer
 	var lines []string
-	w := installer.NewLineTee(&sink, func(line string) { lines = append(lines, line) })
+	tee := installer.NewLineTee(&sink, func(line string) { lines = append(lines, line) })
 
-	w.Write([]byte("first\nseco"))
-	w.Write([]byte("nd\npartial"))
-	if fl, ok := w.(interface{ Flush() }); ok {
+	tee.Write([]byte("first\nseco"))
+	tee.Write([]byte("nd\npartial"))
+	if fl, ok := tee.(interface{ Flush() }); ok {
 		fl.Flush()
 	}
 
 	if got := sink.String(); got != "first\nsecond\npartial" {
-		t.Fatalf("sink = %q", got)
+		testingT.Fatalf("sink = %q", got)
 	}
 	if len(lines) != 3 || lines[0] != "first" || lines[1] != "second" || lines[2] != "partial" {
-		t.Fatalf("lines = %q", lines)
+		testingT.Fatalf("lines = %q", lines)
 	}
 }
 
-func TestLineTeeCarriageReturnProgress(t *testing.T) {
+func TestLineTeeCarriageReturnProgress(testingT *testing.T) {
 	var lines []string
-	w := installer.NewLineTee(nil, func(line string) { lines = append(lines, line) })
-	w.Write([]byte("progress 10%\rprogress 50%\rprogress 100%\n"))
+	tee := installer.NewLineTee(nil, func(line string) { lines = append(lines, line) })
+	tee.Write([]byte("progress 10%\rprogress 50%\rprogress 100%\n"))
 	if len(lines) != 1 || lines[0] != "progress 100%" {
-		t.Fatalf("lines = %q, want only the final progress frame", lines)
+		testingT.Fatalf("lines = %q, want only the final progress frame", lines)
 	}
 }
 
-func TestLineTeeCarriageReturnMirrorsSink(t *testing.T) {
+func TestLineTeeCarriageReturnMirrorsSink(testingT *testing.T) {
 	var sink bytes.Buffer
 	var lines []string
-	w := installer.NewLineTee(&sink, func(line string) { lines = append(lines, line) })
-	w.Write([]byte("a\rb\n"))
+	tee := installer.NewLineTee(&sink, func(line string) { lines = append(lines, line) })
+	tee.Write([]byte("a\rb\n"))
 	// The sink receives every byte unchanged, including the progress frames.
 	if got := sink.String(); got != "a\rb\n" {
-		t.Fatalf("sink = %q", got)
+		testingT.Fatalf("sink = %q", got)
 	}
 	if len(lines) != 1 || lines[0] != "b" {
-		t.Fatalf("lines = %q, want only the final progress frame", lines)
+		testingT.Fatalf("lines = %q, want only the final progress frame", lines)
 	}
 }
 
-func TestLineTeeSkipsBlankLines(t *testing.T) {
+func TestLineTeeSkipsBlankLines(testingT *testing.T) {
 	var lines []string
-	w := installer.NewLineTee(nil, func(line string) { lines = append(lines, line) })
-	w.Write([]byte("one\n\n   \r\n\t\ntwo\n"))
+	tee := installer.NewLineTee(nil, func(line string) { lines = append(lines, line) })
+	tee.Write([]byte("one\n\n   \r\n\t\ntwo\n"))
 	if len(lines) != 2 || lines[0] != "one" || lines[1] != "two" {
-		t.Fatalf("lines = %q, want only non-blank lines", lines)
+		testingT.Fatalf("lines = %q, want only non-blank lines", lines)
 	}
 }
 
-func TestLineTeeTruncatesLongLines(t *testing.T) {
+func TestLineTeeTruncatesLongLines(testingT *testing.T) {
 	var lines []string
-	w := installer.NewLineTee(nil, func(line string) { lines = append(lines, line) })
+	tee := installer.NewLineTee(nil, func(line string) { lines = append(lines, line) })
 	long := strings.Repeat("x", 5000)
-	w.Write([]byte(long + "\n"))
+	tee.Write([]byte(long + "\n"))
 	if len(lines) != 1 || len(lines[0]) != 4096 {
-		t.Fatalf("line length = %d, want 4096", len(lines[0]))
+		testingT.Fatalf("line length = %d, want 4096", len(lines[0]))
 	}
 }
 
-func TestTailWriterKeepsLastLines(t *testing.T) {
+func TestTailWriterKeepsLastLines(testingT *testing.T) {
 	var sink bytes.Buffer
 	tw := installer.NewTailWriter(&sink, 3)
 	tw.Write([]byte("one\ntwo\nthree\n"))
 	tw.Write([]byte("four\n"))
 	if got := tw.Tail(); len(got) != 3 || got[0] != "two" || got[2] != "four" {
-		t.Fatalf("tail = %q, want the last 3 lines", got)
+		testingT.Fatalf("tail = %q, want the last 3 lines", got)
 	}
 	if got := sink.String(); got != "one\ntwo\nthree\nfour\n" {
-		t.Fatalf("sink = %q", got)
+		testingT.Fatalf("sink = %q", got)
 	}
 }
 
-func TestTailWriterFlushCapturesTrailingPartial(t *testing.T) {
+func TestTailWriterFlushCapturesTrailingPartial(testingT *testing.T) {
 	tw := installer.NewTailWriter(nil, 5)
 	tw.Write([]byte("error: something bad"))
 	tw.Flush()
 	if got := tw.Tail(); len(got) != 1 || got[0] != "error: something bad" {
-		t.Fatalf("tail = %q", got)
+		testingT.Fatalf("tail = %q", got)
 	}
 }
 
-func TestInstallLogRoundTrip(t *testing.T) {
+func TestInstallLogRoundTrip(testingT *testing.T) {
 	path := installer.InstallLogPath()
 	defer os.Remove(path)
-	f, err := installer.OpenInstallLog()
+	file, err := installer.OpenInstallLog()
 	if err != nil {
-		t.Fatal(err)
+		testingT.Fatal(err)
 	}
-	if _, err := f.Write([]byte("hello install log\n")); err != nil {
-		t.Fatal(err)
+	if _, err := file.Write([]byte("hello install log\n")); err != nil {
+		testingT.Fatal(err)
 	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
+	if err := file.Close(); err != nil {
+		testingT.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read install log: %v", err)
+		testingT.Fatalf("read install log: %v", err)
 	}
 	if !strings.Contains(string(data), "hello install log") {
-		t.Fatalf("install log missing expected content: %q", data)
+		testingT.Fatalf("install log missing expected content: %q", data)
 	}
 }
 
-func TestAskYesNoNonInteractiveDefaults(t *testing.T) {
-	r := &installer.Runner{Stderr: io.Discard, NonInteractive: true}
-	ok, err := installer.AskYesNo(r, "Proceed?", true)
+func TestAskYesNoNonInteractiveDefaults(testingT *testing.T) {
+	runner := &installer.Runner{Stderr: io.Discard, NonInteractive: true}
+	ok, err := installer.AskYesNo(runner, "Proceed?", true)
 	if err != nil || !ok {
-		t.Fatalf("default-true prompt returned %v/%v", ok, err)
+		testingT.Fatalf("default-true prompt returned %v/%v", ok, err)
 	}
-	ok, err = installer.AskYesNo(r, "Proceed?", false)
+	ok, err = installer.AskYesNo(runner, "Proceed?", false)
 	if err != nil || ok {
-		t.Fatalf("default-false prompt returned %v/%v", ok, err)
+		testingT.Fatalf("default-false prompt returned %v/%v", ok, err)
 	}
 }
 
-func TestCommandLineRendering(t *testing.T) {
+func TestCommandLineRendering(testingT *testing.T) {
 	if got := installer.CommandLine("emerge", "--verbose", "git"); got != "emerge --verbose git" {
-		t.Fatalf("CommandLine = %q", got)
+		testingT.Fatalf("CommandLine = %q", got)
 	}
 }
 
-func TestAskYesNoInteractive(t *testing.T) {
+func TestAskYesNoInteractive(testingT *testing.T) {
 	cases := []struct {
 		name    string
 		input   string
@@ -153,36 +153,36 @@ func TestAskYesNoInteractive(t *testing.T) {
 		{"eof with no input", "", false, false, true},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			r := &installer.Runner{Stderr: io.Discard, Stdin: strings.NewReader(tc.input)}
-			ok, err := installer.AskYesNo(r, "Proceed?", tc.def)
+		testingT.Run(tc.name, func(testingT *testing.T) {
+			runner := &installer.Runner{Stderr: io.Discard, Stdin: strings.NewReader(tc.input)}
+			ok, err := installer.AskYesNo(runner, "Proceed?", tc.def)
 			if tc.wantErr && err == nil {
-				t.Fatalf("expected error, got %v/%v", ok, err)
+				testingT.Fatalf("expected error, got %v/%v", ok, err)
 			}
 			if !tc.wantErr {
 				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
+					testingT.Fatalf("unexpected error: %v", err)
 				}
 				if ok != tc.want {
-					t.Fatalf("got %v, want %v", ok, tc.want)
+					testingT.Fatalf("got %v, want %v", ok, tc.want)
 				}
 			}
 		})
 	}
 }
 
-func TestPromptLine(t *testing.T) {
-	r := &installer.Runner{Stderr: io.Discard, Stdin: strings.NewReader("hello world\n")}
-	got, err := installer.PromptLine(r, "Name? ")
+func TestPromptLine(testingT *testing.T) {
+	runner := &installer.Runner{Stderr: io.Discard, Stdin: strings.NewReader("hello world\n")}
+	got, err := installer.PromptLine(runner, "Name? ")
 	if err != nil {
-		t.Fatal(err)
+		testingT.Fatal(err)
 	}
 	if got != "hello world" {
-		t.Fatalf("got %q, want %q", got, "hello world")
+		testingT.Fatalf("got %q, want %q", got, "hello world")
 	}
 }
 
-func TestInteractiveOnFailureMapping(t *testing.T) {
+func TestInteractiveOnFailureMapping(testingT *testing.T) {
 	cases := []struct {
 		input string
 		want  installer.FailAction
@@ -198,24 +198,24 @@ func TestInteractiveOnFailureMapping(t *testing.T) {
 		{"print\n", installer.FailPrint},
 	}
 	for _, tc := range cases {
-		t.Run(tc.input, func(t *testing.T) {
+		testingT.Run(tc.input, func(testingT *testing.T) {
 			onFail := installer.InteractiveOnFailure(&installer.Runner{
 				Stderr: io.Discard,
 				Stdin:  strings.NewReader(tc.input),
 			})
 			if got := onFail("some cmd", nil); got != tc.want {
-				t.Fatalf("got %v, want %v", got, tc.want)
+				testingT.Fatalf("got %v, want %v", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestInteractiveOnFailureEofAborts(t *testing.T) {
+func TestInteractiveOnFailureEofAborts(testingT *testing.T) {
 	onFail := installer.InteractiveOnFailure(&installer.Runner{
 		Stderr: io.Discard,
 		Stdin:  strings.NewReader(""),
 	})
 	if got := onFail("some cmd", nil); got != installer.FailAbort {
-		t.Fatalf("got %v, want FailAbort", got)
+		testingT.Fatalf("got %v, want FailAbort", got)
 	}
 }

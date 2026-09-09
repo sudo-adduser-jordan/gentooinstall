@@ -25,21 +25,21 @@ func SupportedLocales() []string {
 	return splitLines(I18NSupported)
 }
 
-func splitLines(s string) []string {
+func splitLines(str string) []string {
 	var out []string
 	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			line := s[start:i]
-			if n := len(line); n > 0 && line[n-1] == '\r' {
-				line = line[:n-1]
+	for index := 0; index < len(str); index++ {
+		if str[index] == '\n' {
+			line := str[start:index]
+			if length := len(line); length > 0 && line[length-1] == '\r' {
+				line = line[:length-1]
 			}
 			out = append(out, line)
-			start = i + 1
+			start = index + 1
 		}
 	}
-	if start < len(s) {
-		out = append(out, s[start:])
+	if start < len(str) {
+		out = append(out, str[start:])
 	}
 	// Trim trailing empty lines.
 	for len(out) > 0 && out[len(out)-1] == "" {

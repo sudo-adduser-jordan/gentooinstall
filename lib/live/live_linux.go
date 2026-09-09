@@ -18,29 +18,35 @@ import (
 	"gentooinstall/lib/sysinfo"
 )
 
-// DefaultPath is the PATH exported by the live init before any command runs.
-const DefaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+// DEFAULTPATH is the PATH exported by the live init before any command runs.
+const DEFAULTPATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 // Init bootstraps the live environment. It runs exactly once, when the binary
 // is PID 1. It never aborts the boot: problems are reported on the console and
 // the TUI still starts.
 func Init() error {
-	setDefaultEnv("PATH", DefaultPath)
+	setDefaultEnv("PATH", DEFAULTPATH)
 	setDefaultEnv("SHELL", "/bin/sh")
 	setDefaultEnv("TERM", "linux")
 
 	var errs []string
-	for _, m := range MountTable() {
-		if isMounted(m.Target) {
+	for _, mount := range MountTable() {
+		if isMounted(mount.Target) {
 			continue
 		}
-		if err := syscall.Mount(m.Device, m.Target, m.FSType, m.Flags, m.Data); err != nil {
-			errs = append(errs, fmt.Sprintf("mount %s: %v", m.Target, err))
+		if err := syscall.Mount(mount.Device, mount.Target, mount.FSType, mount.Flags, mount.Data); err != nil {
+			errs = append(errs, fmt.Sprintf("mount %s: %v", mount.Target, err))
 		}
 	}
 
 	// Runtime directories a few tools expect; idempotent on the initramfs.
-	for _, dir := range []string{"/run", "/tmp", "/var/tmp", "/dev/pts", "/dev/shm"} {
+	for _, dir := range []string{
+		"/run",
+		"/tmp",
+		"/var/tmp",
+		"/dev/pts",
+		"/dev/shm",
+	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			errs = append(errs, fmt.Sprintf("mkdir %s: %v", dir, err))
 		}
@@ -115,11 +121,11 @@ func serialConsoleOnly() bool {
 	}
 	fields := strings.Fields(string(data))
 	hasS0, hasTty0 := false, false
-	for _, f := range fields {
-		if f == "console=ttyS0" || strings.HasPrefix(f, "console=ttyS0,") {
+	for _, field := range fields {
+		if field == "console=ttyS0" || strings.HasPrefix(field, "console=ttyS0,") {
 			hasS0 = true
 		}
-		if f == "console=tty0" || strings.HasPrefix(f, "console=tty0") {
+		if field == "console=tty0" || strings.HasPrefix(field, "console=tty0") {
 			hasTty0 = true
 		}
 	}
@@ -130,9 +136,9 @@ func serialConsoleOnly() bool {
 // debuggable after serial is muted (serial TUI owns the port).
 func appendFileLog(msg string) {
 	for _, path := range []string{"/run/live-net.log", "/tmp/live-net.log"} {
-		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-			_, _ = f.WriteString(msg + "\n")
-			_ = f.Close()
+		if file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+			_, _ = file.WriteString(msg + "\n")
+			_ = file.Close()
 			return
 		}
 	}
@@ -157,9 +163,9 @@ func writeSerial(msg string) {
 	if tuiOwnsSerial && serialConsoleOnly() {
 		return
 	}
-	if f, err := os.OpenFile("/dev/ttyS0", os.O_WRONLY, 0); err == nil {
-		_, _ = f.WriteString(msg + "\n")
-		_ = f.Close()
+	if file, err := os.OpenFile("/dev/ttyS0", os.O_WRONLY, 0); err == nil {
+		_, _ = file.WriteString(msg + "\n")
+		_ = file.Close()
 	}
 }
 
@@ -189,8 +195,8 @@ func loadModules() {
 // logBlockDevices prints the discovered block devices so the headless e2e
 // and users can see which disks are visible after module loading.
 func logBlockDevices() {
-	for _, d := range sysinfo.Devices() {
-		logf("live: block device %s", d)
+	for _, dev := range sysinfo.Devices() {
+		logf("live: block device %s", dev)
 	}
 }
 
@@ -199,10 +205,10 @@ func logBlockDevices() {
 // whether the Alpine-based userspace was bundled correctly.
 func logTools() {
 	found := []string{}
-	for _, p := range []string{"busybox", "gpg", "lsblk", "ntpd", "partprobe",
+	for _, program := range []string{"busybox", "gpg", "lsblk", "ntpd", "partprobe",
 		"sgdisk", "mount", "tar", "udhcpc"} {
-		if _, err := exec.LookPath(p); err == nil {
-			found = append(found, p)
+		if _, err := exec.LookPath(program); err == nil {
+			found = append(found, program)
 		}
 	}
 	logf("live: tools: %s", strings.Join(found, " "))

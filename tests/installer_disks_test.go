@@ -36,21 +36,21 @@ func classicSeeds() map[string]string {
 	}
 }
 
-func TestApplyDiskActionsClassicEFILuksSwap(t *testing.T) {
+func TestApplyDiskActionsClassicEFILuksSwap(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", true, false)
-	c, s := testContext(t, cfg, classicSeeds())
+	ctx, stub := testContext(testingT, cfg, classicSeeds())
 
 	start := time.Now()
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		// waitPartition must be skipped when capturing, otherwise the 10x1s
 		// retry loop would make this test crawl.
-		t.Fatalf("ApplyDiskActions took %v; waitPartition did not fast-path", elapsed)
+		testingT.Fatalf("ApplyDiskActions took %v; waitPartition did not fast-path", elapsed)
 	}
 
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"wipefs --quiet --all --force /dev/sdX",
 		"sgdisk -Z -U "+uGpt+" /dev/sdX",
 		"sgdisk -n 0:0:+1GiB -t 0:ef00 -u 0:"+uEfi+" /dev/fake-gpt",
@@ -69,25 +69,25 @@ func TestApplyDiskActionsClassicEFILuksSwap(t *testing.T) {
 	)
 
 	// cryptsetup keyed operations must feed the passphrase on stdin.
-	calls := s.Calls()
+	calls := stub.Calls()
 	if calls[5].Stdin != "test-passphrase" {
-		t.Fatalf("luksFormat stdin = %q", calls[5].Stdin)
+		testingT.Fatalf("luksFormat stdin = %q", calls[5].Stdin)
 	}
 	if calls[7].Stdin != "test-passphrase" {
-		t.Fatalf("luks open stdin = %q", calls[7].Stdin)
+		testingT.Fatalf("luks open stdin = %q", calls[7].Stdin)
 	}
 }
 
-func TestApplyDiskActionsClassicBiosNoLuksNoSwapBtrfs(t *testing.T) {
+func TestApplyDiskActionsClassicBiosNoLuksNoSwapBtrfs(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdY", false, true)
 	cfg.Disk.BootType = "bios"
 	cfg.Disk.UseSwap = false
-	c, s := testContext(t, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"wipefs --quiet --all --force /dev/sdY",
 		"sgdisk -Z -U "+uGpt+" /dev/sdY",
 		"sgdisk -n 0:0:+1GiB -t 0:ef02 -u 0:"+uEfi+" --attributes=0:set:2 /dev/fake-gpt",
@@ -103,20 +103,20 @@ func TestApplyDiskActionsClassicBiosNoLuksNoSwapBtrfs(t *testing.T) {
 	)
 }
 
-func TestApplyDiskActionsBtrfsCentricRaid(t *testing.T) {
+func TestApplyDiskActionsBtrfsCentricRaid(testingT *testing.T) {
 	cfg := config.Default(true)
 	cfg.Disk.Scheme = config.SchemeBtrfs
 	cfg.Disk.Devices = []string{"/dev/sda", "/dev/sdb"}
 	cfg.Disk.UseSwap = false
 	cfg.Disk.UseLuks = false
-	c, s := testContext(t, cfg, map[string]string{
+	ctx, stub := testContext(testingT, cfg, map[string]string{
 		"gpt_dev0": uGPT0, "part_efi_dev0": uEfi0, "part_root_dev0": uRoot0, "root_dev1": uRoot1,
 	})
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"wipefs --quiet --all --force /dev/sda",
 		"sgdisk -Z -U "+uGPT0+" /dev/sda",
 		"sgdisk -n 0:0:+1GiB -t 0:ef00 -u 0:"+uEfi0+" /dev/fake-gpt_dev0",
@@ -132,7 +132,7 @@ func TestApplyDiskActionsBtrfsCentricRaid(t *testing.T) {
 	)
 }
 
-func TestApplyDiskActionsZFSCentricEncrypted(t *testing.T) {
+func TestApplyDiskActionsZFSCentricEncrypted(testingT *testing.T) {
 	cfg := config.Default(true)
 	cfg.Disk.Scheme = config.SchemeZFSCentric
 	cfg.Disk.Devices = []string{"/dev/sda", "/dev/sdb"}
@@ -140,14 +140,14 @@ func TestApplyDiskActionsZFSCentricEncrypted(t *testing.T) {
 	cfg.Disk.ZFSEncrypt = true
 	cfg.Disk.ZFSUseCompress = true
 	cfg.Disk.ZFSCompression = "zstd"
-	c, s := testContext(t, cfg, map[string]string{
+	ctx, stub := testContext(testingT, cfg, map[string]string{
 		"gpt_dev0": uGPT0, "part_efi_dev0": uEfi0, "part_root_dev0": uRoot0, "root_dev1": uRoot1,
 	})
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"wipefs --quiet --all --force /dev/sda",
 		"sgdisk -Z -U "+uGPT0+" /dev/sda",
 		"sgdisk -n 0:0:+1GiB -t 0:ef00 -u 0:"+uEfi0+" /dev/fake-gpt_dev0",
@@ -162,27 +162,27 @@ func TestApplyDiskActionsZFSCentricEncrypted(t *testing.T) {
 		"zpool set bootfs=rpool/ROOT/default rpool",
 	)
 
-	calls := s.Calls()
+	calls := stub.Calls()
 	if calls[7].Stdin != "test-passphrase\n" {
-		t.Fatalf("zpool stdin = %q, want passphrase+newline", calls[7].Stdin)
+		testingT.Fatalf("zpool stdin = %q, want passphrase+newline", calls[7].Stdin)
 	}
 }
 
-func TestApplyDiskActionsRaid1Luks(t *testing.T) {
+func TestApplyDiskActionsRaid1Luks(testingT *testing.T) {
 	cfg := config.Default(true)
 	cfg.Disk.Scheme = config.SchemeRaid1Luks
 	cfg.Disk.Devices = []string{"/dev/sda", "/dev/sdb"}
 	cfg.Disk.BootType = "bios"
 	cfg.Disk.UseLuks = true
-	c, s := testContext(t, cfg, map[string]string{
+	ctx, stub := testContext(testingT, cfg, map[string]string{
 		"gpt_dev0": uGPT0, "part_bios_dev0": uEfi0, "part_swap_dev0": uSwap0, "part_root_dev0": uRoot0,
 		"gpt_dev1": uGPT0, "part_bios_dev1": uEfi1, "part_swap_dev1": uSwap1, "part_root_dev1": uRoot1,
 		"part_raid_bios": uRaidEfi, "part_raid_swap": uRaidSwap, "part_raid_root": uRaidRoot,
 		"part_luks_root": uLuksRoot,
 	})
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
 	}
 	want := []string{
 		"wipefs --quiet --all --force /dev/sda",
@@ -209,19 +209,19 @@ func TestApplyDiskActionsRaid1Luks(t *testing.T) {
 		"wipefs --quiet --all --force /dev/fake-part_luks_root",
 		"mkfs.ext4 -q -L root /dev/fake-part_luks_root",
 	}
-	assertCmds(t, s, want...)
+	assertCmds(testingT, stub, want...)
 }
 
-func TestApplyDiskActionsPartprobeWhenAvailable(t *testing.T) {
+func TestApplyDiskActionsPartprobeWhenAvailable(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
-	c, s := testContext(t, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
-	c.R.LookPath = func(name string) bool { return name == "partprobe" }
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
+	ctx.Runner.LookPath = func(name string) bool { return name == "partprobe" }
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatal(err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
 	}
-	assertCmds(t, s,
+	assertCmds(testingT, stub,
 		"wipefs --quiet --all --force /dev/sdX",
 		"sgdisk -Z -U "+uGpt+" /dev/sdX",
 		"partprobe /dev/sdX",
@@ -236,49 +236,49 @@ func TestApplyDiskActionsPartprobeWhenAvailable(t *testing.T) {
 	)
 }
 
-func TestApplyDiskActionsSwallowSwapoffFailure(t *testing.T) {
+func TestApplyDiskActionsSwallowSwapoffFailure(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
-	c, s := testContext(t, cfg, classicSeeds())
+	ctx, stub := testContext(testingT, cfg, classicSeeds())
 	// swapoff runs best-effort; even when it is scripted to fail the apply
 	// must succeed (the failure is swallowed with `_ =`).
-	s.FailOn = []string{"swapoff"}
+	stub.FailOn = []string{"swapoff"}
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatalf("swapoff failure must be ignored: %v", err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatalf("swapoff failure must be ignored: %v", err)
 	}
-	if !strings.Contains(strings.Join(s.Lines(), "\n"), "swapoff") {
-		t.Fatal("swapoff not recorded")
+	if !strings.Contains(strings.Join(stub.Lines(), "\n"), "swapoff") {
+		testingT.Fatal("swapoff not recorded")
 	}
 }
 
-func TestApplyDiskActionsPropagatesSgdiskError(t *testing.T) {
+func TestApplyDiskActionsPropagatesSgdiskError(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
-	c, s := testContext(t, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
-	s.FailOn = []string{"sgdisk"}
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
+	stub.FailOn = []string{"sgdisk"}
 
-	err := installer.ApplyDiskActions(c)
+	err := installer.ApplyDiskActions(ctx)
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		testingT.Fatal("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "sgdisk") {
-		t.Fatalf("error should mention sgdisk: %v", err)
+		testingT.Fatalf("error should mention sgdisk: %v", err)
 	}
 }
 
-func TestApplyDiskActionsSkipsUnknownAction(t *testing.T) {
+func TestApplyDiskActionsSkipsUnknownAction(testingT *testing.T) {
 	stub := NewExecStub()
-	r := installer.NewRunner(discardWriter{t}, discardWriter{t})
-	r.Exec = stub
-	r.OnFailure = installer.DefaultOnFailure
-	c := &installer.Context{R: r, Layout: &disklayout.Layout{
+	runner := installer.NewRunner(discardWriter{testingT}, discardWriter{testingT})
+	runner.Exec = stub
+	runner.OnFailure = installer.DefaultOnFailure
+	ctx := &installer.Context{Runner: runner, Layout: &disklayout.Layout{
 		Actions: []disklayout.Action{{Action: disklayout.ActionKind("not_a_real_action")}},
 	}}
 
-	if err := installer.ApplyDiskActions(c); err != nil {
-		t.Fatalf("unknown action must be ignored, got %v", err)
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatalf("unknown action must be ignored, got %v", err)
 	}
 	if len(stub.Calls()) != 0 {
-		t.Fatalf("unknown action ran commands: %v", stub.Lines())
+		testingT.Fatalf("unknown action ran commands: %v", stub.Lines())
 	}
 }

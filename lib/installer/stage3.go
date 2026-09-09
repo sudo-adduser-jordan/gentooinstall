@@ -68,11 +68,11 @@ func httpClientFor(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout}
 }
 
-func httpDownload(r *Runner, url, dest string) error {
-	return httpDownloadTimeout(r, url, dest, 0)
+func httpDownload(runner *Runner, url, dest string) error {
+	return httpDownloadTimeout(runner, url, dest, 0)
 }
 
-func httpDownloadTimeout(r *Runner, url, dest string, timeout time.Duration) error {
+func httpDownloadTimeout(runner *Runner, url, dest string, timeout time.Duration) error {
 	resp, err := httpClientFor(timeout).Get(url)
 	if err != nil {
 		return err
@@ -81,21 +81,21 @@ func httpDownloadTimeout(r *Runner, url, dest string, timeout time.Duration) err
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("http %s while downloading %s", resp.Status, url)
 	}
-	f, err := os.Create(dest)
+	file, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	n, err := io.Copy(f, resp.Body)
+	defer file.Close()
+	bytesCopied, err := io.Copy(file, resp.Body)
 	if err != nil {
 		_ = os.Remove(dest) // free the space consumed by the partial file
 		return err
 	}
-	r.logf("downloaded %s (%d bytes)", filepath.Base(dest), n)
+	runner.logf("downloaded %s (%d bytes)", filepath.Base(dest), bytesCopied)
 	return nil
 }
 
-func httpGetBody(r *Runner, url string) (string, error) {
+func httpGetBody(runner *Runner, url string) (string, error) {
 	resp, err := httpClientFor(stage3MetaTimeout).Get(url)
 	if err != nil {
 		return "", err
@@ -121,12 +121,12 @@ func httpGetBody(r *Runner, url string) (string, error) {
 // it). A mirror that does not publish the file (404) yields ("", 0, nil) so
 // the caller can scan the HTML index instead; network or server errors are
 // returned as-is so the failure is not silently masked.
-func resolveFromLatest(c *Context, releasesURL, basename string) (string, int64, error) {
+func resolveFromLatest(ctx *Context, releasesURL, basename string) (string, int64, error) {
 	latestURL := strings.TrimSuffix(releasesURL, "/") + "/latest-" + basename + ".txt"
-	c.R.logf("Fetching current tarball name from %s", latestURL)
-	body, err := httpGetBody(c.R, latestURL)
+	ctx.Runner.logf("Fetching current tarball name from %s", latestURL)
+	body, err := httpGetBody(ctx.Runner, latestURL)
 	if errors.Is(err, errNotPublished) {
-		c.R.logf("%s does not publish a latest-%s.txt listing; scanning the index", latestURL, basename)
+		ctx.Runner.logf("%s does not publish a latest-%s.txt listing; scanning the index", latestURL, basename)
 		return "", 0, nil
 	}
 	if err != nil {
@@ -143,8 +143,8 @@ func resolveFromLatest(c *Context, releasesURL, basename string) (string, int64,
 		}
 		var size int64
 		if len(fields) > 1 {
-			if n, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
-				size = n
+			if parsedSize, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+				size = parsedSize
 			}
 		}
 		return fields[0], size, nil
@@ -155,8 +155,8 @@ func resolveFromLatest(c *Context, releasesURL, basename string) (string, int64,
 // resolveFromIndex scans the HTML index for tarball names and returns the
 // newest one (parity with the bash listing parse, but preferring the newest
 // build rather than the oldest).
-func resolveFromIndex(c *Context, releasesURL, basename string) (string, int64, error) {
-	body, err := httpGetBody(c.R, releasesURL)
+func resolveFromIndex(ctx *Context, releasesURL, basename string) (string, int64, error) {
+	body, err := httpGetBody(ctx.Runner, releasesURL)
 	if err != nil {
 		return "", 0, fmt.Errorf("could not retrieve list of tarballs from %s: %w", releasesURL, err)
 	}
@@ -168,12 +168,12 @@ func resolveFromIndex(c *Context, releasesURL, basename string) (string, int64, 
 
 	re := regexp.MustCompile(`"` + regexp.QuoteMeta(basename) + `-[0-9A-Z]*\.tar\.xz"`)
 	set := map[string]bool{}
-	for _, m := range re.FindAllString(body, -1) {
-		set[strings.Trim(m, `"`)] = true
+	for _, match := range re.FindAllString(body, -1) {
+		set[strings.Trim(match, `"`)] = true
 	}
 	var names []string
-	for n := range set {
-		names = append(names, n)
+	for name := range set {
+		names = append(names, name)
 	}
 	if len(names) == 0 {
 		return "", 0, fmt.Errorf("could not parse list of tarballs for %s at %s", basename, releasesURL)
@@ -188,22 +188,22 @@ func resolveFromIndex(c *Context, releasesURL, basename string) (string, int64, 
 // to scanning the HTML index only when the .txt is absent (HTTP 404);
 // network or server errors on the preferred listing fail the resolution so
 // the real cause is not hidden.
-func ResolveStage3(c *Context) (Stage3Info, error) {
-	basename := c.Cfg.Stage3BaseNameFinal()
+func ResolveStage3(ctx *Context) (Stage3Info, error) {
+	basename := ctx.Cfg.Stage3BaseNameFinal()
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
-		c.Cfg.Gentoo.Mirror, c.Cfg.Gentoo.Arch, basename)
+		ctx.Cfg.Gentoo.Mirror, ctx.Cfg.Gentoo.Arch, basename)
 
 	var (
 		name string
 		size int64
 		err  error
 	)
-	c.R.logf("Fetching list of current tarballs from %s", releasesURL)
-	if name, size, err = resolveFromLatest(c, releasesURL, basename); err != nil {
+	ctx.Runner.logf("Fetching list of current tarballs from %s", releasesURL)
+	if name, size, err = resolveFromLatest(ctx, releasesURL, basename); err != nil {
 		return Stage3Info{}, err
 	}
 	if name == "" {
-		if name, size, err = resolveFromIndex(c, releasesURL, basename); err != nil {
+		if name, size, err = resolveFromIndex(ctx, releasesURL, basename); err != nil {
 			return Stage3Info{}, err
 		}
 	}
@@ -221,8 +221,8 @@ func ResolveStage3(c *Context) (Stage3Info, error) {
 // each attempt re-resolves the tarball name and re-fetches everything.
 // Permanent failures (no space on the target root filesystem) are returned
 // immediately so they surface in the failure panel instead of hammering.
-func DownloadStage3(c *Context) (Stage3Info, error) {
-	info, err := downloadStage3Once(c)
+func DownloadStage3(ctx *Context) (Stage3Info, error) {
+	info, err := downloadStage3Once(ctx)
 	if err == nil {
 		return info, nil
 	}
@@ -230,10 +230,10 @@ func DownloadStage3(c *Context) (Stage3Info, error) {
 		return info, err
 	}
 	for attempt := 1; attempt < stage3DownloadAttempts; attempt++ {
-		c.R.logf("Stage3 download failed (%v); retrying (%d/%d)", err,
+		ctx.Runner.logf("Stage3 download failed (%v); retrying (%d/%d)", err,
 			attempt+1, stage3DownloadAttempts)
 		time.Sleep(stage3RetryBackoff)
-		if info, err = downloadStage3Once(c); err == nil {
+		if info, err = downloadStage3Once(ctx); err == nil {
 			return info, nil
 		}
 		if !isTransientFailure(err) {
@@ -258,8 +258,8 @@ func isTransientFailure(err error) bool {
 // would otherwise surface mid-transfer. The check is best-effort: when the
 // free space cannot be measured (filesystem not yet mounted, exotic fs), the
 // download proceeds and any real ENOSPC is caught by isTransientFailure.
-func checkStage3Space(c *Context, needed int64) error {
-	free, err := freeSpaceBytes(c.path(Stage3ScratchDir))
+func checkStage3Space(ctx *Context, needed int64) error {
+	free, err := freeSpaceBytes(ctx.path(Stage3ScratchDir))
 	if err != nil {
 		return nil
 	}
@@ -281,30 +281,30 @@ func freeSpaceBytes(dir string) (int64, error) {
 }
 
 // downloadStage3Once performs a single resolve + download + verify pass.
-func downloadStage3Once(c *Context) (Stage3Info, error) {
-	info, err := ResolveStage3(c)
+func downloadStage3Once(ctx *Context) (Stage3Info, error) {
+	info, err := ResolveStage3(ctx)
 	if err != nil {
 		return info, err
 	}
 	basename := info.Basename
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
-		c.Cfg.Gentoo.Mirror, c.Cfg.Gentoo.Arch, c.Cfg.Stage3BaseNameFinal())
+		ctx.Cfg.Gentoo.Mirror, ctx.Cfg.Gentoo.Arch, ctx.Cfg.Stage3BaseNameFinal())
 
 	// The tarball is staged inside the mounted target root filesystem: for
 	// the live ISO, TmpDir is RAM-backed and cannot hold a ~400MB tarball on
 	// low-memory hosts.
-	if err := c.mkdirAll(Stage3ScratchDir, 0o755); err != nil {
+	if err := ctx.mkdirAll(Stage3ScratchDir, 0o755); err != nil {
 		return info, fmt.Errorf("could not create stage3 scratch dir: %w", err)
 	}
 	if info.Size > 0 {
-		if err := checkStage3Space(c, info.Size); err != nil {
+		if err := checkStage3Space(ctx, info.Size); err != nil {
 			return info, err
 		}
 	}
 
 	// File operations below resolve against the context root; the logical
-	// Stage3ScratchDir paths are kept for c.Stage3File.
-	dst := c.path(info.Path)
+	// Stage3ScratchDir paths are kept for ctx.Stage3File.
+	dst := ctx.path(info.Path)
 	verifiedMarker := dst + ".verified"
 
 	// A previous attempt may have verified this exact tarball already
@@ -314,42 +314,42 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 	if marker, err := os.ReadFile(verifiedMarker); err == nil &&
 		strings.TrimSpace(string(marker)) == basename {
 		if _, terr := os.Stat(dst); terr == nil {
-			c.R.logf("%s tarball already downloaded and verified", basename)
-			c.Stage3File = info.Path
+			ctx.Runner.logf("%s tarball already downloaded and verified", basename)
+			ctx.Stage3File = info.Path
 			return info, nil
 		}
 	}
 	_ = os.Remove(verifiedMarker) // stale marker (if any); best effort
 
-	c.R.logf("Downloading %s tarball", basename)
+	ctx.Runner.logf("Downloading %s tarball", basename)
 	tarballURL := strings.TrimSuffix(releasesURL, "/") + "/" + basename
-	if err := httpDownload(c.R, tarballURL, dst); err != nil {
+	if err := httpDownload(ctx.Runner, tarballURL, dst); err != nil {
 		return info, fmt.Errorf("could not download %s: %w", basename, err)
 	}
 	digestsPath := dst + ".DIGESTS"
-	if err := httpDownloadTimeout(c.R, tarballURL+".DIGESTS", digestsPath, stage3MetaTimeout); err != nil {
+	if err := httpDownloadTimeout(ctx.Runner, tarballURL+".DIGESTS", digestsPath, stage3MetaTimeout); err != nil {
 		return info, fmt.Errorf("could not download DIGESTS: %w", err)
 	}
 
-	c.R.log("Importing gentoo gpg key")
-	keyPath := c.path(filepath.Join(TmpDir, "gentoo-keys.gpg"))
-	if err := httpDownloadTimeout(c.R, gentooReleaseKeyURL, keyPath, stage3MetaTimeout); err != nil {
+	ctx.Runner.log("Importing gentoo gpg key")
+	keyPath := ctx.path(filepath.Join(TmpDir, "gentoo-keys.gpg"))
+	if err := httpDownloadTimeout(ctx.Runner, gentooReleaseKeyURL, keyPath, stage3MetaTimeout); err != nil {
 		return info, fmt.Errorf("could not retrieve gentoo gpg key: %w", err)
 	}
-	if out, err := c.R.QuietRun("gpg", "--quiet", "--import", keyPath); err != nil {
+	if out, err := ctx.Runner.QuietRun("gpg", "--quiet", "--import", keyPath); err != nil {
 		return info, fmt.Errorf("could not import gentoo gpg key:\n%s", out)
 	}
 
-	c.R.log("Verifying tarball signature")
-	prevDir := c.R.Dir
-	c.R.Dir = TmpDir
-	_, err = c.R.QuietRun("gpg", "--quiet", "--verify", digestsPath)
-	c.R.Dir = prevDir
+	ctx.Runner.log("Verifying tarball signature")
+	prevDir := ctx.Runner.Dir
+	ctx.Runner.Dir = TmpDir
+	_, err = ctx.Runner.QuietRun("gpg", "--quiet", "--verify", digestsPath)
+	ctx.Runner.Dir = prevDir
 	if err != nil {
 		return info, fmt.Errorf("signature of '%s' invalid", filepath.Base(digestsPath))
 	}
 
-	c.R.log("Verifying tarball integrity")
+	ctx.Runner.log("Verifying tarball integrity")
 	want, err := sha512FromDigests(digestsPath, basename)
 	if err != nil {
 		return info, err
@@ -365,10 +365,10 @@ func downloadStage3Once(c *Context) (Stage3Info, error) {
 	// The marker names the verified basename so a later run with a
 	// superseded build (or a deleted tarball) re-downloads instead of
 	// resuming a stale verification.
-	if err := c.writeFile(info.Path+".verified", []byte(basename+"\n"), 0o644); err != nil {
+	if err := ctx.writeFile(info.Path+".verified", []byte(basename+"\n"), 0o644); err != nil {
 		return info, err
 	}
-	c.Stage3File = info.Path
+	ctx.Stage3File = info.Path
 	return info, nil
 }
 
@@ -395,9 +395,9 @@ func sha512FromDigests(path, basename string) (string, error) {
 	seenMarker := false
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimRight(line, "\r")
-		if m := digestsSectionHeader.FindStringSubmatch(line); m != nil {
+		if match := digestsSectionHeader.FindStringSubmatch(line); match != nil {
 			seenMarker = true
-			section = strings.ToLower(m[1])
+			section = strings.ToLower(match[1])
 			continue
 		}
 		if section != "" && section != "sha512" {
