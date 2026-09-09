@@ -85,9 +85,6 @@ make vm-install # QEMU e2e: TestInstallInVM runs a FULL install for every
 - Commit messages: short imperative subject line, lowercase.
 
 ## Notes
-Serial boot (the single grub entry maps the serial console, so the TUI
-opens over `-nographic -serial stdio`). Steps marked UEFI
-are required for the default EFI configs:
 
 ```sh
 make iso
@@ -109,6 +106,9 @@ qemu-system-x86_64 \
   -netdev user,id=net0 \
   -device e1000,netdev=net0 \
   -nographic -serial stdio -monitor none
+
+
+
 # Legacy-BIOS boot (use with builds/bios.toml: disk.boot_type = "bios"):
 # no OVMF -> SeaBIOS -> no /sys/firmware/efi; an EFI config fails here.
 # NOTE: if=virtio shows up as /dev/vda (use that for Disk > Device);
@@ -124,22 +124,8 @@ qemu-system-x86_64 \
   -netdev user,id=net0 \
   -device e1000,netdev=net0 \
   -nographic -serial stdio -monitor none
-```
 
-The live ISO is hybrid BIOS+UEFI (`grub-mkrescue` El Torito BIOS +
-`/efi.img` UEFI). Booting it without OVMF lands in legacy BIOS mode, so
-`/sys/firmware/efi` is missing and any EFI config fails fast in
-`CheckHostBootMode`/`MountEfiVars` ("live system was not booted in UEFI
-mode"). Either reboot under UEFI or switch the config to
-`disk.boot_type = "bios"`.
 
-Full install loop: create a drive image, boot the ISO with it attached to
-install onto, then boot the installed OS from the drive (all over the serial
-console with `-nographic -serial stdio`, no framebuffer window).
-Without a NIC (and the DHCP/DNS it brings up) the tarball/mirror
-fetches fail, so always attach a user-mode NIC:
-
-```sh
 make iso
 qemu-img create -f qcow2 bin/gentoo-disk.img 20G
 
@@ -192,7 +178,7 @@ qemu-system-x86_64 \
   -nographic -serial stdio -monitor none
 
 
-  
+
 # UEFI: same as above plus the two pflash drives:
 # -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
 # -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \

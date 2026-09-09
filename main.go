@@ -360,10 +360,14 @@ func gifTape(out string) string {
 		// VHS's default font stack (vhs.go) lists only coding monospaces and
 		// ends in "Apple Symbols"; none render colour emoji, so the tab icons
 		// fall back to a glyph with an inconsistent width and the tab boxes'
-		// right borders shift. Appending "Noto Color Emoji" (uniform 2-cell
-		// advance per glyph) makes the canvas cascade render emoji at exactly
-		// the width lipgloss/xterm.js assume, keeping the borders aligned.
-		`Set FontFamily "JetBrains Mono, DejaVu Sans Mono, Noto Sans Mono, Noto Color Emoji, monospace"`,
+		// right borders shift. "Noto Color Emoji" must come FIRST in the
+		// cascade: the mono fonts claim those codepoints and paint them at a
+		// wider advance, so listing it last never wins. Leading with it makes
+		// every emoji resolve to its uniform 2-cell advance, exactly the width
+		// lipgloss/xterm.js assume, keeping the borders aligned. ASCII text is
+		// not in Noto Color Emoji, so letters still fall through to JetBrains
+		// Mono.
+		`Set FontFamily "Noto Color Emoji, JetBrains Mono, DejaVu Sans Mono, Noto Sans Mono, monospace"`,
 		"Set Padding 12",
 		// The demo takes >15s to complete after the retry, so give the
 		// screen-scoped waits a larger budget than the 15s default.
