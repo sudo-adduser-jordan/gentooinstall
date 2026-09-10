@@ -538,7 +538,11 @@ func (model *Model) activateRow() (tea.Model, tea.Cmd) {
 				mm.status = ""
 			})
 	case kMultiChoice:
-		model.openMultiPicker(field.label, field.options(model.cfg), field.getStrings(model.cfg),
+		current := field.getStrings(model.cfg)
+		if field.preSeed != nil && len(current) == 0 {
+			current = field.preSeed(model.cfg)
+		}
+		model.openMultiPicker(field.label, field.options(model.cfg), current,
 			func(mm *Model, vals []string) {
 				field.setStrings(mm.cfg, vals)
 				mm.dirty = true

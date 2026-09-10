@@ -2,6 +2,8 @@
 package tests
 
 import (
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -176,6 +178,9 @@ func TestTuiFirmwareSubOption(testingT *testing.T) {
 	// deblob path suppresses the whole firmware install.
 	toggled := config.Default(true)
 	toggled.Packages.InstallFirmware = false
+	// Pre-seed one section so the picker does not run host auto-detection:
+	// the assertion below counts exactly the rows we toggle.
+	toggled.Packages.FirmwareSections = []string{"atmel"}
 	appModel := tui.New(toggled, "/tmp/test-gentoo.toml")
 	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
 	model := mm.(*tui.Model)
@@ -199,12 +204,12 @@ func TestTuiFirmwareSubOption(testingT *testing.T) {
 		testingT.Fatal("toggling the firmware row must set InstallFirmware")
 	}
 
-	// Sections picker is visible now (pos 4). Open it and filter for wifi.
+	// Sections picker is visible now (pos 4). Open it and filter for intel.
 	mm, _ = model.Update(keyDown())
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
-	for _, ch := range "iwlwifi" {
+	for _, ch := range "intel" {
 		mm, _ = model.Update(keyRunes(ch))
 		model = mm.(*tui.Model)
 	}
@@ -213,15 +218,35 @@ func TestTuiFirmwareSubOption(testingT *testing.T) {
 		testingT.Fatalf("wifi firmware entries should be hinted, got:\n%s", filtered)
 	}
 
-	// Select the wifi entry and apply. The whole section name is matched.
+	// Space on the vendor category row selects all of its subdirectories.
 	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 	sections := model.Config().Packages.FirmwareSections
-	if len(sections) != 1 || sections[0] != "intel" {
-		testingT.Fatalf("firmware_sections = %v, want [intel]", sections)
+	want := []string{"atmel", "e100", "i915", "intel", "isci", "ixp4xx", "xe"}
+	sort.Strings(sections)
+	sort.Strings(want)
+	if !slices.Equal(sections, want) {
+		testingT.Fatalf("firmware_sections = %v, want %v", sections, want)
 	}
+
+	// Reopen and toggle a single directory on top of the category selection.
+	mm, _ = model.Update(keyEnter())
+	model = mm.(*tui.Model)
+	for _, ch := range "amdgpu" {
+		mm, _ = model.Update(keyRunes(ch))
+		model = mm.(*tui.Model)
+	}
+	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = mm.(*tui.Model)
+	mm, _ = model.Update(keyEnter())
+	model = mm.(*tui.Model)
+	sections = model.Config().Packages.FirmwareSections
+	if !slices.Contains(sections, "amdgpu") || len(sections) != 8 {
+		testingT.Fatalf("picked single dir must mix with the category, got: %v", sections)
+	}
+
 	// Firmware section selection implies the toggle stays on and marks dirty.
 	if model.Config().Packages.InstallFirmware != true {
 		testingT.Fatal("picking firmware sections must leave install_firmware on")

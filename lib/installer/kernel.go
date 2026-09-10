@@ -423,11 +423,13 @@ func pruneFirmwareSections(ctx *Context) error {
 	}
 	ctx.Runner.log("Removing unselected linux-firmware sections")
 	for _, section := range config.FirmwareSections {
-		if selected[section.Name] {
-			continue
-		}
-		if err := ctx.Runner.Try("rm", "-rf", filepath.Join("/lib/firmware", section.Name)); err != nil {
-			return fmt.Errorf("could not remove firmware section %s: %w", section.Name, err)
+		for _, dir := range section.Dirs {
+			if selected[dir] {
+				continue
+			}
+			if err := ctx.Runner.Try("rm", "-rf", filepath.Join("/lib/firmware", dir)); err != nil {
+				return fmt.Errorf("could not remove firmware directory %s: %w", dir, err)
+			}
 		}
 	}
 	return nil

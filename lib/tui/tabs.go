@@ -157,11 +157,20 @@ func overlayOptions() []option {
 }
 
 // firmwareSectionOptions lists the selectable sys-kernel/linux-firmware
-// categories. WiFi entries carry a "(Wi-Fi)" hint in their description.
+// categories. Each vendor category row is followed by its member directories;
+// a category row toggles all of them, individual rows can be mixed. Wireless
+// entries carry a "(Wi-Fi)" hint.
 func firmwareSectionOptions() []option {
 	out := make([]option, 0, len(config.FirmwareSections))
 	for _, section := range config.FirmwareSections {
-		out = append(out, option{Value: section.Name, Desc: section.Desc})
+		out = append(out, option{Value: section.Name, Desc: section.Desc, groupDirs: section.Dirs})
+		for _, dir := range section.Dirs {
+			opt := option{Value: dir, indent: true}
+			if config.WirelessFirmwareDir(dir) {
+				opt.Desc = "(Wi-Fi)"
+			}
+			out = append(out, opt)
+		}
 	}
 	return out
 }
@@ -582,10 +591,13 @@ func buildTabs(model *Model) []tabDef {
 		func() *field {
 			field := &field{
 				label: "└ Firmware sections",
-				help: "Limit the installed sys-kernel/linux-firmware categories " +
-					"(Wi-Fi entries are hinted with '(Wi-Fi)'). This installs the full " +
-					"package and prunes unselected firmware directories from " +
-					"/lib/firmware. Selecting nothing installs everything.",
+				help: "Limit which sys-kernel/linux-firmware directories are " +
+					"kept under /lib/firmware. Each vendor row selects all of " +
+					"its subdirectories at once; the rows beneath it can be " +
+					"toggled individually to pick and mix. Wireless entries are " +
+					"hinted with '(Wi-Fi)'. On open, firmware for this machine's " +
+					"loaded drivers is pre-selected (still editable). Clearing " +
+					"every selection installs the whole package.",
 				kind: kMultiChoice,
 				options: func(*config.Config) []option {
 					return firmwareSectionOptions()
@@ -594,6 +606,9 @@ func buildTabs(model *Model) []tabDef {
 				getStrings: func(cc *config.Config) []string { return cc.Packages.FirmwareSections },
 				setStrings: func(cc *config.Config, value []string) {
 					cc.Packages.FirmwareSections = value
+				},
+				preSeed: func(*config.Config) []string {
+					return config.DetectedFirmwareSections()
 				},
 				vis: func(cc *config.Config) bool {
 					return !cc.Packages.KernelDeblob && cc.Packages.InstallFirmware

@@ -4,7 +4,9 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gentooinstall/lib/pkglists"
@@ -236,7 +238,7 @@ type Packages struct {
 	KernelType            string   `toml:"kernel_type"` // bin | source
 	KernelDeblob          bool     `toml:"kernel_deblob"`
 	InstallFirmware       bool     `toml:"install_firmware"`
-	FirmwareSections      []string `toml:"firmware_sections"` // empty = install everything
+	FirmwareSections      []string `toml:"firmware_sections"` // dirs to keep; empty = install everything
 	RootSSHAuthorizedKeys []string `toml:"ssh_authorized_keys"`
 	// UseFlags are /etc/portage/package.use lines, e.g. "dev-libs/openssl -asm".
 	UseFlags []string `toml:"use_flags"`
@@ -402,137 +404,227 @@ var Overlays = []Repo{
 // data/repos/gentoo.packages.
 const MainRepoIndexURL = "https://mirrors.kernel.org/gentoo-portage"
 
-// FirmwareSection is one selectable category of the sys-kernel/linux-firmware
-// package. Name is the top-level directory the upstream firmware files land
-// in under /lib/firmware (it is also the prune target when the section is not
-// selected).
+// FirmwareSection is one selectable vendor category of the
+// sys-kernel/linux-firmware package. Dirs are the top-level directories under
+// /lib/firmware that the category covers and that are pruned when the
+// category is not selected.
 type FirmwareSection struct {
 	Name string
 	Desc string
+	Dirs []string
 }
 
-// FirmwareSections lists the linux-firmware categories offered in the TUI.
-// Selecting none installs the whole package; selecting some installs only the
-// chosen top-level firmware directories. Entries whose Description carries
-// "(Wi-Fi)" are wireless-firmware categories and shown with that hint in the
-// picker.
+// FirmwareSections lists the linux-firmware vendor categories offered in the
+// TUI. Selecting none installs the whole package; selecting some installs
+// only the chosen top-level firmware directories. Entries whose Description
+// carries "(Wi-Fi)" cover wireless-firmware directories and are shown with
+// that hint in the picker. The union of Dirs covers every firmware directory
+// shipped by the package.
 var FirmwareSections = []FirmwareSection{
-	{Name: "3com", Desc: "3Com networking"},
-	{Name: "adaptec", Desc: "Adaptec SCSI"},
-	{Name: "advansys", Desc: "AdvanSys SCSI"},
-	{Name: "aeonsemi", Desc: "Aeonsemi networking"},
-	{Name: "airoha", Desc: "Airoha networking"},
-	{Name: "amd", Desc: "AMD platform security processor"},
-	{Name: "amdgpu", Desc: "AMD/ATI GPU (GCN/RDNA)"},
-	{Name: "amd-ucode", Desc: "AMD CPU microcode"},
-	{Name: "amdtee", Desc: "AMD Trusted Execution Environment"},
-	{Name: "amlogic", Desc: "Amlogic SoC"},
-	{Name: "amphion", Desc: "Amphion VPU"},
-	{Name: "arm", Desc: "ARM Mali GPU"},
-	{Name: "ar3k", Desc: "Qualcomm Atheros AR3011 Bluetooth"},
-	{Name: "ath6k", Desc: "Qualcomm/Atheros Wi-Fi (802.11g) (Wi-Fi)"},
-	{Name: "ath9k_htc", Desc: "Qualcomm/Atheros USB Wi-Fi (Wi-Fi)"},
-	{Name: "ath10k", Desc: "Qualcomm/Atheros Wi-Fi (802.11ac) (Wi-Fi)"},
-	{Name: "ath11k", Desc: "Qualcomm/Atheros Wi-Fi 6 (Wi-Fi)"},
-	{Name: "ath12k", Desc: "Qualcomm/Atheros Wi-Fi 7 (Wi-Fi)"},
-	{Name: "atmel", Desc: "Atmel USB wireless (Wi-Fi)"},
-	{Name: "atusb", Desc: "ATUSB IEEE 802.15.4"},
-	{Name: "av7110", Desc: "Av7110 DVB"},
-	{Name: "bnx2", Desc: "Broadcom NetXtreme II NIC"},
-	{Name: "bnx2x", Desc: "Broadcom NetXtreme II 10G NIC"},
-	{Name: "brcm", Desc: "Broadcom Wi-Fi/Bluetooth (brcmfmac) (Wi-Fi)"},
-	{Name: "cadence", Desc: "Cadence"},
-	{Name: "carl9170fw", Desc: "carl9170 USB Wi-Fi (Wi-Fi)"},
-	{Name: "cavium", Desc: "Cavium networking"},
-	{Name: "cirrus", Desc: "Cirrus Logic audio"},
-	{Name: "cis", Desc: "PCMCIA Card Information Structure"},
-	{Name: "cnm", Desc: "ChipnMedia DVB"},
-	{Name: "cpia2", Desc: "CPiA2 video cameras"},
-	{Name: "cxgb3", Desc: "Chelsio T3 NIC"},
-	{Name: "cxgb4", Desc: "Chelsio T4/T5/T6 NIC"},
-	{Name: "cypress", Desc: "Cypress Wi-Fi/Bluetooth (Wi-Fi)"},
-	{Name: "dabusb", Desc: "DAB USB receiver"},
-	{Name: "dell", Desc: "Dell ISH"},
-	{Name: "dpaa2", Desc: "NXP DPAA2 management"},
-	{Name: "dsp56k", Desc: "Motorola DSP56001"},
-	{Name: "e100", Desc: "Intel PRO/100 Ethernet"},
-	{Name: "edgeport", Desc: "Edgeport USB serial"},
-	{Name: "emi26", Desc: "Emagic EMI 2/6 audio"},
-	{Name: "emi62", Desc: "Emagic EMI 6/2 audio"},
-	{Name: "ene-ub6250", Desc: "ENE UB6250 card reader"},
-	{Name: "ess", Desc: "ESS Maestro3 audio"},
-	{Name: "go7007", Desc: "WIS Go7007 MPEG encoder"},
-	{Name: "HP", Desc: "HP ISH"},
-	{Name: "i915", Desc: "Intel GPU (DMC/GuC/HuC)"},
-	{Name: "imx", Desc: "NXP i.MX SDMA"},
-	{Name: "inside-secure", Desc: "Inside Secure EIP197 crypto"},
-	{Name: "intel", Desc: "Intel iwlwifi/Bluetooth/ISH (Wi-Fi)"},
-	{Name: "isci", Desc: "Intel C600 SAS"},
-	{Name: "ixp4xx", Desc: "Intel IXP4xx"},
-	{Name: "kaweth", Desc: "Kawasaki USB Ethernet"},
-	{Name: "keyspan", Desc: "Keyspan USB serial"},
-	{Name: "keyspan_pda", Desc: "Keyspan PDA USB serial"},
-	{Name: "korg", Desc: "Korg 1212 IO audio"},
-	{Name: "LENOVO", Desc: "Lenovo ISH"},
-	{Name: "libertas", Desc: "Marvell Libertas Wi-Fi (Wi-Fi)"},
-	{Name: "liquidio", Desc: "Cavium LiquidIO"},
-	{Name: "matrox", Desc: "Matrox G200 GPU"},
-	{Name: "mediatek", Desc: "MediaTek Wi-Fi/Bluetooth (Wi-Fi)"},
-	{Name: "mellanox", Desc: "Mellanox Spectrum switches"},
-	{Name: "meson", Desc: "Amlogic video decoder"},
-	{Name: "microchip", Desc: "Microchip"},
-	{Name: "moxa", Desc: "Moxa serial"},
-	{Name: "mrvl", Desc: "Marvell networking/SD8897"},
-	{Name: "mwl8k", Desc: "Marvell 88W8xxx Wi-Fi (Wi-Fi)"},
-	{Name: "mwlwifi", Desc: "Marvell 88W8964/8997 Wi-Fi (Wi-Fi)"},
-	{Name: "myricom", Desc: "Myricom Myri-10G Ethernet"},
-	{Name: "netronome", Desc: "Netronome NFP"},
-	{Name: "nvidia", Desc: "NVIDIA GPU (GSP-RM)"},
-	{Name: "nxp", Desc: "NXP Wi-Fi/Bluetooth/UWB (Wi-Fi)"},
-	{Name: "ositech", Desc: "Ositech ComStix"},
-	{Name: "powervr", Desc: "Imagination PowerVR GPU"},
-	{Name: "qca", Desc: "Qualcomm Atheros Bluetooth"},
-	{Name: "qcom", Desc: "Qualcomm SoC (modem/ADSP)"},
-	{Name: "qed", Desc: "QLogic FastLinQ"},
-	{Name: "qlogic", Desc: "QLogic Fibre Channel"},
-	{Name: "r128", Desc: "ATI Rage 128"},
-	{Name: "radeon", Desc: "ATI Radeon (pre-GCN)"},
-	{Name: "realtek", Desc: "Realtek"},
-	{Name: "rockchip", Desc: "Rockchip SoC"},
-	{Name: "rsi", Desc: "Redpine RS9110/9113 Wi-Fi (Wi-Fi)"},
-	{Name: "rtl_bt", Desc: "Realtek Bluetooth"},
-	{Name: "rtl_nic", Desc: "Realtek NIC"},
-	{Name: "rtlwifi", Desc: "Realtek Wi-Fi (RTL8xxx) (Wi-Fi)"},
-	{Name: "rtw88", Desc: "Realtek RTL8822CE/BE Wi-Fi 5 (Wi-Fi)"},
-	{Name: "rtw89", Desc: "Realtek RTL8852AE Wi-Fi 6 (Wi-Fi)"},
-	{Name: "sb16", Desc: "Creative Sound Blaster 16"},
-	{Name: "slicoss", Desc: "Alacritech IS-NIC"},
-	{Name: "sun", Desc: "Sun (Oracle) Ethernet"},
-	{Name: "sxg", Desc: "Solarflare Ethernet"},
-	{Name: "tehuti", Desc: "Tehuti 10G Ethernet"},
-	{Name: "ti", Desc: "Texas Instruments"},
-	{Name: "ti-connectivity", Desc: "TI wireless connectivity (Wi-Fi)"},
-	{Name: "ti-keystone", Desc: "TI Keystone SoC"},
-	{Name: "tigon", Desc: "Broadcom Tigon3 NIC"},
-	{Name: "ttusb-budget", Desc: "TechnoTrend USB DVB"},
-	{Name: "ueagle-atm", Desc: "Eagle USB ADSL"},
-	{Name: "vicam", Desc: "ViCAM USB camera"},
-	{Name: "vxge", Desc: "Neterion 10G Ethernet"},
-	{Name: "wfx", Desc: "Silicon Labs WFX Wi-Fi (Wi-Fi)"},
-	{Name: "xe", Desc: "Intel Xe (discrete) GPU"},
-	{Name: "yam", Desc: "YAM amateur radio modem"},
-	{Name: "yamaha", Desc: "Yamaha audio"},
+	{Name: "amd", Desc: "AMD/ATI GPU, CPU microcode, platform",
+		Dirs: []string{"amd", "amdgpu", "amd-ucode", "amdtee", "r128", "radeon"}},
+	{Name: "intel", Desc: "Intel GPU, Wi-Fi/Bluetooth, Ethernet, SAS (Wi-Fi)",
+		Dirs: []string{"e100", "i915", "intel", "isci", "ixp4xx", "xe"}},
+	{Name: "nvidia", Desc: "NVIDIA GPU (GSP-RM)", Dirs: []string{"nvidia"}},
+	{Name: "broadcom", Desc: "Broadcom/Cypress Wi-Fi, Bluetooth, NICs (Wi-Fi)",
+		Dirs: []string{"bnx2", "bnx2x", "brcm", "cypress", "tigon"}},
+	{Name: "qualcomm", Desc: "Qualcomm/Atheros Wi-Fi, Bluetooth, SoC (Wi-Fi)",
+		Dirs: []string{"ar3k", "ath10k", "ath11k", "ath12k", "ath6k", "ath9k_htc",
+			"qca", "qcom"}},
+	{Name: "realtek", Desc: "Realtek Wi-Fi, Bluetooth, Ethernet (Wi-Fi)",
+		Dirs: []string{"realtek", "rtl_bt", "rtl_nic", "rtlwifi", "rtw88", "rtw89"}},
+	{Name: "mediatek", Desc: "MediaTek/Airoha Wi-Fi and Bluetooth (Wi-Fi)",
+		Dirs: []string{"airoha", "mediatek"}},
+	{Name: "marvell", Desc: "Marvell/NXP Wi-Fi, Bluetooth, networking (Wi-Fi)",
+		Dirs: []string{"libertas", "mrvl", "mwl8k", "mwlwifi", "nxp"}},
+	{Name: "siliconlabs", Desc: "Silicon Labs WFX Wi-Fi (Wi-Fi)", Dirs: []string{"wfx"}},
+	{Name: "ti", Desc: "Texas Instruments Wi-Fi and SoC (Wi-Fi)",
+		Dirs: []string{"ti", "ti-connectivity", "ti-keystone"}},
+	{Name: "wifi-other", Desc: "Other Wi-Fi: Atmel, carl9170, Redpine (Wi-Fi)",
+		Dirs: []string{"atmel", "carl9170fw", "rsi"}},
+	{Name: "network-enterprise",
+		Desc: "Mellanox, Chelsio, QLogic, Cavium, Netronome and other NICs/serial",
+		Dirs: []string{"3com", "aeonsemi", "cavium", "cxgb3", "cxgb4", "kaweth",
+			"liquidio", "mellanox", "myricom", "netronome", "qed", "qlogic",
+			"slicoss", "sun", "sxg", "tehuti", "vxge"}},
+	{Name: "arm-soc", Desc: "ARM Mali GPU and SoCs (Amlogic, Rockchip, NXP, ...)",
+		Dirs: []string{"amlogic", "amphion", "arm", "cadence", "dpaa2", "imx",
+			"inside-secure", "meson", "microchip", "powervr", "rockchip"}},
+	{Name: "laptop-ish", Desc: "Laptop sensor hubs (Intel ISH on Dell/HP/Lenovo)",
+		Dirs: []string{"dell", "HP", "LENOVO"}},
+	{Name: "scsi-storage", Desc: "SCSI/UAS controllers and card readers",
+		Dirs: []string{"adaptec", "advansys", "ene-ub6250"}},
+	{Name: "audio", Desc: "Sound cards (Cirrus, Emagic, ESS, Korg, Creative, Yamaha)",
+		Dirs: []string{"cirrus", "emi26", "emi62", "ess", "korg", "sb16", "yamaha"}},
+	{Name: "usb-serial", Desc: "USB serial adapters (Keyspan, Edgeport, Moxa)",
+		Dirs: []string{"edgeport", "keyspan", "keyspan_pda", "moxa", "ositech"}},
+	{Name: "tv-video", Desc: "DVB receivers, video cameras, USB modems",
+		Dirs: []string{"av7110", "cis", "cnm", "cpia2", "dabusb", "dsp56k", "go7007",
+			"ttusb-budget", "ueagle-atm", "vicam"}},
+	{Name: "misc", Desc: "Everything else (ATUSB radio, Matrox G200, YAM modem)",
+		Dirs: []string{"atusb", "matrox", "yam"}},
 }
 
-// LookupFirmwareSection returns the firmware section with the given name,
-// or nil.
-func LookupFirmwareSection(name string) *FirmwareSection {
-	for index := range FirmwareSections {
-		if FirmwareSections[index].Name == name {
-			return &FirmwareSections[index]
+// WirelessFirmwareDir reports whether the firmware directory carries wireless
+// (Wi-Fi) firmware, used to hint those rows in the picker.
+func WirelessFirmwareDir(dir string) bool {
+	switch dir {
+	case "ath10k", "ath11k", "ath12k", "ath6k", "ath9k_htc", "atmel", "brcm",
+		"carl9170fw", "cypress", "intel", "libertas", "mediatek", "mwl8k",
+		"mwlwifi", "nxp", "realtek", "rsi", "rtl_bt", "rtlwifi", "rtw88",
+		"rtw89", "ti-connectivity", "wfx":
+		return true
+	}
+	return false
+}
+
+// firmwareModuleDirs maps loaded kernel module names to the top-level
+// linux-firmware directories that hold their firmware. It is used to infer
+// which firmware directories a machine needs from the modules its kernel has
+// loaded.
+var firmwareModuleDirs = map[string][]string{
+	"3c59x":         {"3com"},
+	"aacraid":       {"adaptec"},
+	"amdgpu":        {"amdgpu"},
+	"radeon":        {"radeon"},
+	"nouveau":       {"nvidia"},
+	"nvidia":        {"nvidia"},
+	"e100":          {"e100"},
+	"e1000":         {"e100"},
+	"e1000e":        {"e100"},
+	"igb":           {"e100"},
+	"ixgbe":         {"e100"},
+	"i40e":          {"e100"},
+	"fm10k":         {"e100"},
+	"i915":          {"i915"},
+	"xe":            {"xe"},
+	"isci":          {"isci"},
+	"ixp4xx_eth":    {"ixp4xx"},
+	"iwlwifi":       {"intel"},
+	"iwlmvm":        {"intel"},
+	"iwldvm":        {"intel"},
+	"intel_ish_ipc": {"dell", "HP", "LENOVO"},
+	"brcmfmac":      {"brcm"},
+	"b43":           {"brcm"},
+	"b43legacy":     {"brcm"},
+	"bnx2":          {"bnx2"},
+	"bnx2x":         {"bnx2x"},
+	"tg3":           {"tigon"},
+	"ath3k":         {"ar3k"},
+	"btqca":         {"qca"},
+	"ath6kl":        {"ath6k"},
+	"ath9k_htc":     {"ath9k_htc"},
+	"ath10k_pci":    {"ath10k"},
+	"ath10k_sdio":   {"ath10k"},
+	"ath11k_pci":    {"ath11k"},
+	"ath12k_pci":    {"ath12k"},
+	"wcn36xx":       {"qcom"},
+	"carl9170":      {"carl9170fw"},
+	"at76c50x_usb":  {"atmel"},
+	"rsi_sdio":      {"rsi"},
+	"rsi_usb":       {"rsi"},
+	"r8169":         {"rtl_nic"},
+	"r8168":         {"rtl_nic"},
+	"rtlwifi":       {"rtlwifi"},
+	"rtl8xxxu":      {"rtlwifi"},
+	"rtl8192ce":     {"rtlwifi"},
+	"rtl8192cu":     {"rtlwifi"},
+	"rtl8192se":     {"rtlwifi"},
+	"rtw88":         {"rtw88"},
+	"rtw89":         {"rtw89"},
+	"btusb":         {"rtl_bt"},
+	"mt76x0u":       {"mediatek"},
+	"mt76x2u":       {"mediatek"},
+	"mt7601u":       {"mediatek"},
+	"mt7921e":       {"mediatek"},
+	"mt7921u":       {"mediatek"},
+	"mt7915e":       {"mediatek"},
+	"mt7996e":       {"mediatek"},
+	"libertas_sdio": {"libertas"},
+	"libertas_tf":   {"libertas"},
+	"mwifiex":       {"mrvl"},
+	"btmrvl":        {"mrvl"},
+	"mwl8k":         {"mwl8k"},
+	"wfx":           {"wfx"},
+	"wlcore":        {"ti-connectivity"},
+	"wl12xx":        {"ti-connectivity"},
+	"wl18xx":        {"ti-connectivity"},
+	"mlx5_core":     {"mellanox"},
+	"mlx4_core":     {"mellanox"},
+	"mlx4_en":       {"mellanox"},
+	"cxgb3":         {"cxgb3"},
+	"cxgb4":         {"cxgb4"},
+	"cxgb4vf":       {"cxgb4"},
+	"qed":           {"qed"},
+	"qlcnic":        {"qlogic"},
+	"qla3xxx":       {"qlogic"},
+	"liquidio":      {"liquidio"},
+	"nfp":           {"netronome"},
+	"myri10ge":      {"myricom"},
+	"snd_korg1212":  {"korg"},
+	"snd_emi26":     {"emi26"},
+	"snd_emi62":     {"emi62"},
+	"snd_sb16":      {"sb16"},
+	"keyspan":       {"keyspan"},
+	"keyspan_pda":   {"keyspan_pda"},
+	"io_edgeport":   {"edgeport"},
+	"mxuport":       {"moxa"},
+	"av7110":        {"av7110"},
+	"go7007":        {"go7007"},
+	"cpia2":         {"cpia2"},
+	"vicam":         {"vicam"},
+	"ueagle-atm":    {"ueagle-atm"},
+	"atusb":         {"atusb"},
+	"yam":           {"yam"},
+	"mgag200":       {"matrox"},
+}
+
+// DetectedFirmwareFor returns the firmware directories a machine needs given
+// its loaded kernel modules and CPU vendor string ("AuthenticAMD" pulls in
+// the AMD CPU microcode). The result is sorted.
+func DetectedFirmwareFor(modules []string, cpuVendor string) []string {
+	seen := map[string]bool{}
+	for _, module := range modules {
+		for _, dir := range firmwareModuleDirs[strings.ToLower(strings.TrimSpace(module))] {
+			seen[dir] = true
 		}
 	}
-	return nil
+	if strings.TrimSpace(cpuVendor) == "AuthenticAMD" {
+		seen["amd-ucode"] = true
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	det := make([]string, 0, len(seen))
+	for dir := range seen {
+		det = append(det, dir)
+	}
+	sort.Strings(det)
+	return det
+}
+
+// DetectedFirmwareSections probes the running system (/proc/modules and
+// /proc/cpuinfo) and returns the firmware directories its kernel already
+// loaded drivers for. It is used to pre-select the firmware-sections picker.
+func DetectedFirmwareSections() []string {
+	var modules []string
+	if data, err := os.ReadFile("/proc/modules"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if fields := strings.Fields(line); len(fields) > 0 {
+				modules = append(modules, fields[0])
+			}
+		}
+	}
+	cpuVendor := ""
+	if data, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if fields := strings.Fields(line); len(fields) >= 3 && fields[0] == "vendor_id" {
+				cpuVendor = fields[2]
+				break
+			}
+		}
+	}
+	return DetectedFirmwareFor(modules, cpuVendor)
 }
 
 // DefaultPortageRsyncMirror is the canonical rsync URI used when no custom

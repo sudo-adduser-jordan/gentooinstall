@@ -31,6 +31,7 @@ type field struct {
 	// multi choice
 	getStrings  func(*config.Config) []string
 	setStrings  func(*config.Config, []string)
+	preSeed     func(*config.Config) []string // pre-select when value is empty
 	multiChoice bool
 
 	// watchMirror marks the "Gentoo mirror" text row so editing it re-probes
@@ -54,6 +55,10 @@ type option struct {
 	Value       string
 	Desc        string
 	primaryDesc bool // render Desc as the leading label instead of Value
+	// groupDirs marks a category row that toggles all listed directories at
+	// once, and indent marks member rows shown beneath it.
+	groupDirs []string
+	indent    bool
 }
 
 func sep(label string) *field {

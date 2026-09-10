@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,6 +78,52 @@ func TestRoundTrip(testingT *testing.T) {
 	}
 	if !got.Disk.UseSwap || !got.Disk.UseLuks || got.Disk.SwapSize != "8GiB" {
 		testingT.Fatalf("defaults lost: %+v", got.Disk)
+	}
+}
+
+func TestDetectedFirmwareFor(testingT *testing.T) {
+	got := config.DetectedFirmwareFor(
+		[]string{"iwlwifi", "amdgpu", "r8169", "intel_ish_ipc"}, "GenuineIntel")
+	want := []string{"HP", "LENOVO", "amdgpu", "dell", "intel", "rtl_nic"}
+	if !slices.Equal(got, want) {
+		testingT.Fatalf("DetectedFirmwareFor = %v, want %v", got, want)
+	}
+
+	got = config.DetectedFirmwareFor([]string{"mt7921e", "brcmfmac"}, "AuthenticAMD")
+	want = []string{"amd-ucode", "brcm", "mediatek"}
+	if !slices.Equal(got, want) {
+		testingT.Fatalf("DetectedFirmwareFor(amd) = %v, want %v", got, want)
+	}
+
+	if got := config.DetectedFirmwareFor(nil, ""); got != nil {
+		testingT.Fatalf("DetectedFirmwareFor with no input = %v, want none", got)
+	}
+
+	// Intel CPUs need no firmware beyond what their modules select; AMD CPUs
+	// always pull in the CPU microcode directory.
+	got = config.DetectedFirmwareFor(nil, "GenuineIntel")
+	if got != nil {
+		testingT.Fatalf("DetectedFirmwareFor(intel) = %v, want none", got)
+	}
+}
+
+func TestFirmwareCatalogCoversEveryDirectory(testingT *testing.T) {
+	// Every directory previously listed is covered by exactly one category,
+	// so pruning by category never silently drops a firmware tree.
+	seen := map[string]string{}
+	for _, section := range config.FirmwareSections {
+		if section.Name == "" || len(section.Dirs) == 0 {
+			testingT.Fatalf("category %q must have a name and directories", section.Name)
+		}
+		for _, dir := range section.Dirs {
+			if owner, dup := seen[dir]; dup {
+				testingT.Fatalf("directory %q covered by both %q and %q", dir, owner, section.Name)
+			}
+			seen[dir] = section.Name
+		}
+	}
+	if len(seen) != 105 {
+		testingT.Fatalf("catalog covers %d directories, want 105", len(seen))
 	}
 }
 

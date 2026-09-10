@@ -89,6 +89,9 @@ func (model *Model) openMultiPicker(title string, opts []option, current []strin
 	}
 	// Start on the first selected entry.
 	for idx, opt := range opts {
+		if len(opt.groupDirs) > 0 {
+			continue
+		}
 		if sel[opt.Value] {
 			model.overlay.cursor = idx
 			break
@@ -339,6 +342,9 @@ func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if model.overlay.multiChoice {
 				var vals []string
 				for _, opt := range model.overlay.opts { // preserve original order
+					if len(opt.groupDirs) > 0 {
+						continue // category rows never contribute a value themselves
+					}
 					if model.overlay.selected[opt.Value] {
 						vals = append(vals, opt.Value)
 					}
@@ -369,8 +375,23 @@ func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if model.overlay.selected == nil {
 						model.overlay.selected = map[string]bool{}
 					}
-					val := opts[model.overlay.cursor].Value
-					model.overlay.selected[val] = !model.overlay.selected[val]
+					opt := opts[model.overlay.cursor]
+					if len(opt.groupDirs) > 0 {
+						// Category row: select all members if any are missing,
+						// otherwise clear them all.
+						allSelected := true
+						for _, dir := range opt.groupDirs {
+							if !model.overlay.selected[dir] {
+								allSelected = false
+								break
+							}
+						}
+						for _, dir := range opt.groupDirs {
+							model.overlay.selected[dir] = !allSelected
+						}
+					} else {
+						model.overlay.selected[opt.Value] = !model.overlay.selected[opt.Value]
+					}
 				}
 				return model, nil
 			}
@@ -578,6 +599,9 @@ func (model *Model) renderOverlay() string {
 		for idx := start; idx < end; idx++ {
 			opt := opts[idx]
 			marker := "  "
+			if opt.indent {
+				marker += "  "
+			}
 			style := lipgloss.NewStyle()
 			if idx == cur {
 				style = selectedRowStyle
@@ -586,7 +610,22 @@ func (model *Model) renderOverlay() string {
 				}
 			}
 			if model.overlay.multiChoice {
-				if model.overlay.selected[opt.Value] {
+				if len(opt.groupDirs) > 0 {
+					count := 0
+					for _, dir := range opt.groupDirs {
+						if model.overlay.selected[dir] {
+							count++
+						}
+					}
+					switch {
+					case count == len(opt.groupDirs):
+						marker += "[" + okStyle.Render("✓") + "] "
+					case count > 0:
+						marker += "[" + unsetStyle.Render("-") + "] "
+					default:
+						marker += "[ ] "
+					}
+				} else if model.overlay.selected[opt.Value] {
 					marker += "[" + okStyle.Render("✓") + "] "
 				} else {
 					marker += "[ ] "

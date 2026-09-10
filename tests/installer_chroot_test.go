@@ -280,11 +280,14 @@ func TestMainInstallGentooInChrootFirmwareSections(testingT *testing.T) {
 	if !containsLine(lines, "emerge --verbose --getbinpkg linux-firmware") {
 		testingT.Fatalf("linux-firmware should be installed, got:\n%q", lines)
 	}
-	// The unselected sections are pruned (the run is one rm per category).
+	// The unselected directories are pruned, including members of the intel
+	// category that are not themselves selected (e100, isci, ...).
 	for _, want := range []string{
 		"rm -rf /lib/firmware/amdgpu",
 		"rm -rf /lib/firmware/nvidia",
 		"rm -rf /lib/firmware/wfx",
+		"rm -rf /lib/firmware/e100",
+		"rm -rf /lib/firmware/isci",
 	} {
 		if !containsLine(lines, want) {
 			testingT.Fatalf("missing firmware prune %q in:\n%q", want, lines)
