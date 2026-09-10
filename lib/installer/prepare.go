@@ -20,17 +20,19 @@ func WantedPrograms(ctx *Context) (required, wanted []string) {
 	required = []string{"gpg", "hwclock", "lsblk", "ntpd", "partprobe",
 		"sgdisk"}
 	wanted = []string{}
-	if ctx.Layout.Flags.UsedBtrfs {
-		required = append(required, "btrfs")
-	}
-	if ctx.Layout.Flags.UsedZFS {
-		required = append(required, "zfs")
-	}
-	if ctx.Layout.Flags.UsedRaid {
-		required = append(required, "mdadm")
-	}
-	if ctx.Layout.Flags.UsedLuks {
-		required = append(required, "cryptsetup")
+	if ctx.Layout != nil {
+		if ctx.Layout.Flags.UsedBtrfs {
+			required = append(required, "btrfs")
+		}
+		if ctx.Layout.Flags.UsedZFS {
+			required = append(required, "zfs")
+		}
+		if ctx.Layout.Flags.UsedRaid {
+			required = append(required, "mdadm")
+		}
+		if ctx.Layout.Flags.UsedLuks {
+			required = append(required, "cryptsetup")
+		}
 	}
 	if !HasProgram("rhash") {
 		wanted = append(wanted, "rhash") // optional, sha512sum suffices

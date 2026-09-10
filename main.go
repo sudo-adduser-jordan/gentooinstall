@@ -448,9 +448,15 @@ func runTUI(cfgPath string, demo bool) {
 	// imports the installer package, so main injects the lookup.
 	model.SetPrereq(func() tui.Prereq {
 		runner := installer.NewRunner(io.Discard, io.Discard)
+		ctx := &installer.Context{Runner: runner}
+		// The layout flags decide the extra host programs (btrfs, zfs,
+		// mdadm, cryptsetup), so attach the real layout when it builds.
+		if layout, err := disklayout.BuildFromConfig(cfg, ""); err == nil {
+			ctx.Layout = layout
+		}
 		return tui.Prereq{
 			RootOK:          os.Geteuid() == 0,
-			MissingPrograms: installer.MissingPrograms(&installer.Context{Runner: runner}),
+			MissingPrograms: installer.MissingPrograms(ctx),
 		}
 	})
 

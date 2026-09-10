@@ -2,6 +2,7 @@
 package tests
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,29 @@ func TestWantedProgramsComposition(testingT *testing.T) {
 	req, _ = installer.WantedPrograms(lc)
 	if !containsAll(req, "cryptsetup") {
 		testingT.Fatalf("luks required = %v", req)
+	}
+}
+
+// TestWantedProgramsNilLayout guards the TUI's host-prerequisite probe,
+// which builds a bare Context (no Layout) before the layout is finalized:
+// the required list must not panic and must stay the base set.
+func TestWantedProgramsNilLayout(testingT *testing.T) {
+	runner := installer.NewRunner(io.Discard, io.Discard)
+	runner.LookPath = func(string) bool { return false }
+	ctx := &installer.Context{Runner: runner}
+	req, _ := installer.WantedPrograms(ctx)
+	if !containsAll(req, "gpg", "sgdisk", "lsblk", "partprobe", "hwclock", "ntpd") {
+		testingT.Fatalf("nil-layout required = %v", req)
+	}
+	for _, bad := range []string{"cryptsetup", "mdadm", "zfs", "btrfs"} {
+		for _, prog := range req {
+			if prog == bad {
+				testingT.Fatalf("nil-layout required unexpectedly contains %q: %v", bad, req)
+			}
+		}
+	}
+	if missing := installer.MissingPrograms(ctx); len(missing) == 0 {
+		testingT.Fatal("nil-layout MissingPrograms must still report missing host programs")
 	}
 }
 
