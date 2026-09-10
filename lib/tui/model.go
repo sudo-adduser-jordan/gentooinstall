@@ -48,6 +48,10 @@ type Model struct {
 	cfgPath string
 	dirty   bool
 	hasEFI  bool
+	// rootOK gates the whole UI: an unprivileged user gets the centered
+	// root-required page instead of the configurator (the demo bypasses it).
+	rootOK   bool
+	prereqFn func() Prereq
 
 	tabs      []tabDef
 	active    int
@@ -216,7 +220,7 @@ func (model *Model) probeMirror() tea.Cmd {
 // New builds the configurator model.
 func New(cfg *config.Config, cfgPath string) *Model {
 	model := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI(),
-		mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror),
+		rootOK: true, mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror),
 		rawFollow: true, rawDirty: true}
 	model.tabs = buildTabs(model)
 	for range model.tabs {
@@ -234,6 +238,12 @@ func New(cfg *config.Config, cfgPath string) *Model {
 // checks. Production leaves it at the sysinfo.HasEFI result probed in New;
 // tests use it to simulate a BIOS-booted live system.
 func (model *Model) SetHasEFI(has bool) { model.hasEFI = has }
+
+// SetRoot sets whether the process runs with root privileges. A false value
+// replaces the whole UI with the root-required page (see renderRootRequired)
+// so an unprivileged user cannot walk into a doomed installation. The demo
+// recording keeps the gate off via main, and tests default to root.
+func (model *Model) SetRoot(ok bool) { model.rootOK = ok }
 
 // mirrorHostName returns the host portion of the mirror URL for display,
 // falling back to "mirror" when the URL cannot be parsed.
@@ -376,6 +386,15 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, tea.Batch(model.mirrorProbeCmd(), model.mirrorTickCmd())
 
 	case tea.KeyMsg:
+		if !model.rootOK {
+			// Root-required page: only quitting makes sense.
+			switch msg.String() {
+			case "q", "ctrl+c":
+				model.quitNow()
+				return model, tea.Quit
+			}
+			return model, nil
+		}
 		if model.overlay.kind != ovNone {
 			return model.updateOverlay(msg)
 		}
@@ -647,6 +666,10 @@ func (model *Model) View() string {
 		return model.renderTooSmall()
 	}
 
+	if !model.rootOK {
+		return model.renderRootRequired()
+	}
+
 	if model.installing {
 		out := model.renderInstallView()
 		if model.overlay.kind != ovNone {
@@ -799,6 +822,16 @@ func (model *Model) frameWindow(content string) string {
 func (model *Model) renderTooSmall() string {
 	msg := tooSmallStyle.Render("Terminal too small — resize to at least " +
 		fmt.Sprintf("%dx%d", minWidth, minHeight))
+	return lipgloss.Place(model.width, model.height, lipgloss.Center, lipgloss.Center, msg)
+}
+
+// renderRootRequired shows a centered notice instead of the UI when the
+// process runs without root privileges (see SetRoot), using the same
+// presentation as renderTooSmall.
+func (model *Model) renderRootRequired() string {
+	msg := tooSmallStyle.Render("gentooinstall must be run as root to perform an installation.\n\n" +
+		"Re-run it with sudo, or boot the live ISO (it runs as root).\n\n" +
+		"Press q to quit.")
 	return lipgloss.Place(model.width, model.height, lipgloss.Center, lipgloss.Center, msg)
 }
 

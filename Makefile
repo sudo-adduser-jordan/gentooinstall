@@ -30,15 +30,15 @@ cover: test
 	go tool cover -html=$(BIN_DIR)/coverage.out -o $(BIN_DIR)/coverage.html
 
 vm-test: vet
-	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots$' ./tests/
+	GENTOOINSTALL_E2E=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBoots$$' ./tests/
 
 # Full installs inside the VM for every shipped build template. Very long
 # (stage3 download + chroot + kernel per file); opt-in, local-only.
 vm-install: vet
-	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_INSTALL=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestInstallInVM$' ./tests/
+	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_INSTALL=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestInstallInVM$$' ./tests/
 
 vm-test-net: vet
-	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_NET=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBootNetwork$' ./tests/
+	GENTOOINSTALL_E2E=1 GENTOOINSTALL_E2E_NET=1 $(GOTESTSUM) --format testname -- -count=1 -v -run 'TestISOBootNetwork$$' ./tests/
 
 vet:
 	go vet ./...

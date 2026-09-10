@@ -212,6 +212,76 @@ func TestApplyDiskActionsRaid1Luks(testingT *testing.T) {
 	assertCmds(testingT, stub, want...)
 }
 
+func TestApplyDiskActionsUnmountsBusyTarget(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Disk.UseSwap = false
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
+	// Simulate an auto-mounted USB: the target whole disk has a mounted
+	// filesystem and an active swap partition.
+	ctx.TargetResources = func(device string) (mounts, swaps []string) {
+		if device != "/dev/sdX" {
+			testingT.Fatalf("expected whole-disk /dev/sdX, got %s", device)
+		}
+		return []string{"/run/media/user/USB"}, []string{"/dev/sdX1"}
+	}
+
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	assertCmds(testingT, stub,
+		"umount /run/media/user/USB",
+		"swapoff /dev/sdX1",
+		"wipefs --quiet --all --force /dev/sdX",
+		"sgdisk -Z -U "+uGpt+" /dev/sdX",
+		"sgdisk -n 0:0:+1GiB -t 0:ef00 -u 0:"+uEfi+" /dev/fake-gpt",
+		"sgdisk -n 0:0:0 -t 0:8300 -u 0:"+uRoot+" /dev/fake-gpt",
+		"wipefs --quiet --all --force /dev/fake-part_efi",
+		"mkfs.fat -F 32 -n efi /dev/fake-part_efi",
+		"wipefs --quiet --all --force /dev/fake-part_root",
+		"mkfs.ext4 -q -L root /dev/fake-part_root",
+	)
+}
+
+func TestApplyDiskActionsUnmountFailureAborts(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Disk.UseSwap = false
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
+	ctx.TargetResources = func(string) (mounts, swaps []string) {
+		return []string{"/run/media/user/USB"}, nil
+	}
+	stub.FailOn = []string{"umount"}
+
+	err := installer.ApplyDiskActions(ctx)
+	if err == nil {
+		testingT.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "could not unmount") ||
+		!strings.Contains(err.Error(), "/dev/sdX") {
+		testingT.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplyDiskActionsReleasesNothingWhenNoBusyResources(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Disk.UseSwap = false
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
+	ctx.TargetResources = func(string) (mounts, swaps []string) { return nil, nil }
+
+	if err := installer.ApplyDiskActions(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	assertCmds(testingT, stub,
+		"wipefs --quiet --all --force /dev/sdX",
+		"sgdisk -Z -U "+uGpt+" /dev/sdX",
+		"sgdisk -n 0:0:+1GiB -t 0:ef00 -u 0:"+uEfi+" /dev/fake-gpt",
+		"sgdisk -n 0:0:0 -t 0:8300 -u 0:"+uRoot+" /dev/fake-gpt",
+		"wipefs --quiet --all --force /dev/fake-part_efi",
+		"mkfs.fat -F 32 -n efi /dev/fake-part_efi",
+		"wipefs --quiet --all --force /dev/fake-part_root",
+		"mkfs.ext4 -q -L root /dev/fake-part_root",
+	)
+}
+
 func TestApplyDiskActionsPartprobeWhenAvailable(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false

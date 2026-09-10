@@ -75,6 +75,86 @@ func waitPartition(ctx *Context, newID string) error {
 		"(run partprobe and check dmesg for kernel partition events)", newID)
 }
 
+// targetBusyResources returns the mountpoints and active swap devices under
+// a whole-disk device that would keep the kernel from switching to a freshly
+// written partition table: any mounted filesystem or enabled swap holds the
+// old partitions open, so partprobe reports "in use" and the new partition
+// nodes never appear (the failure mode when installing onto an auto-mounted
+// USB stick).
+func (ctx *Context) targetBusyResources(device string) (mounts, swaps []string) {
+	if ctx.TargetResources != nil {
+		return ctx.TargetResources(device)
+	}
+	// In capture/testing mode there is no live system to probe; without an
+	// injected stub nothing is busy (mirrors waitPartition's Exec fast-path).
+	if ctx.Runner.Exec != nil {
+		return nil, nil
+	}
+	out, err := ctx.Runner.QuietRun("lsblk", "--noheadings", "--raw", "--paths",
+		"--output", "NAME,MOUNTPOINTS", device)
+	if err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) > 1 {
+				mounts = append(mounts, fields[1:]...)
+			}
+		}
+	}
+	data, err := os.ReadFile("/proc/swaps")
+	if err != nil {
+		return mounts, nil
+	}
+	base, err := filepath.EvalSymlinks(device)
+	if err != nil {
+		base = device
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 5 || fields[1] != "partition" {
+			continue
+		}
+		if isChildDevice(base, fields[0]) {
+			swaps = append(swaps, fields[0])
+		}
+	}
+	return mounts, swaps
+}
+
+// isChildDevice reports whether candidate names a partition of the
+// whole-disk device base (/dev/sdb -> /dev/sdb1, /dev/nvme0n1 -> /dev/nvme0n1p1).
+func isChildDevice(base, candidate string) bool {
+	rest := strings.TrimPrefix(candidate, base)
+	if rest == "" || rest == candidate {
+		return false
+	}
+	if rest[0] == 'p' {
+		rest = rest[1:]
+	}
+	return len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9'
+}
+
+// unmountTarget releases every filesystem and swap under a whole-disk device
+// before it is repartitioned. Called from actCreateGPT so the kernel can
+// accept the freshly written partition table on the first partprobe.
+func unmountTarget(ctx *Context, device string) error {
+	mounts, swaps := ctx.targetBusyResources(device)
+	if len(mounts) == 0 && len(swaps) == 0 {
+		return nil
+	}
+	ctx.Runner.logf("Releasing filesystems and swap on %s", device)
+	for _, mountpoint := range mounts {
+		if err := ctx.Runner.Try("umount", mountpoint); err != nil {
+			return fmt.Errorf("could not unmount %q (target %s): %w", mountpoint, device, err)
+		}
+	}
+	for _, swap := range swaps {
+		if err := ctx.Runner.Try("swapoff", swap); err != nil {
+			return fmt.Errorf("could not disable swap on %q (target %s): %w", swap, device, err)
+		}
+	}
+	return nil
+}
+
 // ApplyDiskActions executes the layout's action list in order
 // (port of apply_disk_actions and all disk_* functions).
 func ApplyDiskActions(ctx *Context) error {
@@ -122,6 +202,9 @@ func operandDevice(ctx *Context, action *disklayout.Action) (string, string, err
 func actCreateGPT(ctx *Context, action *disklayout.Action) error {
 	device, desc, err := operandDevice(ctx, action)
 	if err != nil {
+		return err
+	}
+	if err := unmountTarget(ctx, device); err != nil {
 		return err
 	}
 	ptuuid, _ := ctx.Layout.UUIDOf(action.NewID)

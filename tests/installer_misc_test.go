@@ -87,6 +87,105 @@ func TestRunnerHasProgramStub(testingT *testing.T) {
 	}
 }
 
+func TestMissingPrograms(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, _ := testContext(testingT, cfg, nil)
+	// Everything present except ntpd and sgdisk.
+	ctx.Runner.LookPath = func(name string) bool { return name != "ntpd" && name != "sgdisk" }
+
+	missing := installer.MissingPrograms(ctx)
+	if len(missing) != 2 || missing[0] != "ntpd" || missing[1] != "sgdisk" {
+		testingT.Fatalf("MissingPrograms = %v, want [ntpd sgdisk]", missing)
+	}
+	err := installer.CheckPrograms(ctx)
+	if err == nil || !strings.Contains(err.Error(), "missing required programs: ntpd sgdisk") {
+		testingT.Fatalf("CheckPrograms error = %v, want missing ntpd sgdisk", err)
+	}
+}
+
+func TestMissingProgramsNone(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, _ := testContext(testingT, cfg, nil)
+	ctx.Runner.LookPath = func(string) bool { return true }
+	if missing := installer.MissingPrograms(ctx); len(missing) != 0 {
+		testingT.Fatalf("all programs present, got missing %v", missing)
+	}
+}
+
+func TestProgramPackagesAndCmdline(testingT *testing.T) {
+	pkgs := installer.ProgramPackages([]string{"ntpd", "sgdisk", "lsblk", "gpg", "bogus-tool"})
+	want := []string{"ntp", "sgdisk", "util-linux", "gnupg", "bogus-tool"}
+	if strings.Join(pkgs, " ") != strings.Join(want, " ") {
+		testingT.Fatalf("ProgramPackages = %v, want %v", pkgs, want)
+	}
+	if cmd := installer.InstallProgramsCmdline([]string{"ntpd", "sgdisk"}); cmd != "apk add --no-cache ntp sgdisk" {
+		testingT.Fatalf("InstallProgramsCmdline = %q", cmd)
+	}
+}
+
+func TestInstallMissingProgramsInstalls(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, stub := testContext(testingT, cfg, nil)
+	// ntpd/sgdisk are missing until the apk install has been recorded.
+	ctx.Runner.LookPath = func(name string) bool {
+		switch name {
+		case "apk":
+			return true
+		case "ntpd", "sgdisk":
+			for _, line := range stub.Lines() {
+				if strings.HasPrefix(line, "apk add --no-cache") {
+					return true
+				}
+			}
+			return false
+		default:
+			return true
+		}
+	}
+
+	if err := installer.InstallMissingPrograms(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	assertCmds(testingT, stub, "apk add --no-cache ntp sgdisk")
+	if missing := installer.MissingPrograms(ctx); len(missing) != 0 {
+		testingT.Fatalf("still missing after install: %v", missing)
+	}
+}
+
+func TestInstallMissingProgramsNoApk(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, stub := testContext(testingT, cfg, nil)
+	ctx.Runner.LookPath = func(name string) bool { return name != "ntpd" && name != "sgdisk" && name != "apk" }
+
+	err := installer.InstallMissingPrograms(ctx)
+	if err == nil || !strings.Contains(err.Error(), "no apk") {
+		testingT.Fatalf("expected no-apk error, got %v", err)
+	}
+	if len(stub.Lines()) != 0 {
+		testingT.Fatalf("no commands must run without apk, got %v", stub.Lines())
+	}
+}
+
+func TestInstallMissingProgramsStillMissing(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, stub := testContext(testingT, cfg, nil)
+	// apk succeeds but ntpd/sgdisk stay absent: the follow-up check fails.
+	ctx.Runner.LookPath = func(name string) bool {
+		switch name {
+		case "apk", "gpg", "hwclock", "lsblk", "partprobe":
+			return true
+		default:
+			return false
+		}
+	}
+
+	err := installer.InstallMissingPrograms(ctx)
+	if err == nil || !strings.Contains(err.Error(), "still missing required programs") {
+		testingT.Fatalf("expected still-missing error, got %v", err)
+	}
+	assertCmds(testingT, stub, "apk add --no-cache ntp sgdisk")
+}
+
 func TestMountByIDSkipAndMount(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, stub := testContext(testingT, cfg, nil)

@@ -38,28 +38,98 @@ func WantedPrograms(ctx *Context) (required, wanted []string) {
 	return required, wanted
 }
 
-// CheckPrograms verifies all required programs are present.
-func CheckPrograms(ctx *Context) error {
-	req, want := WantedPrograms(ctx)
+// MissingPrograms returns the required programs from WantedPrograms that
+// are not present on PATH. The runner's LookPath stub, when set, decides
+// availability so tests can control the host environment.
+func MissingPrograms(ctx *Context) []string {
+	required, _ := WantedPrograms(ctx)
 	var missing []string
-	for _, program := range req {
-		if !HasProgram(program) {
+	for _, program := range required {
+		if !ctx.Runner.HasProgram(program) {
 			missing = append(missing, program)
 		}
 	}
-	if len(missing) > 0 {
+	return missing
+}
+
+// CheckPrograms verifies all required programs are present.
+func CheckPrograms(ctx *Context) error {
+	if missing := MissingPrograms(ctx); len(missing) > 0 {
 		return fmt.Errorf("missing required programs: %s", strings.Join(missing, " "))
 	}
+	_, want := WantedPrograms(ctx)
 	if len(want) > 0 {
 		var mw []string
 		for _, program := range want {
-			if !HasProgram(program) {
+			if !ctx.Runner.HasProgram(program) {
 				mw = append(mw, program)
 			}
 		}
 		if len(mw) > 0 {
 			ctx.Runner.logf("Missing optional programs: %s", strings.Join(mw, " "))
 		}
+	}
+	return nil
+}
+
+// apkPackages maps a required executable name to the Alpine package that
+// provides it. The live ISO is Alpine-based, so apk is the package manager
+// used to supply missing host tools. Unknown programs fall back to the
+// executable name itself (e.g. "sgdisk" is a valid Alpine package).
+var apkPackages = map[string]string{
+	"gpg":        "gnupg",
+	"hwclock":    "busybox",
+	"lsblk":      "util-linux",
+	"ntpd":       "ntp",
+	"partprobe":  "parted",
+	"btrfs":      "btrfs-progs",
+	"zfs":        "zfs",
+	"mdadm":      "mdadm",
+	"cryptsetup": "cryptsetup",
+	"rhash":      "rhash",
+}
+
+// ProgramPackages maps executable names to the Alpine packages that
+// provide them (falling back to the name itself).
+func ProgramPackages(programs []string) []string {
+	packages := make([]string, len(programs))
+	for index, program := range programs {
+		if pkg, ok := apkPackages[program]; ok {
+			packages[index] = pkg
+		} else {
+			packages[index] = program
+		}
+	}
+	return packages
+}
+
+// InstallProgramsCmdline renders the apk command that would install the
+// given programs, for display in prompts and logs.
+func InstallProgramsCmdline(programs []string) string {
+	return "apk " + CommandLine("add", append([]string{"--no-cache"}, ProgramPackages(programs)...)...)
+}
+
+// InstallMissingPrograms installs the missing required host programs with
+// apk (the live ISO's package manager). It is a no-op when nothing is
+// missing and reports an error when apk is unavailable or programs are
+// still missing after the install (e.g. no network).
+func InstallMissingPrograms(ctx *Context) error {
+	missing := MissingPrograms(ctx)
+	if len(missing) == 0 {
+		return nil
+	}
+	if !ctx.Runner.HasProgram("apk") {
+		return fmt.Errorf("no apk found to install missing programs; install the required "+
+			"packages on this system yourself: %s", strings.Join(ProgramPackages(missing), " "))
+	}
+	ctx.Runner.logf("Installing missing programs: %s", InstallProgramsCmdline(missing))
+	args := append([]string{"add", "--no-cache"}, ProgramPackages(missing)...)
+	if err := ctx.Runner.Try("apk", args...); err != nil {
+		return err
+	}
+	if still := MissingPrograms(ctx); len(still) > 0 {
+		return fmt.Errorf("still missing required programs: %s",
+			strings.Join(still, " "))
 	}
 	return nil
 }

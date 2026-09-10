@@ -16,6 +16,10 @@ type Parsed struct {
 	Rest        []string
 	ShowHelp    bool
 	ShowVersion bool
+	// Demo marks a TUI run driven by the VHS demo recorder. It bypasses the
+	// root gate (the simulation is non-destructive) so the GIF can be
+	// produced by a regular user.
+	Demo bool
 }
 
 // ParseArgs parses args (typically os.Args[1:]) without side effects:
@@ -38,24 +42,26 @@ func ParseArgs(args []string) (Parsed, error) {
 			}
 			index++
 			parsed.CfgPath = args[index]
-case "install":
-		if parsed.Mode == "demo" {
-			return parsed, fmt.Errorf("invalid argument '%s'", arg)
-		}
-		parsed.Mode = "install"
-	case "demo":
-		if parsed.Mode == "install" {
-			return parsed, fmt.Errorf("invalid argument '%s'", arg)
-		}
-		parsed.Mode = "demo"
-		parsed.Rest = args[index+1:]
-		index = len(args)
+		case "install":
+			if parsed.Mode == "demo" {
+				return parsed, fmt.Errorf("invalid argument '%s'", arg)
+			}
+			parsed.Mode = "install"
+		case "demo":
+			if parsed.Mode == "install" {
+				return parsed, fmt.Errorf("invalid argument '%s'", arg)
+			}
+			parsed.Mode = "demo"
+			parsed.Rest = args[index+1:]
+			index = len(args)
 		case "chroot":
 			parsed.Mode = "chroot"
 			parsed.Rest = args[index+1:]
 			index = len(args)
 		case "--in-chroot":
 			parsed.Mode = "in-chroot"
+		case "--demo":
+			parsed.Demo = true
 		default:
 			if parsed.CfgPath == "" && !strings.HasPrefix(arg, "-") {
 				parsed.CfgPath = arg // positional config for TUI/install mode

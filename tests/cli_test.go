@@ -57,6 +57,10 @@ func TestParseArgsModes(testingT *testing.T) {
 	if err != nil || parsed.CfgPath != "custom.toml" {
 		testingT.Fatalf("positional parse = %+v, %v", parsed, err)
 	}
+	parsed, err = cli.ParseArgs([]string{"--demo"})
+	if err != nil || !parsed.Demo || parsed.Mode != "" {
+		testingT.Fatalf("--demo parse = %+v, %v", parsed, err)
+	}
 }
 
 func TestParseArgsErrors(testingT *testing.T) {

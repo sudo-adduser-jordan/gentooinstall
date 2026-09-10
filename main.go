@@ -147,7 +147,7 @@ func main() {
 
 	switch mode {
 	case "":
-		runTUI(cfgAbs)
+		runTUI(cfgAbs, parsed.Demo)
 	case "install":
 		runInstall(cfgAbs)
 	case "chroot":
@@ -373,7 +373,7 @@ func demoTape(out string) string {
 		// screen-scoped waits a larger budget than the 15s default.
 		"Set WaitTimeout 30s",
 		"",
-		`Type "` + binPath + `"`,
+		`Type "` + binPath + ` --demo"`,
 		"Enter",
 		"Sleep 1.2s",
 		"",
@@ -422,7 +422,7 @@ func argv0() string {
 	return "gentooinstall"
 }
 
-func runTUI(cfgPath string) {
+func runTUI(cfgPath string, demo bool) {
 	// Under CI (e.g. the GitHub Actions demo-GIF job), termenv/lipgloss
 	// detect no color support and render monochrome, even though the VHS
 	// recording terminal supports truecolor. Force a color profile so the
@@ -440,6 +440,18 @@ func runTUI(cfgPath string) {
 	model := tui.New(cfg, cfgPath)
 	model.SetInstallFunc(func() error {
 		return runInstallTUI(cfg, cfgPath)
+	})
+	// Unprivileged users get the root-required page instead of the whole
+	// UI; the demo recording (a simulated install) bypasses the gate.
+	model.SetRoot(os.Geteuid() == 0 || demo)
+	// Host-prerequisite probe shown on the Install tab: the TUI never
+	// imports the installer package, so main injects the lookup.
+	model.SetPrereq(func() tui.Prereq {
+		runner := installer.NewRunner(io.Discard, io.Discard)
+		return tui.Prereq{
+			RootOK:          os.Geteuid() == 0,
+			MissingPrograms: installer.MissingPrograms(&installer.Context{Runner: runner}),
+		}
 	})
 
 	// The TUI always renders to the caller's terminal. As the live-ISO init
@@ -603,6 +615,25 @@ func runInstall(cfgPath string) {
 	if err := installer.CheckFilesystemSupport(ctx); err != nil {
 		fatal("%v", err)
 	}
+	// The live ISO ships the toolset, but a degraded rootfs or a different
+	// host may lack some programs. Ask before aborting: installing them is
+	// a one-liner on the Alpine live rootfs (apk). Non-interactive runs
+	// (GENTOOINSTALL_ASSUME_YES) answer yes automatically.
+	if missing := installer.MissingPrograms(ctx); len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "[!] Missing required programs: %s\n", strings.Join(missing, " "))
+		ok, err := installer.AskYesNo(ctx.Runner, "Install them now via apk?", true)
+		if err != nil {
+			fatal("%v", err)
+		}
+		if ok {
+			if err := installer.InstallMissingPrograms(ctx); err != nil {
+				fatal("%v", err)
+			}
+			fmt.Println("[+] All required programs are present")
+		} else {
+			fatal("missing required programs: %s", strings.Join(missing, " "))
+		}
+	}
 	if err := installer.PrepareEnvironment(ctx); err != nil {
 		fatal("%v", err)
 	}
@@ -672,10 +703,11 @@ func summarizeAndConfirm(ctx *installer.Context) {
 		fmt.Println("[+] You have chosen an existing disk configuration. No devices will")
 		fmt.Println("    actually be re-partitioned or formatted.")
 	} else {
-		fmt.Fprintln(os.Stderr, "[!] Please ensure that all selected devices are fully unmounted and are")
-		fmt.Fprintln(os.Stderr, "    not otherwise in use by the system. This includes stopping mdadm arrays")
-		fmt.Fprintln(os.Stderr, "    and closing opened luks volumes if applicable for all relevant devices.")
-		fmt.Fprintln(os.Stderr, "    Otherwise, automatic partitioning may fail.")
+		fmt.Fprintln(os.Stderr, "[!] All filesystems and swap on the selected devices will be released")
+		fmt.Fprintln(os.Stderr, "    (unmounted / swapoff'd) automatically before partitioning. Please")
+		fmt.Fprintln(os.Stderr, "    ensure the devices are otherwise not in use (e.g. stop mdadm arrays")
+		fmt.Fprintln(os.Stderr, "    and close opened luks volumes if applicable). Otherwise, automatic")
+		fmt.Fprintln(os.Stderr, "    partitioning may fail.")
 	}
 
 	ok, err := installer.AskYesNo(ctx.Runner,
@@ -791,6 +823,31 @@ func (inst *tuiInstaller) awaitPhaseDecision(cmdline string, err error) tui.Inst
 	return inst.awaitDecisionCore(cmdline, err)
 }
 
+// ensureHostPrograms offers to install any missing required host programs
+// through the live ISO's apk before the install proceeds. The user answers
+// through the install-window decision panel: Retry runs the apk install and
+// re-checks, Abort stops the installation.
+func (inst *tuiInstaller) ensureHostPrograms(ctx *installer.Context) error {
+	for {
+		missing := installer.MissingPrograms(ctx)
+		if len(missing) == 0 {
+			return nil
+		}
+		cmdline := installer.InstallProgramsCmdline(missing)
+		errMsg := fmt.Sprintf("The live system is missing required programs: %s. "+
+			"Choose Retry to install them now (needs network), or Abort to stop the installation.",
+			strings.Join(missing, " "))
+		switch inst.awaitDecisionCore(cmdline, errors.New(errMsg)) {
+		case tui.DecideAbort:
+			return fmt.Errorf("missing required programs: %s", strings.Join(missing, " "))
+		default:
+			if err := installer.InstallMissingPrograms(ctx); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 // awaitDecisionCore implements the shared decision loop.
 func (inst *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.InstallDecision {
 	inst.decided = true
@@ -880,6 +937,10 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		return err
 	}
 
+	inst.logf("Checking required programs")
+	if err := inst.ensureHostPrograms(ctx); err != nil {
+		return err
+	}
 	inst.logf("Preparing installation environment")
 	inst.logf("Configured disk layout:")
 	inst.logf("%s", ctx.Layout.SummaryPlain())

@@ -59,6 +59,13 @@ type Context struct {
 	// keep the recorded command sequence independent of the host.
 	IsMountpoint func(path string) bool
 
+	// TargetResources returns the mountpoints and active swap devices under a
+	// whole-disk target device, so ApplyDiskActions can release them before
+	// repartitioning. Production leaves it nil so the live system is probed
+	// (lsblk + /proc/swaps); tests inject a stub to keep the recorded command
+	// sequence independent of the host.
+	TargetResources func(device string) (mounts, swaps []string)
+
 	// Stat, when non-nil, replaces os.Stat for host-firmware detection
 	// (EFI). Production leaves it nil so /sys/firmware/efi is probed on the
 	// real host; tests inject a stub to keep behavior independent of the

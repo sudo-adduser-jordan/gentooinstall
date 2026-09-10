@@ -177,6 +177,7 @@ qemu-system-x86_64 \
   -device e1000,netdev=net0 \
   -nographic -serial stdio -monitor none
 
+cd ~/Documents/GitHub/gentooinstall; make build; ./bin/gentooinstall
 
 
 # UEFI: same as above plus the two pflash drives:

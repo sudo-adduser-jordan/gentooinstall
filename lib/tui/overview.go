@@ -172,6 +172,12 @@ func renderInstallTab(model *Model) string {
 		body.WriteString("\n")
 	}
 
+	if prereq := model.renderPrereq(width); prereq != "" {
+		body.WriteString(sectionRule("Host prerequisites", width) + "\n\n")
+		body.WriteString(prereq)
+		body.WriteString("\n")
+	}
+
 	layout, err := layoutForDisplay(cfg)
 	if err != nil {
 		body.WriteString(errorStyle.Render("Disk configuration error: "+err.Error()) + "\n")
