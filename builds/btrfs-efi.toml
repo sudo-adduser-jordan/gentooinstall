@@ -26,6 +26,8 @@
     portage_sync_type = "git"
     portage_git_mirror = "https://anongit.gentoo.org/git/repo/sync/gentoo.git"
     use_portage_testing = false
+    select_mirrors = true
+    select_mirrors_large_file = true
 
 [packages]
     enabling_repos = []
@@ -35,3 +37,6 @@
 
 [makeconf]
     options = ["jobs"]
+    extra = """
+PORTAGE_FETCH_JOBS=5
+"""

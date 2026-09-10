@@ -267,8 +267,9 @@ func tryDHCP() {
 			logSerial("live: dhcp %s: %v", iface, last)
 		}
 		if len(ifaces) == 0 {
-			logSerial("live: dhcp: no network interfaces to configure")
-			return
+			logSerial("live: dhcp: no interfaces on attempt %d, retrying", attempt)
+			time.Sleep(2 * time.Second)
+			continue
 		}
 		time.Sleep(2 * time.Second)
 	}

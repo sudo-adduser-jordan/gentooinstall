@@ -209,6 +209,20 @@ qemu-system-x86_64 \
 #   -device e1000,netdev=net0 \
 #   -nographic -serial stdio -monitor none
 
+# Max-throughput option: QEMU's user-mode `-netdev user` (SLIRP) is a
+# userspace TCP/IP stack that caps download throughput, so even a good mirror
+# looks slow. For full kernel-level speed under QEMU use a tap device with a
+# host bridge instead (needs root/sudo; the tap must be up on the host before
+# QEMU starts, e.g. `sudo ip tuntap add dev tap0 mode tap` +
+# `sudo ip link set tap0 master br0 up`). Example:
+# qemu-system-x86_64 \
+#   -enable-kvm -cpu host -smp $(nproc) -m 4G \
+#   -cdrom bin/gentooinstall.iso -boot d \
+#   -drive file=bin/gentoo-disk.img,format=qcow2,if=virtio,cache=writeback \
+#   -netdev tap,id=net0,script=no,downscript=no \
+#   -device virtio-net-pci,netdev=net0 \
+#   -nographic -serial stdio -monitor none
+
 ```
 
 Notes:
@@ -219,12 +233,19 @@ Notes:
 - `make iso` (scripts/release.sh) needs network to dl-cdn.alpinelinux.org to
   bootstrap the live rootfs, and host cpio/gzip/grub-mkrescue/xorriso/modprobe.
 - The NIC must be one the live initramfs actually bundles: the ISO ships module
-  files for the build-host kernel, and `e1000` is reliably present. QEMU's
-  user-mode DHCP serves 10.0.2.2/3 and the live init writes /etc/resolv.conf.
-- `virtio-net-pci` works only if the build-host kernel ships a standalone
-  `virtio_net.ko`; distro kernels often build it in, so prefer `e1000`.
-  `make vm-test`'s TestISOBootNetwork boot-tests exactly this e1000 + DHCP +
-  DNS + mirror-reachability path on the serial console.
+  files for the build-host kernel. QEMU's user-mode DHCP serves 10.0.2.2/3 and
+  the live init writes /etc/resolv.conf.
+- Prefer `-device e1000` in the QEMU examples: although virtio-net's ring
+  buffer is faster than the emulated e1000 NIC, QEMU's default `-netdev user`
+  (SLIRP) backend is a userspace TCP/IP stack that becomes the throughput
+  bottleneck either way, and in practice e1000 delivers better real-world
+  download speed there. The live initramfs bundles both `e1000` and
+  `virtio_net` (as long as the build-host kernel ships standalone `.ko` files)
+  and always tries DHCP on whichever NIC QEMU attaches. Use `virtio-net-pci`
+  with the tap-device example below (or another non-SLIRP backend) where the
+  ring-buffer virtio path actually pays off. `make vm-test`'s
+  TestISOBoot/TestISOBootNetwork boot-test the `e1000` + DHCP + DNS +
+  mirror-reachability path on the serial console deterministically.
 - FAT/vfat (`fat`, `vfat`, `nls_cp437`, `nls_ascii`) are bundled for the ESP
   and the FAT32 bios_grub partition only when the build-host kernel ships them
   as modules; when `CONFIG_VFAT_FS=y` the ISO relies on the built-in driver.

@@ -3,7 +3,7 @@
 # builds/custom.toml instead so the template is never overwritten.
 [disk]
     scheme = "classic_single_disk"
-    boot_type = "efi"
+    boot_type = "bios"
     device = "/dev/vda"
     use_swap = false
     use_luks = false
@@ -14,6 +14,7 @@
 
 [system]
     hostname = "gentoo"
+    timezone = "UTC"
     keymap_initramfs_other = false
     locales = ["C.UTF-8 UTF-8"]
     locale = "C.UTF-8"
@@ -32,6 +33,8 @@
     portage_sync_type = "git"
     portage_git_mirror = "https://anongit.gentoo.org/git/repo/sync/gentoo.git"
     use_portage_testing = true
+    select_mirrors = true
+    select_mirrors_large_file = true
 
 [packages]
     enable_sshd = true

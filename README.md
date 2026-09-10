@@ -104,7 +104,7 @@ qemu-system-x86_64 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/x64/OVMF_CODE.4m.fd \
   -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.fd \
   -netdev user,id=net0 \
-  -device e1000,netdev=net0 \
+  -device virtio-net-pci,netdev=net0 \
   -nographic -serial stdio -monitor none
 ```
 
