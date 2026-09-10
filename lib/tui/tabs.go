@@ -156,6 +156,16 @@ func overlayOptions() []option {
 	return out
 }
 
+// firmwareSectionOptions lists the selectable sys-kernel/linux-firmware
+// categories. WiFi entries carry a "(Wi-Fi)" hint in their description.
+func firmwareSectionOptions() []option {
+	out := make([]option, 0, len(config.FirmwareSections))
+	for _, section := range config.FirmwareSections {
+		out = append(out, option{Value: section.Name, Desc: section.Desc})
+	}
+	return out
+}
+
 func buildTabs(model *Model) []tabDef {
 
 	schemeIs := func(schemes ...string) func(*config.Config) bool {
@@ -556,6 +566,45 @@ func buildTabs(model *Model) []tabDef {
 				func(cc *config.Config) bool { return cc.Packages.KernelDeblob },
 				func(cc *config.Config, value bool) { cc.Packages.KernelDeblob = value })
 			field.vis = func(cc *config.Config) bool { return cc.Packages.KernelType == "source" }
+			return field
+		}(),
+		func() *field {
+			field := toggle("Install linux-firmware (non-free)",
+				"Install the sys-kernel/linux-firmware package containing proprietary "+
+					"(non-free) hardware firmware blobs. Turn this off to skip the "+
+					"package entirely. Selecting nothing under 'Firmware sections' "+
+					"installs the full set.",
+				func(cc *config.Config) bool { return cc.Packages.InstallFirmware },
+				func(cc *config.Config, value bool) { cc.Packages.InstallFirmware = value })
+			field.vis = func(cc *config.Config) bool { return !cc.Packages.KernelDeblob }
+			return field
+		}(),
+		func() *field {
+			field := &field{
+				label: "└ Firmware sections",
+				help: "Limit the installed sys-kernel/linux-firmware categories " +
+					"(Wi-Fi entries are hinted with '(Wi-Fi)'). This installs the full " +
+					"package and prunes unselected firmware directories from " +
+					"/lib/firmware. Selecting nothing installs everything.",
+				kind: kMultiChoice,
+				options: func(*config.Config) []option {
+					return firmwareSectionOptions()
+				},
+				filter:     true,
+				getStrings: func(cc *config.Config) []string { return cc.Packages.FirmwareSections },
+				setStrings: func(cc *config.Config, value []string) {
+					cc.Packages.FirmwareSections = value
+				},
+				vis: func(cc *config.Config) bool {
+					return !cc.Packages.KernelDeblob && cc.Packages.InstallFirmware
+				},
+			}
+			field.summ = func(cc *config.Config) string {
+				if len(cc.Packages.FirmwareSections) == 0 {
+					return badgeStyle.Render("all")
+				}
+				return badgeStyle.Render(fmt.Sprintf("%d selected", len(cc.Packages.FirmwareSections)))
+			}
 			return field
 		}(),
 		multiText("Authorized keys (root)",

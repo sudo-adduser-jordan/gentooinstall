@@ -145,9 +145,9 @@ func TestTuiReadOnlyProfileRows(testingT *testing.T) {
 		testingT.Fatalf("Packages view should not expose the concat package list, got:\n%s", view)
 	}
 
-	// Navigate down to the 'Installed by profile' row (visible pos 11)
+	// Navigate down to the 'Installed by profile' row (visible pos 13)
 	// and open the package-list modal.
-	model = rowDownN(model, 11)
+	model = rowDownN(model, 13)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -170,9 +170,9 @@ func TestTuiSelectedProfileOpensPicker(testingT *testing.T) {
 	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 
-	// Navigate down to the 'Selected profile' row (visible pos 10,
-	// after the two make.conf rows and the USE flags row were added) and open the picker.
-	model = rowDownN(model, 10)
+	// Navigate down to the 'Selected profile' row (visible pos 12,
+	// after the two make.conf rows, USE flags row and the firmware rows were added) and open the picker.
+	model = rowDownN(model, 12)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -222,8 +222,8 @@ func TestTuiReposAndPackagesPickers(testingT *testing.T) {
 	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 
-	// Navigate to 'Enable repositories/overlays' (visible pos 4) and open it.
-	model = rowDownN(model, 4)
+	// Navigate to 'Enable repositories/overlays' (visible pos 6) and open it.
+	model = rowDownN(model, 6)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -242,7 +242,7 @@ func TestTuiReposAndPackagesPickers(testingT *testing.T) {
 		testingT.Fatalf("enabling repos = %v, want [guru]", model.Config().Packages.EnablingRepos)
 	}
 
-	// Navigate to 'Additional packages' (visible pos 5) and open the picker.
+	// Navigate to 'Additional packages' (visible pos 7) and open the picker.
 	mm, _ = model.Update(keyDown())
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyEnter())
@@ -273,8 +273,8 @@ func TestTuiMakeConfOptionsPicker(testingT *testing.T) {
 	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
 	model := mm.(*tui.Model)
 
-	// Navigate to 'make.conf options' (visible selectable pos 8).
-	model = rowDownN(model, 8)
+	// Navigate to 'make.conf options' (visible selectable pos 10).
+	model = rowDownN(model, 10)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -302,8 +302,8 @@ func TestTuiMakeConfViewer(testingT *testing.T) {
 	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
 	model := mm.(*tui.Model)
 
-	// Navigate to 'edit make.conf' (visible selectable pos 9).
-	model = rowDownN(model, 9)
+	// Navigate to 'edit make.conf' (visible selectable pos 11).
+	model = rowDownN(model, 11)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
@@ -338,9 +338,10 @@ func TestTuiQEMUDeviceFallback(testingT *testing.T) {
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 	model := appModel
 
-	// Disk tab is active by default. Rows: Partitioning(section),
-	// Partitioning scheme, ├ Boot type, └ Device.
-	model = rowDownN(model, 3)
+	// Disk tab is active by default and the cursor is clamped onto the first
+	// selectable row. Rows: Partitioning scheme(pos 0), ├ Boot type,
+	// └ Device(pos 2).
+	model = rowDownN(model, 2)
 	mm, _ := model.Update(keyEnter()) // open the device picker
 	model = mm.(*tui.Model)
 

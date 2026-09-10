@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"gentooinstall/lib/config"
 	"gentooinstall/lib/tui"
 )
@@ -166,5 +168,78 @@ func TestTuiKernelDeblobSubOption(testingT *testing.T) {
 	}
 	if !model.Dirty() {
 		testingT.Fatal("toggling deblob must mark config dirty")
+	}
+}
+
+func TestTuiFirmwareSubOption(testingT *testing.T) {
+	// On the Packages tab the firmware toggle is always offered unless the
+	// deblob path suppresses the whole firmware install.
+	toggled := config.Default(true)
+	toggled.Packages.InstallFirmware = false
+	appModel := tui.New(toggled, "/tmp/test-gentoo.toml")
+	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
+	model := mm.(*tui.Model)
+	if view := model.View(); !strings.Contains(view, "Install linux-firmware (non-free)") {
+		testingT.Fatalf("firmware toggle should appear on the Packages tab, got:\n%s", view)
+	}
+
+	// The sections multi-pick is hidden while the firmware toggle is off.
+	if view := model.View(); strings.Contains(view, "Firmware sections") {
+		testingT.Fatalf("firmware sections must be hidden when install_firmware is off, got:\n%s", view)
+	}
+
+	// Turn the toggle back on (visible pos 3) and open the sections picker.
+	for step := 0; step < 3; step++ {
+		mm, _ = model.Update(keyDown())
+		model = mm.(*tui.Model)
+	}
+	mm, _ = model.Update(keyEnter())
+	model = mm.(*tui.Model)
+	if !model.Config().Packages.InstallFirmware {
+		testingT.Fatal("toggling the firmware row must set InstallFirmware")
+	}
+
+	// Sections picker is visible now (pos 4). Open it and filter for wifi.
+	mm, _ = model.Update(keyDown())
+	model = mm.(*tui.Model)
+	mm, _ = model.Update(keyEnter())
+	model = mm.(*tui.Model)
+	for _, ch := range "iwlwifi" {
+		mm, _ = model.Update(keyRunes(ch))
+		model = mm.(*tui.Model)
+	}
+	filtered := model.View()
+	if !strings.Contains(filtered, "(Wi-Fi)") {
+		testingT.Fatalf("wifi firmware entries should be hinted, got:\n%s", filtered)
+	}
+
+	// Select the wifi entry and apply. The whole section name is matched.
+	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model = mm.(*tui.Model)
+	mm, _ = model.Update(keyEnter())
+	model = mm.(*tui.Model)
+	sections := model.Config().Packages.FirmwareSections
+	if len(sections) != 1 || sections[0] != "intel" {
+		testingT.Fatalf("firmware_sections = %v, want [intel]", sections)
+	}
+	// Firmware section selection implies the toggle stays on and marks dirty.
+	if model.Config().Packages.InstallFirmware != true {
+		testingT.Fatal("picking firmware sections must leave install_firmware on")
+	}
+	if !model.Dirty() {
+		testingT.Fatal("picking firmware sections must mark config dirty")
+	}
+}
+
+func TestTuiFirmwareHiddenWithDeblob(testingT *testing.T) {
+	cfg := config.Default(true)
+	cfg.Packages.KernelType = "source"
+	cfg.Packages.KernelDeblob = true
+	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
+	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
+	model := mm.(*tui.Model)
+	view := model.View()
+	if strings.Contains(view, "Install linux-firmware") || strings.Contains(view, "Firmware sections") {
+		testingT.Fatalf("firmware fields must be hidden when deblob is on, got:\n%s", view)
 	}
 }

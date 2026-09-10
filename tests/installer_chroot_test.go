@@ -252,6 +252,94 @@ func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 	}
 }
 
+func TestMainInstallGentooInChrootFirmwareSections(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, true)
+	cfg.Gentoo.Stage3Variant = "openrc"
+	cfg.Disk.BootType = "bios"
+	cfg.Disk.UseSwap = false
+	cfg.System.Timezone = "UTC"
+	cfg.System.Keymap = "de"
+	cfg.System.KeymapInitramfs = "us"
+	cfg.Packages.InstallFirmware = true
+	cfg.Packages.FirmwareSections = []string{"i915", "intel"}
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	mkScratchDir(testingT, ctx, "/etc")
+	writeScratch(testingT, ctx, "/etc/conf.d/hostname", "hostname=\"gentoo\"\n")
+	writeScratch(testingT, ctx, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
+	ctx.BlkidUUID = func(dev string) (string, error) {
+		return "aaaaaaa1-0000-0000-0000-000000000005", nil
+	}
+	ctx.EvalSymlinks = func(path string) (string, error) { return path, nil }
+	kernelAndBootScaffold(testingT, ctx, "6.8.11-gentoo-dist", "")
+
+	if err := installer.MainInstallGentooInChroot(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+
+	lines := stub.Lines()
+	if !containsLine(lines, "emerge --verbose --getbinpkg linux-firmware") {
+		testingT.Fatalf("linux-firmware should be installed, got:\n%q", lines)
+	}
+	// The unselected sections are pruned (the run is one rm per category).
+	for _, want := range []string{
+		"rm -rf /lib/firmware/amdgpu",
+		"rm -rf /lib/firmware/nvidia",
+		"rm -rf /lib/firmware/wfx",
+	} {
+		if !containsLine(lines, want) {
+			testingT.Fatalf("missing firmware prune %q in:\n%q", want, lines)
+		}
+	}
+
+	// Selected sections must not be pruned.
+	for _, line := range lines {
+		if strings.Contains(line, "rm -rf /lib/firmware/i915") ||
+			strings.Contains(line, "rm -rf /lib/firmware/intel") {
+			testingT.Fatalf("selected firmware section was pruned: %s", line)
+		}
+	}
+}
+
+func TestMainInstallGentooInChrootSkipsFirmware(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, true)
+	cfg.Gentoo.Stage3Variant = "openrc"
+	cfg.Disk.BootType = "bios"
+	cfg.Disk.UseSwap = false
+	cfg.System.Timezone = "UTC"
+	cfg.System.Keymap = "de"
+	cfg.System.KeymapInitramfs = "us"
+	cfg.Packages.InstallFirmware = false
+	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
+	mkScratchDir(testingT, ctx, "/etc")
+	writeScratch(testingT, ctx, "/etc/conf.d/hostname", "hostname=\"gentoo\"\n")
+	writeScratch(testingT, ctx, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
+	ctx.BlkidUUID = func(dev string) (string, error) {
+		return "aaaaaaa1-0000-0000-0000-000000000005", nil
+	}
+	ctx.EvalSymlinks = func(path string) (string, error) { return path, nil }
+	kernelAndBootScaffold(testingT, ctx, "6.8.11-gentoo-dist", "")
+
+	if err := installer.MainInstallGentooInChroot(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+
+	for _, line := range stub.Lines() {
+		if strings.Contains(line, "linux-firmware") {
+			testingT.Fatalf("linux-firmware must not be touched when install_firmware=false: %s", line)
+		}
+	}
+}
+
+// containsLine reports whether want appears in lines.
+func containsLine(lines []string, want string) bool {
+	for _, line := range lines {
+		if line == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestMainInstallGentooInChrootPropagatesEmergeError(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false

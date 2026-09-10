@@ -40,6 +40,8 @@ func TestRoundTrip(testingT *testing.T) {
 	cfg.Packages.EnablingRepos = []string{"guru", "kde"}
 	cfg.Packages.KernelType = "source"
 	cfg.Packages.KernelDeblob = true
+	cfg.Packages.InstallFirmware = false
+	cfg.Packages.FirmwareSections = []string{"i915", "intel", "amdgpu"}
 	cfg.MakeConf.Options = []string{"jobs", "ccache"}
 	cfg.MakeConf.Extra = "CFLAGS=\"-O3 -pipe\""
 
@@ -62,7 +64,9 @@ func TestRoundTrip(testingT *testing.T) {
 		len(got.Packages.CustomPackages) != 2 ||
 		len(got.Packages.EnablingRepos) != 2 ||
 		got.Packages.KernelType != "source" ||
-		!got.Packages.KernelDeblob {
+		!got.Packages.KernelDeblob ||
+		got.Packages.InstallFirmware ||
+		len(got.Packages.FirmwareSections) != 3 {
 		testingT.Fatalf("packages round trip mismatch: %+v", got.Packages)
 	}
 	if len(got.MakeConf.Options) != 2 ||

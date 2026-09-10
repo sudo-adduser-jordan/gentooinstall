@@ -306,6 +306,9 @@ func (model *Model) clampCursor(tab int) {
 	for cursor > 0 && model.tabs[tab].fields[rows[cursor]].kind == kSeparator {
 		cursor--
 	}
+	for cursor < len(rows)-1 && model.tabs[tab].fields[rows[cursor]].kind == kSeparator {
+		cursor++
+	}
 	if model.cursors[tab] != cursor {
 		model.cursors[tab] = cursor
 	}
@@ -430,6 +433,7 @@ func (model *Model) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		tabIndex := int(msg.Runes[0] - '1')
 		if tabIndex < len(model.tabs) {
 			model.active = tabIndex
+			model.clampCursor(model.active)
 		}
 		return model, nil
 	case "tab", "shift+tab", "right", "left", "h", "l":
@@ -438,6 +442,7 @@ func (model *Model) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			dir = -1
 		}
 		model.active = (model.active + dir + len(model.tabs)) % len(model.tabs)
+		model.clampCursor(model.active)
 		return model, nil
 	case "j", "down":
 		rows := model.visibleRows(model.active)

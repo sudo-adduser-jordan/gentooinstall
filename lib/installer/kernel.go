@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"gentooinstall/assets"
+	"gentooinstall/lib/config"
 	"gentooinstall/lib/disklayout"
 )
 
@@ -393,13 +394,43 @@ func InstallKernel(ctx *Context) error {
 		ctx.Runner.log("Skipping linux-firmware (deblob kernel)")
 		return nil
 	}
+	if !ctx.Cfg.Packages.InstallFirmware {
+		ctx.Runner.log("Skipping linux-firmware (disabled in config)")
+		return nil
+	}
 
 	ctx.Runner.log("Installing linux-firmware")
 	if err := ctx.appendFile("/etc/portage/package.license",
 		"sys-kernel/linux-firmware linux-fw-redistributable no-source-code"); err != nil {
 		return err
 	}
-	return ctx.Runner.Try("emerge", "--verbose", "--getbinpkg", "linux-firmware")
+	if err := ctx.Runner.Try("emerge", "--verbose", "--getbinpkg", "linux-firmware"); err != nil {
+		return err
+	}
+	return pruneFirmwareSections(ctx)
+}
+
+// pruneFirmwareSections removes the firmware directories under /lib/firmware
+// that belong to catalog sections the user did not select. An empty selection
+// installs the whole package, so there is nothing to prune.
+func pruneFirmwareSections(ctx *Context) error {
+	if len(ctx.Cfg.Packages.FirmwareSections) == 0 {
+		return nil
+	}
+	selected := map[string]bool{}
+	for _, name := range ctx.Cfg.Packages.FirmwareSections {
+		selected[name] = true
+	}
+	ctx.Runner.log("Removing unselected linux-firmware sections")
+	for _, section := range config.FirmwareSections {
+		if selected[section.Name] {
+			continue
+		}
+		if err := ctx.Runner.Try("rm", "-rf", filepath.Join("/lib/firmware", section.Name)); err != nil {
+			return fmt.Errorf("could not remove firmware section %s: %w", section.Name, err)
+		}
+	}
+	return nil
 }
 
 // addFstabEntry appends one formatted fstab row.
