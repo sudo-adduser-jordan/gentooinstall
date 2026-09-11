@@ -44,6 +44,29 @@ func TestEfiBootmgrArgs(testingT *testing.T) {
 	}
 }
 
+func TestEFIBootFallbackArgs(testingT *testing.T) {
+	got := installer.EFIBootFallbackArgs("6.6.13-gentoo",
+		"/boot/efi/vmlinuz.efi",
+		"rd.vconsole.keymap=us root=UUID=abc",
+		"/boot/efi/EFI/BOOT/BOOTX64.EFI",
+		[]string{"crypt", "crypt-gpg"})
+	want := []string{
+		"--kver", "6.6.13-gentoo",
+		"--zstd",
+		"--no-hostonly",
+		"--ro-mnt",
+		"--add", "bash crypt crypt-gpg",
+		"--uefi",
+		"--uefi-stub", "/usr/lib/systemd/boot/efi/linuxx64.efi.stub",
+		"--kernel-image", "/boot/efi/vmlinuz.efi",
+		"--kernel-cmdline", "rd.vconsole.keymap=us root=UUID=abc",
+		"--force", "/boot/efi/EFI/BOOT/BOOTX64.EFI",
+	}
+	if !reflect.DeepEqual(got, want) {
+		testingT.Fatalf("EFIBootFallbackArgs = %#v, want %#v", got, want)
+	}
+}
+
 func TestDiskNames(testingT *testing.T) {
 	cases := []struct {
 		name    string

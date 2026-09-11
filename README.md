@@ -120,6 +120,16 @@ pair it with `builds/bios.toml` (`disk.boot_type = "bios"`).
 
 Use EFI. BIOS is old and deprecated for a long time now.
 
+EFI installs created with this tool are directly bootable from removable media
+(USB sticks): besides the regular `efibootmgr` entry, the installer writes a
+self-contained unified EFI image (kernel + initramfs + command line wrapped by
+the systemd-stub) at `/boot/efi/EFI/BOOT/BOOTX64.EFI` on the ESP. Firmware
+picks that file up automatically when you select the USB in the boot menu, so
+no persistent NVRAM entry is required (re-run `/boot/efi/EFI/BOOT/generate_bootx64.sh`
+after a kernel update to refresh it). Building the fallback needs the UEFI
+stub: `sys-apps/systemd` with the `boot` USE flag (systemd), or
+`sys-apps/systemd-utils` with `boot kernel-install` (OpenRC).
+
 ### Modern file systems
 
 I recommend using a modern file system like ZFS, both on desktops and servers.

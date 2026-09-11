@@ -84,6 +84,78 @@ func TestGenerateInitramfsSSHD(testingT *testing.T) {
 	}
 }
 
+func TestGenerateEFIBootFallback(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", true, false)
+	cfg.System.KeymapInitramfs = "us"
+	ctx, stub := testContext(testingT, cfg, classicSeeds())
+	symlinkScratch(testingT, ctx, "linux-6.6.13-gentoo", "/usr/src/linux")
+	mkScratchDir(testingT, ctx, "/boot/efi/EFI/BOOT")
+
+	if err := installer.GenerateEFIBootFallback(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	got := stub.Lines()
+	if len(got) != 1 {
+		testingT.Fatalf("expected a single dracut call, got:\n%q", got)
+	}
+	want := "dracut --kver 6.6.13-gentoo --zstd --no-hostonly --ro-mnt " +
+		"--add bash crypt crypt-gpg --uefi " +
+		"--uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub " +
+		"--kernel-image /boot/efi/vmlinuz.efi " +
+		"--kernel-cmdline rd.vconsole.keymap=us rd.luks.uuid=" + uLuksRoot +
+		" root=UUID=00000000-1111-2222-3333-444444444444 " +
+		"--force /boot/efi/EFI/BOOT/BOOTX64.EFI"
+	if got[0] != want {
+		testingT.Fatalf("dracut line =\n  %q\nwant\n  %q", got[0], want)
+	}
+	helper := readScratch(testingT, ctx, "/boot/efi/EFI/BOOT/generate_bootx64.sh")
+	for _, want := range []string{"--uefi-stub", "/boot/efi/EFI/BOOT/BOOTX64.EFI", "--kernel-cmdline"} {
+		if !strings.Contains(helper, want) {
+			testingT.Fatalf("helper missing %q:\n%s", want, helper)
+		}
+	}
+}
+
+func TestEnsureEFIStubSystemd(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, stub := testContext(testingT, cfg, nil)
+
+	if err := installer.EnsureEFIStub(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	assertCmds(testingT, stub, "emerge --verbose --newuse sys-apps/systemd")
+	if got := readScratch(testingT, ctx, "/etc/portage/package.use/uefi-stub"); got != "sys-apps/systemd boot\n" {
+		testingT.Fatalf("/etc/portage/package.use/uefi-stub = %q", got)
+	}
+}
+
+func TestEnsureEFIStubOpenRC(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	cfg.Gentoo.Stage3Variant = "openrc"
+	ctx, stub := testContext(testingT, cfg, nil)
+
+	if err := installer.EnsureEFIStub(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	assertCmds(testingT, stub, "emerge --verbose --newuse sys-apps/systemd-utils")
+	if got := readScratch(testingT, ctx, "/etc/portage/package.use/uefi-stub"); got != "sys-apps/systemd-utils boot kernel-install\n" {
+		testingT.Fatalf("/etc/portage/package.use/uefi-stub = %q", got)
+	}
+}
+
+func TestEnsureEFIStubPresentIsNoOp(testingT *testing.T) {
+	cfg := classicCfg("/dev/sdX", false, false)
+	ctx, stub := testContext(testingT, cfg, nil)
+	writeScratch(testingT, ctx, "/usr/lib/systemd/boot/efi/linuxx64.efi.stub", "stub")
+
+	if err := installer.EnsureEFIStub(ctx); err != nil {
+		testingT.Fatal(err)
+	}
+	if lines := stub.Lines(); len(lines) != 0 {
+		testingT.Fatalf("no emerge expected when the stub is present, got:\n%q", lines)
+	}
+}
+
 func TestKernelCmdlineClassicLuks(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", true, false)
 	cfg.System.KeymapInitramfs = "us"

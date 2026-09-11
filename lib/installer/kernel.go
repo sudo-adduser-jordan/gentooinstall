@@ -101,11 +101,8 @@ func atoiSafe(str string) (int, bool) {
 	return num, true
 }
 
-// GenerateInitramfs builds the initramfs with dracut and writes the
-// regenerate helper script next to it (port of generate_initramfs).
-func GenerateInitramfs(ctx *Context, output string) error {
-	ctx.Runner.log("Generating initramfs")
-
+// initrdModules lists the dracut modules required by the disk layout.
+func initrdModules(ctx *Context) []string {
 	var modules []string
 	if ctx.Layout.Flags.UsedRaid {
 		modules = append(modules, "mdraid")
@@ -119,12 +116,29 @@ func GenerateInitramfs(ctx *Context, output string) error {
 	if ctx.Layout.Flags.UsedZFS {
 		modules = append(modules, "zfs")
 	}
+	return modules
+}
 
+// kernelVersion reports the built kernel version from the /usr/src/linux
+// symlink (dracut --kver argument).
+func kernelVersion(ctx *Context) (string, error) {
 	link, err := ctx.readlink("/usr/src/linux")
 	if err != nil {
-		return fmt.Errorf("could not figure out kernel version from /usr/src/linux symlink: %w", err)
+		return "", fmt.Errorf("could not figure out kernel version from /usr/src/linux symlink: %w", err)
 	}
-	kver := strings.TrimPrefix(filepath.Base(link), "linux-")
+	return strings.TrimPrefix(filepath.Base(link), "linux-"), nil
+}
+
+// GenerateInitramfs builds the initramfs with dracut and writes the
+// regenerate helper script next to it (port of generate_initramfs).
+func GenerateInitramfs(ctx *Context, output string) error {
+	ctx.Runner.log("Generating initramfs")
+
+	kver, err := kernelVersion(ctx)
+	if err != nil {
+		return err
+	}
+	modules := initrdModules(ctx)
 
 	dracutOpts := []string{}
 	addSSHD := ctx.Cfg.UsesSystemd() && ctx.Cfg.System.InitramfsSSHD
@@ -187,6 +201,87 @@ func GenerateInitramfs(ctx *Context, output string) error {
 		return err
 	}
 	return nil
+}
+
+// uefiStub is the systemd-stub executable dracut --uefi appends the kernel,
+// initramfs and kernel command line to when producing a unified EFI image.
+const uefiStub = "/usr/lib/systemd/boot/efi/linuxx64.efi.stub"
+
+// EnsureEFIStub makes sure the UEFI stub dracut needs for --uefi images is
+// present in the chroot. systemd provides it via the "boot" USE flag; OpenRC
+// systems ship it through sys-apps/systemd-utils ("boot" + "kernel-install").
+func EnsureEFIStub(ctx *Context) error {
+	if fileExists(ctx.path(uefiStub)) {
+		return nil
+	}
+	target := "sys-apps/systemd-utils"
+	use := "sys-apps/systemd-utils boot kernel-install\n"
+	if ctx.Cfg.UsesSystemd() {
+		target = "sys-apps/systemd"
+		use = "sys-apps/systemd boot\n"
+	}
+	ctx.Runner.logf("Installing UEFI stub from %s", target)
+	if err := ctx.mkdirAll("/etc/portage/package.use", 0o755); err != nil {
+		return err
+	}
+	if err := ctx.writeFile("/etc/portage/package.use/uefi-stub", []byte(use), 0o644); err != nil {
+		return err
+	}
+	return ctx.Runner.Try("emerge", "--verbose", "--newuse", target)
+}
+
+// EFIBootFallbackArgs builds the dracut argument vector that produces a
+// self-contained UEFI boot image: a kernel, its initramfs and the kernel
+// command line embedded into the EFI stub. Because nothing depends on a
+// firmware NVRAM entry, the image can sit at the removable-media fallback
+// path \EFI\BOOT\BOOTX64.EFI and make USB installs boot on any UEFI machine.
+func EFIBootFallbackArgs(kver, kernelImage, cmdline, output string, modules []string) []string {
+	return []string{
+		"--kver", kver,
+		"--zstd",
+		"--no-hostonly",
+		"--ro-mnt",
+		"--add", strings.Join(append([]string{"bash"}, modules...), " "),
+		"--uefi",
+		"--uefi-stub", uefiStub,
+		"--kernel-image", kernelImage,
+		"--kernel-cmdline", cmdline,
+		"--force", output,
+	}
+}
+
+// GenerateEFIBootFallback writes the removable-media fallback boot loader
+// /boot/efi/EFI/BOOT/BOOTX64.EFI: a unified image of the kernel already
+// copied to the ESP, "/boot/efi/vmlinuz.efi", its initramfs and the kernel
+// command line. Firmware picks this file up on USB sticks without requiring a
+// persistent efibootmgr entry, so the install boots regardless of NVRAM state.
+func GenerateEFIBootFallback(ctx *Context) error {
+	ctx.Runner.log("Generating EFI removable-media fallback boot loader")
+	kernelImage := "/boot/efi/vmlinuz.efi"
+	output := "/boot/efi/EFI/BOOT/BOOTX64.EFI"
+
+	kver, err := kernelVersion(ctx)
+	if err != nil {
+		return err
+	}
+
+	cmdline, err := KernelCmdline(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := ctx.mkdirAll("/boot/efi/EFI/BOOT", 0o755); err != nil {
+		return err
+	}
+	args := EFIBootFallbackArgs(kver, kernelImage, cmdline, output, initrdModules(ctx))
+	if err := ctx.Runner.Try("dracut", args...); err != nil {
+		return err
+	}
+
+	script := "#!/bin/bash\n# Regenerates the removable-media fallback boot loader\n" +
+		"# (" + output + ") so the USB install still boots without an NVRAM entry.\n" +
+		"dracut " + strings.Join(args, " ") + "\n"
+	return ctx.writeFile("/boot/efi/EFI/BOOT/generate_bootx64.sh", []byte(script), 0o755)
 }
 
 // EfiBootmgrArgs builds the efibootmgr argument vector (as used by
@@ -297,7 +392,14 @@ func InstallKernelEFI(ctx *Context) error {
 	script := "#!/bin/bash\n# This is the command that was used to create the efibootmgr entry when the\n" +
 		"# system was installed using gentoo-install.\n" +
 		"efibootmgr " + strings.Join(EfiBootmgrArgs(lastDisk, lastPart, cmdline), " ") + "\n"
-	return ctx.writeFile("/boot/efi/efibootmgr_add_entry.sh", []byte(script), 0o755)
+	if err := ctx.writeFile("/boot/efi/efibootmgr_add_entry.sh", []byte(script), 0o755); err != nil {
+		return err
+	}
+
+	if err := EnsureEFIStub(ctx); err != nil {
+		return err
+	}
+	return GenerateEFIBootFallback(ctx)
 }
 
 // RaidMember is a physical disk of a RAID array used for an EFI boot entry.

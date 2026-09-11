@@ -92,6 +92,8 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		"dracut --kver 6.6.13-gentoo --zstd --no-hostonly --ro-mnt --add bash crypt crypt-gpg --force /boot/efi/initramfs.img",
 		"mdadm --detail --scan /dev/fake-part_efi",
 		"efibootmgr --verbose --create --disk /dev/fake-gpt --part 3 --label gentoo --loader \\vmlinuz.efi --unicode initrd=\\initramfs.img "+cmdline,
+		"emerge --verbose --newuse sys-apps/systemd",
+		"dracut --kver 6.6.13-gentoo --zstd --no-hostonly --ro-mnt --add bash crypt crypt-gpg --uefi --uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub --kernel-image /boot/efi/vmlinuz.efi --kernel-cmdline "+cmdline+" --force /boot/efi/EFI/BOOT/BOOTX64.EFI",
 		"emerge --verbose --getbinpkg linux-firmware",
 		"emerge --verbose app-portage/gentoolkit",
 		"systemctl enable systemd-networkd",
@@ -173,6 +175,15 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 	helper := readScratch(testingT, ctx, "/boot/efi/generate_initramfs.sh")
 	if !strings.Contains(helper, "/boot/efi/initramfs.img") {
 		testingT.Fatalf("generate_initramfs.sh:\n%s", helper)
+	}
+	// The removable-media fallback boot loader was installed and its UEFI
+	// stub dependency was enabled through package.use.
+	if got := readScratch(testingT, ctx, "/etc/portage/package.use/uefi-stub"); got != "sys-apps/systemd boot\n" {
+		testingT.Fatalf("/etc/portage/package.use/uefi-stub = %q", got)
+	}
+	bootx64 := readScratch(testingT, ctx, "/boot/efi/EFI/BOOT/generate_bootx64.sh")
+	if !strings.Contains(bootx64, "/boot/efi/EFI/BOOT/BOOTX64.EFI") {
+		testingT.Fatalf("generate_bootx64.sh:\n%s", bootx64)
 	}
 }
 
