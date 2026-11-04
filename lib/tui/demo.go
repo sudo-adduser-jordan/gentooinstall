@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ANSI color codes matching real emerge/portage output.
 const (
 	demoReset  = "\x1b[m"
 	demoBold   = "\x1b[1m"
@@ -19,14 +18,11 @@ const (
 	demoCyan   = "\x1b[1;36m"
 )
 
-// demoDelay scales every sleep in the simulated install. Tests can slow
-// nothing down; the defaults keep the whole demo around 15 seconds.
 var (
 	demoStepDelay = 700 * time.Millisecond
 	demoCmdDelay  = 350 * time.Millisecond
 )
 
-// startDemo launches the simulated installation from the Install tab.
 func (model *Model) startDemo() (tea.Model, tea.Cmd) {
 	if model.instState != instIdle {
 		return model, nil
@@ -40,15 +36,11 @@ func (model *Model) startDemo() (tea.Model, tea.Cmd) {
 }
 
 type demoPhase struct {
-	name string
-	cmds []string
-	// emerge groups one emerge invocation per inner slice; each emits the
-	// command line followed by a "category/name;" progress line per atom.
+	name   string
+	cmds   []string
 	emerge [][]string
 }
 
-// demoPhases mirrors the real host+chroot step sequence closely enough to
-// exercise the progress checklist and failure panel.
 var demoPhases = []demoPhase{
 	{name: "Preparing installation environment", cmds: []string{
 		"$ checking required programs (parted, zfs, cryptsetup…)",
@@ -83,8 +75,8 @@ var demoPhases = []demoPhase{
 		"$ emerge --verbose sys-kernel/gentoo-kernel-bin",
 	}},
 	{name: "Installing packages", emerge: [][]string{
-		{"gnome-base/gnome"},                           // profile packages
-		{"app-editors/vim", "net-misc/networkmanager"}, // additional + custom
+		{"gnome-base/gnome"},
+		{"app-editors/vim", "net-misc/networkmanager"},
 	}},
 	{name: "Configuring bootloader", cmds: []string{
 		"$ grub-install --target=x86_64-efi --efi-directory=/boot/efi",
@@ -96,23 +88,18 @@ var demoPhases = []demoPhase{
 	}},
 }
 
-// demoFailAfter is the phase index that fails once (stage3 download).
 const demoFailAfter = 2
 
-// colorStep wraps a [+] step marker with bold cyan.
 func colorStep(name string) string {
 	return demoCyan + "[+]" + demoReset + " " + demoBold + name + demoReset
 }
 
-// colorCmd wraps a "$ cmd" line with a yellow prompt and dim arguments,
-// highlighting known package names in green.
 func colorCmd(line string) string {
 	if !strings.HasPrefix(line, "$ ") {
 		return line
 	}
 	cmd := strings.TrimPrefix(line, "$ ")
 	out := demoYellow + "$" + demoReset + " " + demoDim
-	// Highlight package atoms in emerge lines.
 	if rest, ok := strings.CutPrefix(cmd, "emerge "); ok {
 		out += "emerge " + demoReset + colorPackages(rest)
 	} else {
@@ -121,7 +108,6 @@ func colorCmd(line string) string {
 	return out
 }
 
-// colorPackages highlights space-separated package atoms in green.
 func colorPackages(args string) string {
 	parts := strings.Split(args, " ")
 	for idx, pkg := range parts {
@@ -134,18 +120,14 @@ func colorPackages(args string) string {
 	return strings.Join(parts, " ")
 }
 
-// colorErr wraps an error/failure line in red.
 func colorErr(line string) string {
 	return demoRed + line + demoReset
 }
 
-// colorPkgAtom renders a "category/name;" package atom for the install stream.
 func colorPkgAtom(atom string) string {
 	return demoGreen + atom + demoReset + demoCyan + ";"
 }
 
-// emitEmerge simulates one emerge invocation: the command line is printed,
-// then a "category/name;" output line is streamed for each atom.
 func emitEmerge(atoms ...string) {
 	EmitInstallLine(colorCmd("$ emerge --verbose --autounmask-continue=y -- " +
 		strings.Join(atoms, " ")))
@@ -156,9 +138,6 @@ func emitEmerge(atoms ...string) {
 	}
 }
 
-// runDemoInstall walks the phases in a goroutine, streams the same kinds
-// of lines a real install emits, fails exactly once so the recovery panel
-// can be exercised, then finishes successfully.
 func runDemoInstall() {
 	for idx, ph := range demoPhases {
 		EmitInstallLine(colorStep(ph.name))
@@ -177,8 +156,6 @@ func runDemoInstall() {
 	EmitInstallDone(nil)
 }
 
-// emitDemoFailure reports a failed command and blocks until the user
-// decides. It reports whether the install should continue.
 func emitDemoFailure(ph demoPhase) bool {
 	EmitInstallLine(colorCmd("$ wget -q https://distfiles.gentoo.org/…/stage3.tar.xz"))
 	decide := make(chan InstallDecision)

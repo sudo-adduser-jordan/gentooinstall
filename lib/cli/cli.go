@@ -1,7 +1,3 @@
-// Package cli holds the gentooinstall command-line parser in importable
-// form so the external test suite (tests/, which may only exercise
-// exported identifiers) can cover argument handling without invoking
-// package main.
 package cli
 
 import (
@@ -9,21 +5,15 @@ import (
 	"strings"
 )
 
-// Parsed is the result of parsing os.Args[1:].
 type Parsed struct {
-	Mode        string // "", "install", "demo", "chroot", "in-chroot"
-	CfgPath     string // -c/--config value or positional config path
+	Mode        string
+	CfgPath     string
 	Rest        []string
 	ShowHelp    bool
 	ShowVersion bool
-	// Demo marks a TUI run driven by the VHS demo recorder. It bypasses the
-	// root gate (the simulation is non-destructive) so the GIF can be
-	// produced by a regular user.
-	Demo bool
+	Demo        bool
 }
 
-// ParseArgs parses args (typically os.Args[1:]) without side effects:
-// no printing, no os.Exit. Errors mirror the fatal messages in main.go.
 func ParseArgs(args []string) (Parsed, error) {
 	var parsed Parsed
 	index := 0
@@ -64,7 +54,7 @@ func ParseArgs(args []string) (Parsed, error) {
 			parsed.Demo = true
 		default:
 			if parsed.CfgPath == "" && !strings.HasPrefix(arg, "-") {
-				parsed.CfgPath = arg // positional config for TUI/install mode
+				parsed.CfgPath = arg
 			} else {
 				return parsed, fmt.Errorf("invalid argument '%s'", arg)
 			}

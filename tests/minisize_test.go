@@ -1,4 +1,3 @@
-// Minimum terminal size gate of the TUI.
 package tests
 
 import (
@@ -46,9 +45,6 @@ func TestTuiDefaultWindowRenders(testingT *testing.T) {
 	}
 }
 
-// TestTuiNarrowSerialFits locks the qemu -nographic layout: at 80x24 (and
-// with unknown size, which falls back to 80x24) every rendered line fits
-// the terminal and the active tab stays visible instead of clipped off.
 func TestTuiNarrowSerialFits(testingT *testing.T) {
 	for _, size := range []tea.WindowSizeMsg{
 		{Width: 80, Height: 24},
@@ -66,15 +62,12 @@ func TestTuiNarrowSerialFits(testingT *testing.T) {
 		} else {
 			model = tuiModel
 		}
-		// The compact strip fits all six tabs (numbered labels keep the
-		// 1-6 mapping visible); no tab may be replaced by an ellipsis.
 		out := model.View()
 		for _, want := range []string{"1 Disk", "6 Install"} {
 			if !strings.Contains(out, want) {
 				testingT.Fatalf("size %+v compact tab strip missing %q:\n%s", size, want, out)
 			}
 		}
-		// Rules and rows span the pane instead of leaving the window blank.
 		ruled := false
 		for _, ln := range strings.Split(out, "\n") {
 			if strings.Contains(ln, "Partitioning") && strings.Contains(ln, "─") {
@@ -88,7 +81,6 @@ func TestTuiNarrowSerialFits(testingT *testing.T) {
 		if !ruled {
 			testingT.Fatalf("size %+v: no spanning Partitioning rule found", size)
 		}
-		// Walk every tab; each must fit the terminal.
 		for tab := 0; tab < 6; tab++ {
 			mm, _ := model.Update(keyRunes(rune('1' + tab)))
 			model, _ = mm.(*tui.Model)

@@ -1,4 +1,3 @@
-// Opt-in QEMU end-to-end tests for the live ISO (needs GENTOOINSTALL_E2E=1).
 package tests
 
 import (
@@ -12,17 +11,6 @@ import (
 	"time"
 )
 
-// TestISOBoots is a QEMU end-to-end test for the live ISO built by
-// scripts/release.sh. It compiles the init binary, bundles an initramfs and
-// the host kernel, runs grub-mkrescue, then boots the result under
-// qemu-system-x86_64 and asserts the boot reaches the TUI: the PID-1
-// startup banner plus the TUI launch marker appear on the serial console.
-// Network-dependent checks (DHCP, DNS, mirror) are deliberately out of
-// scope here; see TestISOBootNetwork for the local-only coverage.
-//
-// This test is intentionally opt-in: it requires QEMU (and, to build the ISO,
-// a kernel plus grub-mkrescue/xorriso), so it skips by default. Run it via
-// `make vm-test`.
 func TestISOBoots(testingT *testing.T) {
 	if os.Getenv("GENTOOINSTALL_E2E") == "" {
 		testingT.Skip("set GENTOOINSTALL_E2E=1 to run QEMU e2e test")
@@ -54,16 +42,6 @@ func TestISOBoots(testingT *testing.T) {
 	}
 }
 
-// TestISOBootNetwork is a QEMU end-to-end test that boots the live ISO with a
-// virtio-net NIC attached (via QEMU user networking) and asserts the live init
-// brings up DHCP, writes /etc/resolv.conf, and successfully resolves + reaches
-// the configured Gentoo mirror (the serial mirror self-check). This exercises
-// the exact path a real install depends on — DHCP → DNS → outbound HTTPS → CA
-// certs — which TestISOBoots deliberately skips because it boots without a NIC.
-//
-// Local-only: guest outbound networking is unreliable on shared CI runners,
-// so this test stays out of CI. It needs GENTOOINSTALL_E2E_NET=1 on top of
-// GENTOOINSTALL_E2E=1. Run it via `make vm-test-net`.
 func TestISOBootNetwork(testingT *testing.T) {
 	if os.Getenv("GENTOOINSTALL_E2E") == "" {
 		testingT.Skip("set GENTOOINSTALL_E2E=1 to run QEMU e2e test")
@@ -87,13 +65,6 @@ func TestISOBootNetwork(testingT *testing.T) {
 	buildISO(testingT, root, iso)
 	assertISOName(testingT, iso)
 
-	// Attach a user-network NIC that the bundled live initramfs can actually
-	// drive. The live rootfs bundles the e1000 driver (confirmed by the
-	// "live: loaded module e1000" banner), whereas virtio_net is not always
-	// shipped as a standalone module by the host kernel used to build the ISO
-	// (distro kernels often build it in, but the bundle step cannot then find a
-	// .ko to ship). -nodefaults (used by bootISO for determinism) suppresses
-	// QEMU's default NIC, so the NIC must be added explicitly.
 	network := []string{
 		"-netdev", "user,id=net0,dns=10.0.2.3",
 		"-device", "e1000,netdev=net0",
@@ -101,10 +72,6 @@ func TestISOBootNetwork(testingT *testing.T) {
 	serial := bootISO(testingT, iso, network...)
 	testingT.Logf("QEMU serial output:\n%s", serial)
 
-	// The interactive TUI owns the serial port (console=ttyS0), so
-	// background DHCP/mirror status is muted on serial to keep the
-	// alt-screen clean and kept in /run/live-net.log instead. Assert
-	// the boot reached the TUI and the footer was not smeared.
 	if !strings.Contains(serial, "live: tui starting") {
 		testingT.Fatalf("boot did not reach the TUI on the serial console; full output above")
 	}
@@ -113,8 +80,6 @@ func TestISOBootNetwork(testingT *testing.T) {
 	}
 }
 
-// repoRoot walks up from the test working dir to the repository root (the
-// directory containing .git).
 func repoRoot(testingT *testing.T) string {
 	testingT.Helper()
 	dir, err := os.Getwd()
@@ -133,7 +98,6 @@ func repoRoot(testingT *testing.T) string {
 	}
 }
 
-// buildISO runs scripts/release.sh to produce the ISO at out.
 func buildISO(testingT *testing.T, root, out string) {
 	testingT.Helper()
 	cmd := exec.Command(filepath.Join(root, "scripts", "release.sh"), out)
@@ -155,9 +119,6 @@ func buildISO(testingT *testing.T, root, out string) {
 	testingT.Logf("built ISO %s (%d bytes)", out, st.Size())
 }
 
-// assertISOName reads the ISO with xorriso (a grub-mkrescue dependency, so it
-// is guaranteed present when the ISO can be built) and checks the expected
-// boot files are present.
 func assertISOName(testingT *testing.T, iso string) {
 	testingT.Helper()
 	cmd := exec.Command("xorriso", "-osirrox", "off", "-indev", iso, "-find", "/", "-type", "f")
@@ -179,12 +140,6 @@ func assertISOName(testingT *testing.T, iso string) {
 
 func bootISO(testingT *testing.T, iso string, extra ...string) string {
 	testingT.Helper()
-	// Attach a drive the same way the README exercise does: a plain qcow2 on
-	// the default IDE interface (shows up as /dev/sda once the bundled IDE
-	// driver loads). t.Cleanup kills the process if the test is interrupted,
-	// so the VM never lingers. The flags below run with -no-reboot, and the
-	// watchdog kills the VM if it does not settle, so no `timeout` wrapper is
-	// needed. extra args (e.g. a user-network NIC) are appended verbatim.
 	disk := filepath.Join(testingT.TempDir(), "gentoo-disk.img")
 	if out, err := exec.Command("qemu-img", "create", "-f", "qcow2", disk, "2G").CombinedOutput(); err != nil {
 		testingT.Fatalf("qemu-img create failed: %v\n%s", err, out)
@@ -223,7 +178,6 @@ func bootISO(testingT *testing.T, iso string, extra ...string) string {
 		return buf.String()
 	case err := <-done:
 		if err != nil && !errors.Is(err, os.ErrProcessDone) {
-			// A non-zero exit is fine as long as we saw TUI output.
 			testingT.Logf("qemu exited: %v", err)
 		}
 		return buf.String()

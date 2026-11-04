@@ -1,4 +1,3 @@
-// Shared test harness: recording ExecStub and scratch-filesystem helpers.
 package tests
 
 import (
@@ -17,7 +16,6 @@ import (
 	"gentooinstall/lib/installer"
 )
 
-// discardWriter satisfies io.Writer while surfacing unexpected writes.
 type discardWriter struct{ t *testing.T }
 
 func (writer discardWriter) Write(data []byte) (int, error) {
@@ -25,7 +23,6 @@ func (writer discardWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-// Call records a single command invocation seen by ExecStub.
 type Call struct {
 	Name     string
 	Args     []string
@@ -33,26 +30,18 @@ type Call struct {
 	QuietRun bool
 }
 
-// Line renders the invocation like the installer would log it.
 func (call Call) Line() string { return installer.CommandLine(call.Name, call.Args...) }
 
-// ExecStub implements installer.CommandExecutor in memory, recording every
-// invocation so tests can assert exact command sequences without running
-// anything on the host.
 type ExecStub struct {
 	mu    sync.Mutex
 	calls []Call
 	queue []error
 
-	// QuietOuts returns output for QuietRun calls, keyed by commandline.
 	QuietOuts map[string]string
 
-	// FailOn aborts any call whose commandline contains one of these
-	// substrings with a synthetic error.
 	FailOn []string
 }
 
-// NewExecStub returns an empty recording stub.
 func NewExecStub() *ExecStub {
 	return &ExecStub{QuietOuts: map[string]string{}}
 }
@@ -79,15 +68,12 @@ func (stub *ExecStub) record(name string, args []string, quiet bool, stdin strin
 	return nil
 }
 
-// FailNext scripted the next invocation to return err.
 func (stub *ExecStub) FailNext(err error) { stub.queue = append(stub.queue, err) }
 
-// Run records an invocation.
 func (stub *ExecStub) Run(name string, args ...string) error {
 	return stub.record(name, args, false, "")
 }
 
-// QuietRun records an invocation and returns scripted output.
 func (stub *ExecStub) QuietRun(name string, args ...string) (string, error) {
 	line := installer.CommandLine(name, args...)
 	if err := stub.record(name, args, true, ""); err != nil {
@@ -96,24 +82,20 @@ func (stub *ExecStub) QuietRun(name string, args ...string) (string, error) {
 	return stub.QuietOuts[line], nil
 }
 
-// RunWithStdin records an invocation carrying stdin.
 func (stub *ExecStub) RunWithStdin(stdin, name string, args ...string) error {
 	return stub.record(name, args, false, stdin)
 }
 
-// Try records an invocation.
 func (stub *ExecStub) Try(name string, args ...string) error {
 	return stub.record(name, args, false, "")
 }
 
-// Calls returns a copy of all recorded invocations.
 func (stub *ExecStub) Calls() []Call {
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
 	return append([]Call{}, stub.calls...)
 }
 
-// Lines returns all recorded commandlines in order.
 func (stub *ExecStub) Lines() []string {
 	var out []string
 	for _, call := range stub.Calls() {
@@ -122,7 +104,6 @@ func (stub *ExecStub) Lines() []string {
 	return out
 }
 
-// assertCmds requires the recorded commandlines to match want exactly.
 func assertCmds(testingT *testing.T, stub *ExecStub, want ...string) {
 	testingT.Helper()
 	got := stub.Lines()
@@ -131,8 +112,6 @@ func assertCmds(testingT *testing.T, stub *ExecStub, want ...string) {
 	}
 }
 
-// assertCmdContains requires want to appear as a contiguous run of recorded
-// commandlines.
 func assertCmdContains(testingT *testing.T, stub *ExecStub, want []string) {
 	testingT.Helper()
 	got := stub.Lines()
@@ -148,8 +127,6 @@ outer:
 	testingT.Fatalf("command sequence %q missing run %q;\n  got %q", want, want, got)
 }
 
-// seedUUID pre-writes a fixed uuid for an id into a UUIDStore dir so
-// BuildFromConfig produces deterministic sgdisk/mdadm/cryptsetup uuids.
 func seedUUID(testingT *testing.T, dir, id, uuid string) {
 	testingT.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -161,7 +138,6 @@ func seedUUID(testingT *testing.T, dir, id, uuid string) {
 	}
 }
 
-// layoutOverrides maps every layout id to a fictitious device path.
 func layoutOverrides(layout *disklayout.Layout) map[string]string {
 	mapping := map[string]string{}
 	add := func(id string) {
@@ -184,9 +160,6 @@ func layoutOverrides(layout *disklayout.Layout) map[string]string {
 	return mapping
 }
 
-// testContext builds an installer.Context wired to an ExecStub, a mock
-// resolver (id -> /dev/fake-*), a BlkidUUID stub and a scratch Root so the
-// engine can run entirely in-process without touching the host.
 func testContext(testingT *testing.T, cfg *config.Config, uuidSeeds map[string]string) (*installer.Context, *ExecStub) {
 	testingT.Helper()
 	stub := NewExecStub()
@@ -224,8 +197,6 @@ func testContext(testingT *testing.T, cfg *config.Config, uuidSeeds map[string]s
 	return ctx, stub
 }
 
-// readScratch returns the raw content of a file the installer wrote under the
-// context root.
 func readScratch(testingT *testing.T, ctx *installer.Context, path string) string {
 	testingT.Helper()
 	data, err := os.ReadFile(filepath.Join(ctx.Root, path))
@@ -235,7 +206,6 @@ func readScratch(testingT *testing.T, ctx *installer.Context, path string) strin
 	return string(data)
 }
 
-// writeScratch plants a fixture file under the context root.
 func writeScratch(testingT *testing.T, ctx *installer.Context, path, content string) {
 	testingT.Helper()
 	full := filepath.Join(ctx.Root, path)
@@ -247,7 +217,6 @@ func writeScratch(testingT *testing.T, ctx *installer.Context, path, content str
 	}
 }
 
-// mkScratchDir creates a directory under the context root.
 func mkScratchDir(testingT *testing.T, ctx *installer.Context, path string) {
 	testingT.Helper()
 	if err := os.MkdirAll(filepath.Join(ctx.Root, path), 0o755); err != nil {
@@ -255,7 +224,6 @@ func mkScratchDir(testingT *testing.T, ctx *installer.Context, path string) {
 	}
 }
 
-// symlinkScratch plants a symbolic link under the context root.
 func symlinkScratch(testingT *testing.T, ctx *installer.Context, target, path string) {
 	testingT.Helper()
 	full := filepath.Join(ctx.Root, path)

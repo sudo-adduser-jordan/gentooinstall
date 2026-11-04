@@ -1,4 +1,3 @@
-// Headless TUI install flow: phases, decisions and progress view.
 package tests
 
 import (
@@ -17,8 +16,6 @@ func newInstallModel(testingT *testing.T) (*tui.Model, *[]tui.InstallDecision) {
 	testingT.Helper()
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
-	// Wide terminal: install-card tests assume the fixed 24-row card and
-	// 12-slot checklist window (narrow serial terminals shrink both).
 	mm, _ := appModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	appModel = mm.(*tui.Model)
 	decisions := &[]tui.InstallDecision{}
@@ -63,7 +60,6 @@ func TestTuiInstallStreamsAndFinishes(testingT *testing.T) {
 	if model.InstallState() != "done" {
 		testingT.Fatalf("state = %s, want done", model.InstallState())
 	}
-	// e returns to the tabs and resets so a fresh install can begin again.
 	mm, _ = model.Update(keyRunes('e'))
 	model = mm.(*tui.Model)
 	if model.InstallActive() {
@@ -102,7 +98,6 @@ func TestTuiInstallFailureDecisions(testingT *testing.T) {
 		}
 	}
 
-	// r retries.
 	mm, _ = model.Update(keyRunes('r'))
 	model = mm.(*tui.Model)
 	if got != tui.DecideRetry {
@@ -112,7 +107,6 @@ func TestTuiInstallFailureDecisions(testingT *testing.T) {
 		testingT.Fatalf("state = %s, want running after retry", model.InstallState())
 	}
 
-	// a aborts; the completion message marks failure.
 	got = -1
 	mm, _ = model.Update(tui.InstallFailedMsg{Cmdline: "x", Err: "y", Decide: decide})
 	model = mm.(*tui.Model)
@@ -130,14 +124,13 @@ func TestTuiInstallFailureDecisions(testingT *testing.T) {
 
 func TestTuiInstallConfirmation(testingT *testing.T) {
 	cfg := config.Default(true)
-	cfg.Disk.UseLuks = false // avoid the passphrase prompt during the test
+	cfg.Disk.UseLuks = false
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 	appModel.SetInstallFunc(func() error { return nil })
 
-	mm, _ := appModel.Update(keyRunes('6')) // Install tab
+	mm, _ := appModel.Update(keyRunes('6'))
 	model := mm.(*tui.Model)
 
-	// i in the idle state opens the confirmation modal instead of installing.
 	mm, _ = model.Update(keyRunes('i'))
 	model = mm.(*tui.Model)
 	view := model.View()
@@ -150,7 +143,6 @@ func TestTuiInstallConfirmation(testingT *testing.T) {
 		testingT.Fatal("i must not start the install before confirmation")
 	}
 
-	// Enter picks the pre-selected Cancel (no), so nothing starts.
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 	if model.InstallActive() || model.InstallState() != "idle" {
@@ -158,7 +150,6 @@ func TestTuiInstallConfirmation(testingT *testing.T) {
 			model.InstallActive(), model.InstallState())
 	}
 
-	// Moving left to Start installation and confirming begins the real run.
 	mm, _ = model.Update(keyRunes('i'))
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyLeft())
@@ -176,8 +167,6 @@ func TestTuiInstallAbortedResetsToIdle(testingT *testing.T) {
 	mm, _ := appModel.Update(tui.InstallStartMsg{})
 	model := mm.(*tui.Model)
 
-	// A failed installation marks the view aborted; leaving it with e
-	// resets to idle so a fresh installation can start from the Install tab.
 	mm, _ = model.Update(tui.InstallDoneMsg{Err: errors.New("command failed")})
 	model = mm.(*tui.Model)
 	if model.InstallState() != "aborted" {
@@ -192,7 +181,6 @@ func TestTuiInstallAbortedResetsToIdle(testingT *testing.T) {
 		testingT.Fatalf("state = %s, want idle", model.InstallState())
 	}
 
-	// i on the Install tab opens the fresh-start confirmation.
 	mm, _ = model.Update(keyRunes('6'))
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyRunes('i'))
@@ -208,8 +196,6 @@ func TestTuiInstallStepsScrollUnderBar(testingT *testing.T) {
 	mm, _ := appModel.Update(tui.InstallStartMsg{})
 	model := mm.(*tui.Model)
 
-	// Enough steps to overflow the fixed checklist window: the oldest ones
-	// scroll up and off under the loading bar, latest stay visible.
 	for idx := 0; idx < 16; idx++ {
 		mm, _ = model.Update(tui.InstallLineMsg{Line: fmt.Sprintf("[+] Step %d", idx+1)})
 		model = mm.(*tui.Model)
@@ -279,7 +265,6 @@ func TestTuiInstallQuitGuard(testingT *testing.T) {
 		testingT.Fatal("quit guard overlay missing")
 	}
 
-	// Enter picks "Stay" and closes the overlay.
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 	if model.View() == "" && model.Dirty() {

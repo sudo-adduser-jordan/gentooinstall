@@ -1,5 +1,3 @@
-// Package sysinfo discovers runtime system information: block devices,
-// keymaps, timezones, locales and EFI support.
 package sysinfo
 
 import (
@@ -11,15 +9,11 @@ import (
 	"strings"
 )
 
-// HasEFI reports whether the running system supports EFI.
 func HasEFI() bool {
 	_, err := os.Stat("/sys/firmware/efi")
 	return err == nil
 }
 
-// SupportsFilesystemPath reports whether the kernel exposes fs in the
-// filesystems table at path (normally /proc/filesystems). It is split out
-// so tests can point it at fixture files.
 func SupportsFilesystemPath(path, fs string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -37,16 +31,10 @@ func SupportsFilesystemPath(path, fs string) bool {
 	return false
 }
 
-// SupportsFilesystem reports whether the running kernel supports fs.
 func SupportsFilesystem(fs string) bool {
 	return SupportsFilesystemPath("/proc/filesystems", fs)
 }
 
-// Devices lists the discoverable block devices, sorted. /dev/disk/by-id
-// entries (udev) are preferred when present; they are supplemented with raw
-// /dev/<name> paths enumerated from /sys/block so disks are still found
-// without udev (the devtmpfs-only live ISO) and when a disk has no by-id
-// link (virtio without a serial, for example).
 func Devices() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -75,7 +63,6 @@ func Devices() []string {
 	return out
 }
 
-// byIDDevices lists every entry below /dev/disk/by-id.
 func byIDDevices() []string {
 	entries, err := os.ReadDir("/dev/disk/by-id")
 	if err != nil {
@@ -88,9 +75,6 @@ func byIDDevices() []string {
 	return out
 }
 
-// sysBlockDevices enumerates whole disks from /sys/block, returning their
-// /dev/<name> paths when the device node exists. Virtual block devices (loop,
-// ram, CD-ROM and zram) are skipped so partitioning only targets real disks.
 func sysBlockDevices() []string {
 	entries, err := os.ReadDir("/sys/block")
 	if err != nil {
@@ -125,8 +109,6 @@ func isBlockDevice(info os.FileInfo) bool {
 	return info.Mode()&os.ModeDevice != 0 && info.Mode()&os.ModeCharDevice == 0
 }
 
-// CanonicalizeDevice returns the matching /dev/disk/by-id path for dev,
-// or dev unchanged when no by-id entry resolves to it.
 func CanonicalizeDevice(dev string) string {
 	given, err := filepath.EvalSymlinks(dev)
 	if err != nil {
@@ -146,11 +128,9 @@ func CanonicalizeDevice(dev string) string {
 	return dev
 }
 
-// CurrentTimezone determines the timezone from /etc/localtime.
 func CurrentTimezone() string {
 	link, err := os.Readlink("/etc/localtime")
 	if err != nil {
-		// Fall through to content comparison below.
 		return compareTimezone()
 	}
 	const marker = "zoneinfo/"
@@ -187,8 +167,6 @@ func compareTimezone() string {
 	return found
 }
 
-// Timezones lists all regular files below /usr/share/zoneinfo, relative
-// and sorted (find -type f -printf %P | sort -u).
 func Timezones() []string {
 	root := "/usr/share/zoneinfo"
 	var out []string
@@ -213,7 +191,6 @@ func Timezones() []string {
 	return out
 }
 
-// Keymaps scans common locations for console keymaps (*.map.gz).
 func Keymaps() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -238,15 +215,12 @@ func Keymaps() []string {
 	return out
 }
 
-// FallbackKeymaps is used when no keymap directory exists on the host.
 var FallbackKeymaps = []string{
 	"us", "de", "de-latin1", "fr", "uk", "es", "it", "nl", "be-latin1",
 	"sv-latin1", "no-latin1", "dk-latin1", "fi", "pl", "pt-latin1",
 	"br-abnt2", "cz-lat2", "hu", "ru", "sg-latin1", "cf", "jp106",
 }
 
-// DefaultKeymap reads KEYMAP from /etc/vconsole.conf and validates it
-// against known keymaps, falling back to "us".
 func DefaultKeymap(known []string) string {
 	data, err := os.ReadFile("/etc/vconsole.conf")
 	if err == nil {
@@ -265,7 +239,6 @@ func DefaultKeymap(known []string) string {
 	return "us"
 }
 
-// SystemLocales runs `locale -a`.
 func SystemLocales() ([]string, error) {
 	out, err := exec.Command("locale", "-a").Output()
 	if err != nil {

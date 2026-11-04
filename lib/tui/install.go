@@ -10,11 +10,6 @@ import (
 	"gentooinstall/lib/sysinfo"
 )
 
-// FirmwareBlockError reports whether the configured boot type cannot run on
-// the live firmware. An EFI install requires a UEFI boot: without the
-// kernel-exposed /sys/firmware/efi there is no efivarfs to mount and no
-// efibootmgr boot entry can be registered, so proceeding is guaranteed to
-// fail mid-install. BIOS installs always pass.
 func FirmwareBlockError(bootType string, hasEFI bool) error {
 	if bootType == "efi" && !hasEFI {
 		return errors.New("the live system was not booted in UEFI mode " +
@@ -26,18 +21,14 @@ func FirmwareBlockError(bootType string, hasEFI bool) error {
 	return nil
 }
 
-// layoutForDisplay builds the disk layout for preview purposes.
 func layoutForDisplay(cfg *config.Config) (*disklayout.Layout, error) {
 	return disklayout.BuildFromConfig(cfg, "")
 }
 
-// ActiveTab exposes the current tab index (used by tests).
 func (model *Model) ActiveTab() int { return model.active }
 
-// Dirty reports whether unsaved changes exist (used by tests).
 func (model *Model) Dirty() bool { return model.dirty }
 
-// Config exposes the edited configuration (used by tests).
 func (model *Model) Config() *config.Config { return model.cfg }
 
 func (model *Model) confirmInstall() (tea.Model, tea.Cmd) {

@@ -22,45 +22,24 @@ import (
 
 const gentooReleaseKeyURL = "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng"
 
-// stage3DownloadAttempts is how many times DownloadStage3 tries to resolve
-// and fetch the tarball (plus its DIGESTS and the gpg key) before giving up.
-// Network faults, mirror hiccups and checksum slips are retried with a short
-// backoff so a flaky connection does not fail the whole install; permanent
-// failures (no space on the target root filesystem) fail fast instead.
 const stage3DownloadAttempts = 3
 
-// stage3RetryBackoff is the pause between download attempts.
 const stage3RetryBackoff = time.Second
 
-// stage3SpaceSlack is the headroom kept on the target root filesystem beyond
-// the tarball itself, covering the DIGESTS file and the extraction working
-// set. A low-memory live system stages the tarball on disk, so the download
-// must not get within a hair's breadth of filling the partition.
-const stage3SpaceSlack = 64 * 1024 * 1024 // 64 MiB
+const stage3SpaceSlack = 64 * 1024 * 1024
 
-// errNotPublished is returned when a mirror answers 404, so callers can
-// distinguish "this listing does not exist" from a network or server fault.
 var errNotPublished = errors.New("not published")
 
-// errInsufficientSpace is returned when the target root filesystem cannot
-// fit the stage3 tarball. It is not transient, so DownloadStage3 surfaces it
-// immediately instead of re-fetching the tarball pointlessly.
 var errInsufficientSpace = errors.New("not enough free space on the target root filesystem")
 
-// Stage3Info describes the resolved stage3 tarball.
 type Stage3Info struct {
-	Basename string // e.g. stage3-amd64-systemd-20240121T123456Z.tar.xz
-	Path     string // absolute path under Stage3ScratchDir (on the target root disk)
-	Size     int64  // published byte size, 0 when unknown
+	Basename string
+	Path     string
+	Size     int64
 }
 
-// stage3MetaTimeout bounds metadata fetches (listings, DIGESTS, gpg key):
-// small payloads that must never hang the install. The tarball itself has
-// no total timeout so slow links can still complete large downloads.
 const stage3MetaTimeout = 30 * time.Second
 
-// httpClientFor returns a client with the given total timeout, or the
-// default client (no timeout) when timeout <= 0.
 func httpClientFor(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		return http.DefaultClient
@@ -88,7 +67,7 @@ func httpDownloadTimeout(runner *Runner, url, dest string, timeout time.Duration
 	defer file.Close()
 	bytesCopied, err := io.Copy(file, resp.Body)
 	if err != nil {
-		_ = os.Remove(dest) // free the space consumed by the partial file
+		_ = os.Remove(dest)
 		return err
 	}
 	runner.logf("downloaded %s (%d bytes)", filepath.Base(dest), bytesCopied)
@@ -114,13 +93,6 @@ func httpGetBody(runner *Runner, url string) (string, error) {
 	return string(body), nil
 }
 
-// resolveFromLatest reads the authoritative "latest-<basename>.txt" listing
-// that Gentoo publishes in every current-* directory (e.g.
-// "stage3-amd64-systemd-20260830T151604Z.tar.xz 290005580"). It returns the
-// current tarball name and its published byte size (0 when the listing omits
-// it). A mirror that does not publish the file (404) yields ("", 0, nil) so
-// the caller can scan the HTML index instead; network or server errors are
-// returned as-is so the failure is not silently masked.
 func resolveFromLatest(ctx *Context, releasesURL, basename string) (string, int64, error) {
 	latestURL := strings.TrimSuffix(releasesURL, "/") + "/latest-" + basename + ".txt"
 	ctx.Runner.logf("Fetching current tarball name from %s", latestURL)
@@ -152,16 +124,12 @@ func resolveFromLatest(ctx *Context, releasesURL, basename string) (string, int6
 	return "", 0, fmt.Errorf("no tarball name found in %s", latestURL)
 }
 
-// resolveFromIndex scans the HTML index for tarball names and returns the
-// newest one (parity with the bash listing parse, but preferring the newest
-// build rather than the oldest).
 func resolveFromIndex(ctx *Context, releasesURL, basename string) (string, int64, error) {
 	body, err := httpGetBody(ctx.Runner, releasesURL)
 	if err != nil {
 		return "", 0, fmt.Errorf("could not retrieve list of tarballs from %s: %w", releasesURL, err)
 	}
 
-	// Decode URL-encoded strings (parity with the python unquote step).
 	if dec, err := url.PathUnescape(body); err == nil {
 		body = dec
 	}
@@ -182,12 +150,6 @@ func resolveFromIndex(ctx *Context, releasesURL, basename string) (string, int64
 	return names[len(names)-1], 0, nil
 }
 
-// ResolveStage3 determines the current tarball filename from the mirror
-// listing (port of download_stage3's listing parsing). It prefers the
-// authoritative "latest-<basename>.txt" file Gentoo publishes, falling back
-// to scanning the HTML index only when the .txt is absent (HTTP 404);
-// network or server errors on the preferred listing fail the resolution so
-// the real cause is not hidden.
 func ResolveStage3(ctx *Context) (Stage3Info, error) {
 	basename := ctx.Cfg.Stage3BaseNameFinal()
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
@@ -214,13 +176,6 @@ func ResolveStage3(ctx *Context) (Stage3Info, error) {
 	}, nil
 }
 
-// DownloadStage3 downloads and cryptographically verifies the stage3
-// tarball, resuming via a .verified marker (port of download_stage3). The
-// whole resolve+fetch+verify pipeline is retried a few times with a short
-// backoff so transient network or mirror failures do not abort the install;
-// each attempt re-resolves the tarball name and re-fetches everything.
-// Permanent failures (no space on the target root filesystem) are returned
-// immediately so they surface in the failure panel instead of hammering.
 func DownloadStage3(ctx *Context) (Stage3Info, error) {
 	info, err := downloadStage3Once(ctx)
 	if err == nil {
@@ -243,9 +198,6 @@ func DownloadStage3(ctx *Context) (Stage3Info, error) {
 	return info, err
 }
 
-// isTransientFailure reports whether err is worth auto-retrying. Space
-// exhaustion on the target root filesystem is permanent until the user
-// changes the disk layout, so it must fail fast instead.
 func isTransientFailure(err error) bool {
 	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, errInsufficientSpace) {
 		return false
@@ -253,11 +205,6 @@ func isTransientFailure(err error) bool {
 	return true
 }
 
-// checkStage3Space verifies the goal staged in the target root filesystem
-// fits before the download starts, replacing the opaque ENOSPC a full disk
-// would otherwise surface mid-transfer. The check is best-effort: when the
-// free space cannot be measured (filesystem not yet mounted, exotic fs), the
-// download proceeds and any real ENOSPC is caught by isTransientFailure.
 func checkStage3Space(ctx *Context, needed int64) error {
 	free, err := freeSpaceBytes(ctx.path(Stage3ScratchDir))
 	if err != nil {
@@ -270,8 +217,6 @@ func checkStage3Space(ctx *Context, needed int64) error {
 	return nil
 }
 
-// freeSpaceBytes returns the free bytes a non-root write could use on the
-// filesystem containing dir.
 func freeSpaceBytes(dir string) (int64, error) {
 	var st unix.Statfs_t
 	if err := unix.Statfs(dir, &st); err != nil {
@@ -280,7 +225,6 @@ func freeSpaceBytes(dir string) (int64, error) {
 	return int64(st.Bavail) * int64(st.Bsize), nil
 }
 
-// downloadStage3Once performs a single resolve + download + verify pass.
 func downloadStage3Once(ctx *Context) (Stage3Info, error) {
 	info, err := ResolveStage3(ctx)
 	if err != nil {
@@ -290,9 +234,6 @@ func downloadStage3Once(ctx *Context) (Stage3Info, error) {
 	releasesURL := fmt.Sprintf("%s/releases/%s/autobuilds/current-%s/",
 		ctx.Cfg.Gentoo.Mirror, ctx.Cfg.Gentoo.Arch, ctx.Cfg.Stage3BaseNameFinal())
 
-	// The tarball is staged inside the mounted target root filesystem: for
-	// the live ISO, TmpDir is RAM-backed and cannot hold a ~400MB tarball on
-	// low-memory hosts.
 	if err := ctx.mkdirAll(Stage3ScratchDir, 0o755); err != nil {
 		return info, fmt.Errorf("could not create stage3 scratch dir: %w", err)
 	}
@@ -302,15 +243,9 @@ func downloadStage3Once(ctx *Context) (Stage3Info, error) {
 		}
 	}
 
-	// File operations below resolve against the context root; the logical
-	// Stage3ScratchDir paths are kept for ctx.Stage3File.
 	dst := ctx.path(info.Path)
 	verifiedMarker := dst + ".verified"
 
-	// A previous attempt may have verified this exact tarball already
-	// (marker names the basename it was written for). A marker without a
-	// matching tarball on disk — deleted, truncated, or superseded by a
-	// newer published build — must re-download, never silently resume.
 	if marker, err := os.ReadFile(verifiedMarker); err == nil &&
 		strings.TrimSpace(string(marker)) == basename {
 		if _, terr := os.Stat(dst); terr == nil {
@@ -319,7 +254,7 @@ func downloadStage3Once(ctx *Context) (Stage3Info, error) {
 			return info, nil
 		}
 	}
-	_ = os.Remove(verifiedMarker) // stale marker (if any); best effort
+	_ = os.Remove(verifiedMarker)
 
 	ctx.Runner.logf("Downloading %s tarball", basename)
 	tarballURL := strings.TrimSuffix(releasesURL, "/") + "/" + basename
@@ -362,9 +297,6 @@ func downloadStage3Once(ctx *Context) (Stage3Info, error) {
 		return info, fmt.Errorf("checksum mismatch!\n want %s\n got  %s", want, got)
 	}
 
-	// The marker names the verified basename so a later run with a
-	// superseded build (or a deleted tarball) re-downloads instead of
-	// resuming a stale verification.
 	if err := ctx.writeFile(info.Path+".verified", []byte(basename+"\n"), 0o644); err != nil {
 		return info, err
 	}
@@ -372,19 +304,8 @@ func downloadStage3Once(ctx *Context) (Stage3Info, error) {
 	return info, nil
 }
 
-// digestsSectionHeader matches the "# <ALGORITHM> HASH" markers that delimit
-// the (equal-length) digest sections of a Gentoo .DIGESTS file, e.g.
-// "# BLAKE2B HASH" before "# SHA512 HASH". Blindly taking the first matching
-// line would pick BLAKE2B, which is also 128 hex chars; the section must be
-// honored so a real SHA512 is returned.
 var digestsSectionHeader = regexp.MustCompile(`^#\s*([0-9A-Za-z]+)\s*HASH\s*$`)
 
-// sha512FromDigests extracts the SHA512 line for basename from a .DIGESTS
-// file. The line naming our tarball is preferred; the first SHA512-grounded
-// .tar.xz line is kept as a fallback for listings that elide filenames,
-// matching the old behavior rather than failing outright. Only hashes under
-// a "# SHA512 HASH" section are accepted; files with no section markers at
-// all (ancient layout) fall back to their first 128-hex line.
 func sha512FromDigests(path, basename string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -401,7 +322,7 @@ func sha512FromDigests(path, basename string) (string, error) {
 			continue
 		}
 		if section != "" && section != "sha512" {
-			continue // BLAKE2B/SHA256/etc. hashes must never be returned as SHA512
+			continue
 		}
 		if !strings.HasSuffix(line, ".tar.xz") && !strings.HasSuffix(line, ".tar.xz ") {
 			continue

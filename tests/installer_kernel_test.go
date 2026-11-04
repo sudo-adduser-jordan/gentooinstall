@@ -1,4 +1,3 @@
-// Kernel install, initramfs, cmdline and fstab generation.
 package tests
 
 import (
@@ -261,7 +260,6 @@ func TestGenerateFstabZFS(testingT *testing.T) {
 	if strings.Contains(fstab, " /  ") {
 		testingT.Fatalf("zfs fstab must not describe a root device:\n%s", fstab)
 	}
-	// EFI + swap rows are still written for zfs layouts.
 	for _, want := range []string{"/boot/efi", "swap"} {
 		if !strings.Contains(fstab, want) {
 			testingT.Fatalf("fstab missing %q:\n%s", want, fstab)

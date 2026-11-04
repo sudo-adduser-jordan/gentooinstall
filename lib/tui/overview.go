@@ -13,8 +13,6 @@ import (
 
 func osStat(path string) (os.FileInfo, error) { return os.Stat(path) }
 
-// kvList collects aligned label/value rows and renders them with a dynamic
-// key column so nothing gets cut off.
 type kvList struct {
 	rows [][2]string
 	kw   int
@@ -35,20 +33,14 @@ func (list *kvList) render(body *strings.Builder, indent string, width int) {
 	}
 }
 
-// openConfigView opens the configuration summary in a scrollable modal;
-// the content is rendered live so it always reflects the current state.
 func (model *Model) openConfigView() {
 	model.overlay = overlay{kind: ovConfig}
 }
 
-// openMakeConfView opens a scrollable viewer for the effective
-// /etc/portage/make.conf content. Editing is added later.
 func (model *Model) openMakeConfView() {
 	model.overlay = overlay{kind: ovMakeConf}
 }
 
-// makeConfViewContent renders the effective make.conf content for the
-// viewer: the built-in entries, the selected options, and the extra block.
 func makeConfViewContent(cfg *config.Config, jobs int) string {
 	var body strings.Builder
 	body.WriteString("# /etc/portage/make.conf (effective)\n\n")
@@ -72,7 +64,6 @@ func makeConfViewContent(cfg *config.Config, jobs int) string {
 	return body.String()
 }
 
-// renderOverview collects the current configuration as a styled summary.
 func renderOverview(model *Model) string {
 	var body strings.Builder
 	cfg := model.cfg
@@ -131,8 +122,6 @@ func renderOverview(model *Model) string {
 	return body.String()
 }
 
-// renderInstallTab shows the former overview's configuration summary
-// followed by the installation status, checks and layout tree.
 func renderInstallTab(model *Model) string {
 	var body strings.Builder
 	cfg := model.cfg
@@ -205,8 +194,6 @@ func renderInstallTab(model *Model) string {
 	return body.String()
 }
 
-// renderLayoutTree renders the disk layout summary as a compact
-// single-column tree with inline role badges.
 func renderLayoutTree(layout *disklayout.Layout, width int) string {
 	width = maxInt(50, width)
 	var body strings.Builder
@@ -260,8 +247,6 @@ func systemdName(cfg *config.Config) string {
 	return name
 }
 
-// profileSummary renders the selected eselect profile as its friendly
-// description, falling back to the raw id or "unset".
 func profileSummary(cfg *config.Config) string {
 	profile := cfg.Gentoo.Profile
 	if profile == "" {
@@ -273,7 +258,6 @@ func profileSummary(cfg *config.Config) string {
 	return profile
 }
 
-// kernelSummary renders the selected kernel package type.
 func kernelSummary(cfg *config.Config) string {
 	switch cfg.Packages.KernelType {
 	case "source":

@@ -13,7 +13,6 @@ import (
 	"gentooinstall/lib/disklayout"
 )
 
-// BlkidUUIDForID resolves id and returns its filesystem UUID.
 func BlkidUUIDForID(ctx *Context, id string) (string, error) {
 	dev, err := resolveID(ctx, id)
 	if err != nil {
@@ -29,7 +28,6 @@ func BlkidUUIDForID(ctx *Context, id string) (string, error) {
 	return fsUUID, nil
 }
 
-// KernelCmdline assembles the kernel command line for boot entries.
 func KernelCmdline(ctx *Context) (string, error) {
 	parts := []string{"rd.vconsole.keymap=" + ctx.Cfg.System.KeymapInitramfs}
 	parts = append(parts, ctx.Layout.DracutCmdline...)
@@ -43,8 +41,6 @@ func KernelCmdline(ctx *Context) (string, error) {
 	return strings.Join(parts, " "), nil
 }
 
-// FindNewestKernel returns the basename of the newest kernel in /boot
-// (find + sort -V | tail -1).
 func FindNewestKernel(ctx *Context) (string, error) {
 	entries, err := ctx.readDir("/boot")
 	if err != nil {
@@ -66,8 +62,6 @@ func FindNewestKernel(ctx *Context) (string, error) {
 	return kernels[len(kernels)-1], nil
 }
 
-// VersionLess reports whether kernel title a sorts before b by version
-// (port of the find + sort -V | tail -1 logic).
 func VersionLess(left, right string) bool {
 	leftParts, rightParts := splitVersion(left), splitVersion(right)
 	for index := 0; index < len(leftParts) && index < len(rightParts); index++ {
@@ -101,7 +95,6 @@ func atoiSafe(str string) (int, bool) {
 	return num, true
 }
 
-// initrdModules lists the dracut modules required by the disk layout.
 func initrdModules(ctx *Context) []string {
 	var modules []string
 	if ctx.Layout.Flags.UsedRaid {
@@ -119,8 +112,6 @@ func initrdModules(ctx *Context) []string {
 	return modules
 }
 
-// kernelVersion reports the built kernel version from the /usr/src/linux
-// symlink (dracut --kver argument).
 func kernelVersion(ctx *Context) (string, error) {
 	link, err := ctx.readlink("/usr/src/linux")
 	if err != nil {
@@ -129,8 +120,6 @@ func kernelVersion(ctx *Context) (string, error) {
 	return strings.TrimPrefix(filepath.Base(link), "linux-"), nil
 }
 
-// GenerateInitramfs builds the initramfs with dracut and writes the
-// regenerate helper script next to it (port of generate_initramfs).
 func GenerateInitramfs(ctx *Context, output string) error {
 	ctx.Runner.log("Generating initramfs")
 
@@ -203,13 +192,8 @@ func GenerateInitramfs(ctx *Context, output string) error {
 	return nil
 }
 
-// uefiStub is the systemd-stub executable dracut --uefi appends the kernel,
-// initramfs and kernel command line to when producing a unified EFI image.
 const uefiStub = "/usr/lib/systemd/boot/efi/linuxx64.efi.stub"
 
-// EnsureEFIStub makes sure the UEFI stub dracut needs for --uefi images is
-// present in the chroot. systemd provides it via the "boot" USE flag; OpenRC
-// systems ship it through sys-apps/systemd-utils ("boot" + "kernel-install").
 func EnsureEFIStub(ctx *Context) error {
 	if fileExists(ctx.path(uefiStub)) {
 		return nil
@@ -230,11 +214,6 @@ func EnsureEFIStub(ctx *Context) error {
 	return ctx.Runner.Try("emerge", "--verbose", "--newuse", target)
 }
 
-// EFIBootFallbackArgs builds the dracut argument vector that produces a
-// self-contained UEFI boot image: a kernel, its initramfs and the kernel
-// command line embedded into the EFI stub. Because nothing depends on a
-// firmware NVRAM entry, the image can sit at the removable-media fallback
-// path \EFI\BOOT\BOOTX64.EFI and make USB installs boot on any UEFI machine.
 func EFIBootFallbackArgs(kver, kernelImage, cmdline, output string, modules []string) []string {
 	return []string{
 		"--kver", kver,
@@ -250,11 +229,6 @@ func EFIBootFallbackArgs(kver, kernelImage, cmdline, output string, modules []st
 	}
 }
 
-// GenerateEFIBootFallback writes the removable-media fallback boot loader
-// /boot/efi/EFI/BOOT/BOOTX64.EFI: a unified image of the kernel already
-// copied to the ESP, "/boot/efi/vmlinuz.efi", its initramfs and the kernel
-// command line. Firmware picks this file up on USB sticks without requiring a
-// persistent efibootmgr entry, so the install boots regardless of NVRAM state.
 func GenerateEFIBootFallback(ctx *Context) error {
 	ctx.Runner.log("Generating EFI removable-media fallback boot loader")
 	kernelImage := "/boot/efi/vmlinuz.efi"
@@ -284,8 +258,6 @@ func GenerateEFIBootFallback(ctx *Context) error {
 	return ctx.writeFile("/boot/efi/EFI/BOOT/generate_bootx64.sh", []byte(script), 0o755)
 }
 
-// EfiBootmgrArgs builds the efibootmgr argument vector (as used by
-// InstallKernelEFI).
 func EfiBootmgrArgs(disk, part, cmdline string) []string {
 	return []string{
 		"--verbose", "--create",
@@ -296,8 +268,6 @@ func EfiBootmgrArgs(disk, part, cmdline string) []string {
 	}
 }
 
-// InstallKernelEFI installs kernel+initramfs to the ESP and creates the
-// efibootmgr entry, handling RAID1 members (port of install_kernel_efi).
 func InstallKernelEFI(ctx *Context) error {
 	if err := ctx.Runner.Try("emerge", "--verbose", "sys-boot/efibootmgr"); err != nil {
 		return err
@@ -402,10 +372,8 @@ func InstallKernelEFI(ctx *Context) error {
 	return GenerateEFIBootFallback(ctx)
 }
 
-// RaidMember is a physical disk of a RAID array used for an EFI boot entry.
 type RaidMember struct{ Disk string }
 
-// DiskNames renders RAID member disk paths joined by spaces (for logs).
 func DiskNames(entries []RaidMember) string {
 	var names []string
 	for _, member := range entries {
@@ -428,8 +396,6 @@ LABEL gentoo
 	APPEND initrd=../initramfs.img %s
 `
 
-// InstallKernelBIOS installs syslinux based booting
-// (port of install_kernel_bios).
 func InstallKernelBIOS(ctx *Context) error {
 	if err := ctx.Runner.Try("emerge", "--verbose", "sys-boot/syslinux"); err != nil {
 		return err
@@ -479,7 +445,6 @@ func InstallKernelBIOS(ctx *Context) error {
 		"if=/usr/share/syslinux/gptmbr.bin", "of="+gptdev)
 }
 
-// InstallKernel installs the kernel and makes the system bootable.
 func InstallKernel(ctx *Context) error {
 	ctx.Runner.log("Installing vanilla kernel and related tools")
 	if ctx.IsEFI() {
@@ -512,9 +477,6 @@ func InstallKernel(ctx *Context) error {
 	return pruneFirmwareSections(ctx)
 }
 
-// pruneFirmwareSections removes the firmware directories under /lib/firmware
-// that belong to catalog sections the user did not select. An empty selection
-// installs the whole package, so there is nothing to prune.
 func pruneFirmwareSections(ctx *Context) error {
 	if len(ctx.Cfg.Packages.FirmwareSections) == 0 {
 		return nil
@@ -537,15 +499,12 @@ func pruneFirmwareSections(ctx *Context) error {
 	return nil
 }
 
-// addFstabEntry appends one formatted fstab row.
 func addFstabEntry(ctx *Context, fs, mountpoint, typ, opts, dumpPass string) error {
 	row := fmt.Sprintf("%-46s  %-24s  %-6s  %-96s %s",
 		fs, mountpoint, typ, opts, dumpPass)
 	return ctx.appendFile("/etc/fstab", row)
 }
 
-// GenerateFstab writes /etc/fstab from the layout roles
-// (port of generate_fstab).
 func GenerateFstab(ctx *Context) error {
 	ctx.Runner.log("Generating fstab")
 	if err := ctx.writeFile("/etc/fstab", []byte(assets.Fstab), 0o644); err != nil {

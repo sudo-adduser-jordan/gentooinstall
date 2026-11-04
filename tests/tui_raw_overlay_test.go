@@ -1,5 +1,3 @@
-// Headless tests for the raw output window: tail-follow, scroll pause and
-// fallback colors. Exercises only exported identifiers.
 package tests
 
 import (
@@ -16,7 +14,6 @@ func openRawOverlay(testingT *testing.T, appModel *tui.Model) *tui.Model {
 	testingT.Helper()
 	mm, _ := appModel.Update(keyRunes('l'))
 	model := mm.(*tui.Model)
-	// Force a render so the dedicated viewport sizes and tails.
 	_ = model.View()
 	return model
 }
@@ -58,7 +55,6 @@ func TestRawOverlayScrollPausesAndResumes(testingT *testing.T) {
 	model = feedLines(testingT, model, 40, "scrollline")
 	model = openRawOverlay(testingT, model)
 
-	// Scroll up: pauses follow and shows the resume hint.
 	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model = mm.(*tui.Model)
 	view := model.View()
@@ -66,7 +62,6 @@ func TestRawOverlayScrollPausesAndResumes(testingT *testing.T) {
 		testingT.Fatalf("scrolling up must pause follow and show resume hint, got:\n%s", view)
 	}
 
-	// New output while scrolled up must not yank to the bottom.
 	mm, _ = model.Update(tui.InstallLineMsg{Line: "scrollline NEW"})
 	model = mm.(*tui.Model)
 	view = model.View()
@@ -77,7 +72,6 @@ func TestRawOverlayScrollPausesAndResumes(testingT *testing.T) {
 		testingT.Fatal("newest line must stay hidden while scrolled up")
 	}
 
-	// End resumes the tail.
 	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnd})
 	model = mm.(*tui.Model)
 	view = model.View()

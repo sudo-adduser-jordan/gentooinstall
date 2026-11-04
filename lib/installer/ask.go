@@ -6,9 +6,6 @@ import (
 	"strings"
 )
 
-// AskYesNo prompts the user until a valid answer is given
-// (port of ask). Empty input yields def. A non-interactive runner
-// answers def without reading stdin.
 func AskYesNo(runner *Runner, question string, def bool) (bool, error) {
 	suffix := "(Y/n)"
 	if !def {
@@ -40,7 +37,6 @@ func AskYesNo(runner *Runner, question string, def bool) (bool, error) {
 	}
 }
 
-// PromptLine reads one line from stdin with a prompt.
 func PromptLine(runner *Runner, prompt string) (string, error) {
 	fmt.Fprint(runner.stderr(), prompt)
 	rd := bufio.NewReader(stdinOrReader(runner.Stdin))
@@ -51,8 +47,6 @@ func PromptLine(runner *Runner, prompt string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-// InteractiveOnFailure builds an OnFailure handler asking the user for
-// retry/abort/continue/print (the try() prompt).
 func InteractiveOnFailure(runner *Runner) func(string, error) FailAction {
 	return func(cmdline string, err error) FailAction {
 		for {

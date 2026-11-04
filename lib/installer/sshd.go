@@ -7,7 +7,6 @@ import (
 	"gentooinstall/assets"
 )
 
-// EnableSSHD installs the hardened sshd configuration and enables it.
 func EnableSSHD(ctx *Context) error {
 	ctx.Runner.log("Installing and enabling sshd")
 	if err := ctx.mkdirAll("/etc/ssh", 0o755); err != nil {
@@ -19,7 +18,6 @@ func EnableSSHD(ctx *Context) error {
 	return EnableService(ctx, "sshd")
 }
 
-// InstallAuthorizedKeys writes root's authorized_keys (if configured).
 func InstallAuthorizedKeys(ctx *Context) error {
 	if err := ctx.mkdirAll("/root/.ssh", 0o700); err != nil {
 		return err

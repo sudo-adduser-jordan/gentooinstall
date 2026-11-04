@@ -10,7 +10,6 @@ import (
 	"gentooinstall/lib/disklayout"
 )
 
-// resolveID resolves a layout id, returning a canonicalized device path.
 func resolveID(ctx *Context, id string) (string, error) {
 	dev, err := ctx.Resolver.ResolveDevice(id)
 	if err != nil {
@@ -19,7 +18,6 @@ func resolveID(ctx *Context, id string) (string, error) {
 	return dev, nil
 }
 
-// describeDevices renders "dev (id), dev2 (id2)" for log messages.
 func describeDevices(devs []string, ids []string) string {
 	var parts []string
 	for index, dev := range devs {
@@ -46,13 +44,7 @@ func partprobe(ctx *Context, device string) {
 	}
 }
 
-// waitPartition waits for the newly created partition node to appear.
-// The device is re-resolved on every attempt: partprobe events can lag
-// slightly, and blkid reports "not found yet" (exit status 2) meanwhile.
 func waitPartition(ctx *Context, newID string) error {
-	// When a command executor is installed (capture/testing mode) no device
-	// node can exist, so there is nothing to wait for; skip the retry loop
-	// and its sleeps so capture tests are fast and deterministic.
 	if ctx.Runner.Exec != nil {
 		return nil
 	}
@@ -75,18 +67,10 @@ func waitPartition(ctx *Context, newID string) error {
 		"(run partprobe and check dmesg for kernel partition events)", newID)
 }
 
-// targetBusyResources returns the mountpoints and active swap devices under
-// a whole-disk device that would keep the kernel from switching to a freshly
-// written partition table: any mounted filesystem or enabled swap holds the
-// old partitions open, so partprobe reports "in use" and the new partition
-// nodes never appear (the failure mode when installing onto an auto-mounted
-// USB stick).
 func (ctx *Context) targetBusyResources(device string) (mounts, swaps []string) {
 	if ctx.TargetResources != nil {
 		return ctx.TargetResources(device)
 	}
-	// In capture/testing mode there is no live system to probe; without an
-	// injected stub nothing is busy (mirrors waitPartition's Exec fast-path).
 	if ctx.Runner.Exec != nil {
 		return nil, nil
 	}
@@ -120,8 +104,6 @@ func (ctx *Context) targetBusyResources(device string) (mounts, swaps []string) 
 	return mounts, swaps
 }
 
-// isChildDevice reports whether candidate names a partition of the
-// whole-disk device base (/dev/sdb -> /dev/sdb1, /dev/nvme0n1 -> /dev/nvme0n1p1).
 func isChildDevice(base, candidate string) bool {
 	rest := strings.TrimPrefix(candidate, base)
 	if rest == "" || rest == candidate {
@@ -133,9 +115,6 @@ func isChildDevice(base, candidate string) bool {
 	return len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9'
 }
 
-// unmountTarget releases every filesystem and swap under a whole-disk device
-// before it is repartitioned. Called from actCreateGPT so the kernel can
-// accept the freshly written partition table on the first partprobe.
 func unmountTarget(ctx *Context, device string) error {
 	mounts, swaps := ctx.targetBusyResources(device)
 	if len(mounts) == 0 && len(swaps) == 0 {
@@ -155,8 +134,6 @@ func unmountTarget(ctx *Context, device string) error {
 	return nil
 }
 
-// logLsblk writes the current block device tree to the install log under
-// label. Skipped in capture/testing mode, like the live lsblk probes.
 func logLsblk(ctx *Context, label string) {
 	if ctx.Runner.Exec != nil {
 		return
@@ -172,8 +149,6 @@ func logLsblk(ctx *Context, label string) {
 	}
 }
 
-// ApplyDiskActions executes the layout's action list in order
-// (port of apply_disk_actions and all disk_* functions).
 func ApplyDiskActions(ctx *Context) error {
 	logLsblk(ctx, "Current lsblk output:")
 	defer logLsblk(ctx, "New lsblk output:")
@@ -181,7 +156,6 @@ func ApplyDiskActions(ctx *Context) error {
 		var err error
 		switch action.Action {
 		case disklayout.ActExisting, disklayout.ActCreateDummy:
-			// no-op
 		case disklayout.ActCreateGPT:
 			err = actCreateGPT(ctx, &action)
 		case disklayout.ActCreatePartition:
@@ -207,7 +181,6 @@ func ApplyDiskActions(ctx *Context) error {
 }
 
 func operandDevice(ctx *Context, action *disklayout.Action) (string, string, error) {
-	// Returns (device, description, error)
 	if action.ID != "" {
 		dev, err := resolveID(ctx, action.ID)
 		if err != nil {
@@ -355,7 +328,6 @@ func actCreateLuks(ctx *Context, action *disklayout.Action) error {
 	return nil
 }
 
-// runWithKey runs cryptsetup feeding the encryption key on stdin.
 func runWithKey(ctx *Context, args []string) error {
 	return ctx.Runner.RunWithStdin(ctx.EncryptionKey, "cryptsetup", args...)
 }
@@ -409,7 +381,6 @@ func actFormat(ctx *Context, action *disklayout.Action) error {
 		if err := ctx.Runner.Try(args[0], args[1:]...); err != nil {
 			return fmt.Errorf("could not format device '%s' (%s): %w", device, action.ID, err)
 		}
-		// Try to disable an automatically enabled swap.
 		_ = ctx.Runner.Run("swapoff", device)
 	case "ext4":
 		args := []string{"mkfs.ext4", "-q"}

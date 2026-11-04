@@ -13,12 +13,8 @@ import (
 
 const customDeviceMarker = "<enter custom path>"
 
-// BlockDevices lists the block devices offered by the disk picker. It is
-// overridable so tests can exercise the no-devices fallback.
 var BlockDevices = sysinfo.Devices
 
-// qemuFallbackDevices are offered when no block device could be discovered,
-// so a QEMU VM whose disk driver did not load can still target a device.
 var qemuFallbackDevices = []option{
 	{Value: "/dev/sda", Desc: "QEMU default (IDE/SATA)"},
 	{Value: "/dev/vda", Desc: "QEMU virtio-blk"},
@@ -35,8 +31,6 @@ func deviceOptions() []option {
 	return append(opts, option{Value: customDeviceMarker, Desc: "type a path manually"})
 }
 
-// devPick builds a choice field backed by /dev/disk/by-id plus a
-// manual-path escape hatch (port of menu_select_device).
 func devPick(label, help string, get func(*config.Config) string,
 	set func(*config.Config, string)) *field {
 	devField := choice(label, deviceOptions, get, set, help)
@@ -53,7 +47,6 @@ func devPick(label, help string, get func(*config.Config) string,
 						}
 						if _, err := exists(path); err != nil {
 							m2.setStatusErr(err.Error())
-							// keep editing until valid or cancelled
 							m2.openText("Enter device path (does not exist!)",
 								path, false, func(m3 *Model, p2 string) {
 									p2 = strings.TrimSpace(p2)
@@ -146,8 +139,6 @@ func listToOpts(xs []string) []option {
 	return out
 }
 
-// overlayOptions lists the optional overlays available to enable. The
-// "gentoo" repo is always on by default and is intentionally not offerable.
 func overlayOptions() []option {
 	out := make([]option, 0, len(config.Overlays))
 	for _, overlay := range config.Overlays {
@@ -156,10 +147,6 @@ func overlayOptions() []option {
 	return out
 }
 
-// firmwareSectionOptions lists the selectable sys-kernel/linux-firmware
-// categories. Each vendor category row is followed by its member directories;
-// a category row toggles all of them, individual rows can be mixed. Wireless
-// entries carry a "(Wi-Fi)" hint.
 func firmwareSectionOptions() []option {
 	out := make([]option, 0, len(config.FirmwareSections))
 	for _, section := range config.FirmwareSections {
@@ -340,7 +327,6 @@ func buildTabs(model *Model) []tabDef {
 			return field
 		}(),
 	}}
-	// visibility for the devices text field:
 	diskTab.fields[5].vis = schemeIs(config.SchemeZFSCentric, config.SchemeBtrfs,
 		config.SchemeRaid0Luks, config.SchemeRaid1Luks)
 
@@ -735,7 +721,6 @@ func buildTabs(model *Model) []tabDef {
 			},
 			profilePkgStyle,
 			func(model *Model, field *field, _ string) {
-				// Bring up the profile selection menu, matching the Gentoo tab.
 				model.openPicker(field.label, profileOptions(), model.cfg.Gentoo.Profile, true,
 					func(mm *Model, value string) {
 						mm.cfg.Gentoo.Profile = value
@@ -774,8 +759,6 @@ func makeConfSummary(cc *config.Config) string {
 	return badgeStyle.Render(fmt.Sprintf("%d selected", len(cc.MakeConf.Options)))
 }
 
-// makeConfContentSummary shows the freeform extra block (or hints at the
-// effective content) for the make.conf viewer row.
 func makeConfContentSummary(cc *config.Config) string {
 	extra := strings.TrimSpace(cc.MakeConf.Extra)
 	if extra != "" {

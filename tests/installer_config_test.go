@@ -1,4 +1,3 @@
-// In-chroot system configurators (portage, repos, networking, sshd).
 package tests
 
 import (
@@ -248,17 +247,12 @@ func TestWriteReposConfRsync(testingT *testing.T) {
 	}
 }
 
-// The seed phase must register an rsync-typed repo even when git is
-// configured: emerge-webrsync rejects git-typed repos with an "invalid sync
-// type" validation failure. The flip to git happens later in
-// ConfigureGitSync.
 func TestSeedPortageTree(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	if cfg.Gentoo.PortageSyncType != "git" {
 		testingT.Fatalf("precondition: default sync type = %q, want git", cfg.Gentoo.PortageSyncType)
 	}
 	ctx, stub := testContext(testingT, cfg, nil)
-	// A stale git checkout from a previous run must not survive the seed.
 	mkScratchDir(testingT, ctx, "/var/db/repos/gentoo/.git")
 
 	if err := installer.SeedPortageTree(ctx); err != nil {

@@ -11,26 +11,15 @@ import (
 	"time"
 )
 
-// MirrorStatus reports whether a configured Gentoo mirror host is reachable
-// over the network together with a short human-readable note for the TUI.
 type MirrorStatus struct {
 	OK   bool
 	Note string
 }
 
-// probeTimeout bounds a single mirror reachability probe so the indicator
-// never hangs the UI waiting on a dead or filtered host.
 const probeTimeout = 5 * time.Second
 
-// probePath is a small, cheap, always-present resource on the mirror host to
-// HEAD. It only establishes reachability at the HTTP layer (what the stage3
-// fetch actually needs); the full releases listing is still resolved by the
-// installer against the configured subpath.
 const probePath = "/"
 
-// MirrorHost returns the host portion of a Gentoo mirror URL (no scheme), or
-// "" when the value is not a parseable URL. The TUI shows this next to the
-// mirror reachability indicator.
 func MirrorHost(mirrorURL string) string {
 	parsedURL, err := url.Parse(mirrorURL)
 	if err != nil || parsedURL.Host == "" {
@@ -39,8 +28,6 @@ func MirrorHost(mirrorURL string) string {
 	return parsedURL.Host
 }
 
-// mirrorOrigin strips scheme and any path/query from a mirror URL, returning
-// just "scheme://host" (the endpoint the probe targets).
 func mirrorOrigin(mirrorURL string) string {
 	parsedURL, err := url.Parse(mirrorURL)
 	if err != nil || parsedURL.Host == "" {
@@ -49,10 +36,6 @@ func mirrorOrigin(mirrorURL string) string {
 	return (&url.URL{Scheme: parsedURL.Scheme, Host: parsedURL.Host}).String()
 }
 
-// MirrorProbe checks whether the host named by the given Gentoo mirror URL is
-// reachable over HTTP. It prefers a HEAD request, falling back to GET for
-// servers that reject HEAD; a 2xx response counts as reachable. The result
-// maps common failure kinds to a short note the TUI can show verbatim.
 func MirrorProbe(ctx context.Context, mirrorURL string) MirrorStatus {
 	origin := mirrorOrigin(mirrorURL)
 	if origin == "" {
@@ -66,8 +49,6 @@ func MirrorProbe(ctx context.Context, mirrorURL string) MirrorStatus {
 			return MirrorStatus{OK: false, Note: "invalid request"}
 		}
 		resp, err := client.Do(req)
-		// A 405/400 on HEAD means the server does not support it; retry with
-		// GET before concluding the mirror is down.
 		if method == http.MethodHead && err == nil &&
 			(resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusBadRequest) {
 			resp.Body.Close()
@@ -90,9 +71,6 @@ func MirrorProbe(ctx context.Context, mirrorURL string) MirrorStatus {
 	}
 }
 
-// probeErrNote turns a transport/dial error into the short diagnostic shown
-// next to the shield. Unreachable is the main live-ISO case, where DHCP is
-// still coming up or a proxy is required.
 func probeErrNote(err error) string {
 	for _, wrapped := range unwrapAll(err) {
 		if _, ok := wrapped.(*net.DNSError); ok {
@@ -114,7 +92,6 @@ func probeErrNote(err error) string {
 	return "unreachable"
 }
 
-// unwrapAll returns err and every error wrapped within it.
 func unwrapAll(err error) []error {
 	var out []error
 	for err != nil {

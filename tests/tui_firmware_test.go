@@ -1,5 +1,3 @@
-// Firmware pre-flight block: an EFI config on a BIOS-booted live system must
-// be rejected before the install starts.
 package tests
 
 import (
@@ -35,14 +33,12 @@ func TestFirmwareBlockError(testingT *testing.T) {
 	}
 }
 
-// installTabModel builds a model on the Install tab with a known firmware
-// probe result.
 func installTabModel(testingT *testing.T, cfg *config.Config, hasEFI bool) *tui.Model {
 	testingT.Helper()
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 	appModel.SetHasEFI(hasEFI)
 	appModel.SetInstallFunc(func() error { testingT.Fatal("install must not start"); return nil })
-	mm, _ := appModel.Update(keyRunes('6')) // Install tab
+	mm, _ := appModel.Update(keyRunes('6'))
 	return mm.(*tui.Model)
 }
 
@@ -69,7 +65,6 @@ func TestTuiFirmwareBlockRejectsEFIOnNoneFIHost(testingT *testing.T) {
 		testingT.Fatal("pressing i must not launch the install on a firmware mismatch")
 	}
 
-	// Dismissing closes the overlay and returns to the tab.
 	mm, _ = appModel.Update(keyEnter())
 	appModel = mm.(*tui.Model)
 	if strings.Contains(appModel.View(), "Firmware mismatch") {

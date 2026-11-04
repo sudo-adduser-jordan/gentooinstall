@@ -18,12 +18,8 @@ import (
 	"gentooinstall/lib/sysinfo"
 )
 
-// DEFAULTPATH is the PATH exported by the live init before any command runs.
 const DEFAULTPATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-// Init bootstraps the live environment. It runs exactly once, when the binary
-// is PID 1. It never aborts the boot: problems are reported on the console and
-// the TUI still starts.
 func Init() error {
 	setDefaultEnv("PATH", DEFAULTPATH)
 	setDefaultEnv("SHELL", "/bin/sh")
@@ -39,7 +35,6 @@ func Init() error {
 		}
 	}
 
-	// Runtime directories a few tools expect; idempotent on the initramfs.
 	for _, dir := range []string{
 		"/run",
 		"/tmp",
@@ -69,8 +64,6 @@ func setDefaultEnv(key, val string) {
 	}
 }
 
-// isMounted reports whether target appears in /proc/mounts (empty until proc
-// itself is mounted, which is the first entry of the mount table).
 func isMounted(target string) bool {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -85,35 +78,18 @@ func isMounted(target string) bool {
 	return false
 }
 
-// logf writes a line to the console and best-effort mirrors it to the first
-// serial port, so headless serial boots (and the QEMU e2e) observe live-init
-// progress. The single grub entry boots console=ttyS0 only, so /dev/console
-// IS the serial port. It is intended for the synchronous boot sequence that
-// completes before the TUI starts; use logSerial for anything that may fire
-// later.
 func logf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stdout, msg)
 	writeSerial(msg)
 }
 
-// tuiOwnsSerial is set once the BubbleTea TUI owns the terminal. Background
-// goroutines must not write raw bytes to /dev/ttyS0 afterwards when the TUI
-// itself renders on the serial port (console=ttyS0 under
-// qemu -nographic -serial stdio): it injects lines into the alt-screen and
-// smears the footer. Logs still go to the file fallback below.
 var tuiOwnsSerial bool
 
-// SetTuiActive reports whether the TUI now owns the terminal. Call with true
-// immediately before p.Run() and false afterwards.
 func SetTuiActive(active bool) { tuiOwnsSerial = active }
 
-// TuiActive reports whether the TUI currently owns the terminal.
 func TuiActive() bool { return tuiOwnsSerial }
 
-// serialConsoleOnly reports whether the kernel was booted with console=ttyS0
-// and without console=tty0 (the single grub entry). Then the TUI's
-// stdout IS /dev/ttyS0 and raw serial writes corrupt it.
 func serialConsoleOnly() bool {
 	data, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
@@ -132,8 +108,6 @@ func serialConsoleOnly() bool {
 	return hasS0 && !hasTty0
 }
 
-// appendFileLog best-effort appends background status to a file so it stays
-// debuggable after serial is muted (serial TUI owns the port).
 func appendFileLog(msg string) {
 	for _, path := range []string{"/run/live-net.log", "/tmp/live-net.log"} {
 		if file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
@@ -144,10 +118,6 @@ func appendFileLog(msg string) {
 	}
 }
 
-// logSerial writes a line to the first serial port only (never stdio), for
-// log output produced after the live boot has handed the terminal to the TUI
-// (e.g. the background DHCP bring-up). Muted once the TUI owns a
-// serial-only console; the message is kept in the file log instead.
 func logSerial(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	appendFileLog(msg)
@@ -157,8 +127,6 @@ func logSerial(format string, args ...any) {
 	writeSerial(msg)
 }
 
-// writeSerial best-effort mirrors msg to /dev/ttyS0 so headless serial consoles
-// (and the QEMU e2e) observe live-init progress.
 func writeSerial(msg string) {
 	if tuiOwnsSerial && serialConsoleOnly() {
 		return
@@ -169,11 +137,6 @@ func writeSerial(msg string) {
 	}
 }
 
-// loadModules best-effort loads the storage drivers in NeedModules from the
-// modules bundled into the initramfs by scripts/release.sh. Modules are
-// injected with the init_module syscall directly because the initramfs has
-// no modprobe; entries that are built into the kernel or were not bundled
-// are skipped.
 func loadModules() {
 	for _, mod := range NeedModules {
 		if moduleLoaded(mod) {
@@ -192,17 +155,12 @@ func loadModules() {
 	}
 }
 
-// logBlockDevices prints the discovered block devices so the headless e2e
-// and users can see which disks are visible after module loading.
 func logBlockDevices() {
 	for _, dev := range sysinfo.Devices() {
 		logf("live: block device %s", dev)
 	}
 }
 
-// logTools reports which host utilities the install engine needs are present
-// on the live rootfs, so the headless e2e and users can tell at a glance
-// whether the Alpine-based userspace was bundled correctly.
 func logTools() {
 	found := []string{}
 	for _, program := range []string{"busybox", "gpg", "lsblk", "ntpd", "partprobe",
@@ -214,7 +172,6 @@ func logTools() {
 	logf("live: tools: %s", strings.Join(found, " "))
 }
 
-// moduleLoaded reports whether name is listed in /proc/modules.
 func moduleLoaded(name string) bool {
 	data, err := os.ReadFile("/proc/modules")
 	if err != nil {
@@ -229,11 +186,6 @@ func moduleLoaded(name string) bool {
 	return false
 }
 
-// tryDHCP brings up the first physical interface with udhcpc, retrying a few
-// times because the network driver may still be probing. It runs in the
-// background so it never delays the TUI.
-// dhcpDone is set once each interface attempt has finished (succeeded or
-// given up), so callers can tell whether the network may still be coming up.
 var (
 	dhcpMu      sync.Mutex
 	dhcpDone    bool
@@ -241,8 +193,6 @@ var (
 )
 
 func init() {
-	// The default NetworkReady (externally visible) reports whether the live
-	// DHCP bring-up has succeeded; it is consulted by the mirror indicator.
 	NetworkReady = func() bool {
 		dhcpMu.Lock()
 		defer dhcpMu.Unlock()
@@ -278,10 +228,6 @@ func tryDHCP() {
 	dhcpMu.Unlock()
 }
 
-// logDHCPUp reports a successful DHCP bring-up on the serial console so headless
-// e2e tests can assert the network (and /etc/resolv.conf) came up, mirroring
-// what the tarball/mirror fetches depend on. Serial-only: this runs in the
-// background after the TUI owns the terminal.
 func logDHCPUp(iface string) {
 	logSerial("live: dhcp %s: up", iface)
 	if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
@@ -297,13 +243,7 @@ func logDHCPUp(iface string) {
 }
 
 func dhcpUp(iface string) error {
-	// Bring the interface up first; busybox udhcpc relies on the interface
-	// being admin-up to send DHCPDISCOVER. QEMU user-net's internal DHCP server
-	// answers on 10.0.2.2 and hands out 10.0.2.15.
 	_ = exec.Command("ip", "link", "set", iface, "up").Run()
-	// Bound the attempts (-t/ -T) so a missing server gives up in a few seconds
-	// instead of letting udhcpc idle for minutes; -n exits if no lease is
-	// obtained rather than looping forever.
 	cmd := exec.Command("udhcpc", "-i", iface, "-n", "-q", "-t", "3", "-T", "2",
 		"-s", "/etc/udhcpc/default.script")
 	out, err := cmd.CombinedOutput()

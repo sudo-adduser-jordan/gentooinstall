@@ -1,4 +1,3 @@
-// Live-ISO environment helpers (mount table, modules, interfaces).
 package tests
 
 import (
@@ -30,8 +29,6 @@ func TestLiveNeedModules(testingT *testing.T) {
 	for _, mod := range live.NeedModules {
 		need[mod] = true
 	}
-	// NICs so DHCP works under QEMU (e1000) and feature support for
-	// shipped templates; kept in sync with scripts/release.sh MODULES.
 	for _, want := range []string{"e1000", "virtio_net", "dm_crypt", "btrfs", "md_mod", "nvme", "fat", "vfat"} {
 		if !need[want] {
 			testingT.Fatalf("NeedModules missing %q: %v", want, live.NeedModules)
@@ -55,8 +52,6 @@ func TestLiveInterfacesSafe(testingT *testing.T) {
 }
 
 func TestLiveNetworkReadyDefault(testingT *testing.T) {
-	// Callable without panic; on linux the init override reports DHCP
-	// success (false until tryDHCP succeeds), elsewhere always true.
 	_ = live.NetworkReady()
 }
 

@@ -1,4 +1,3 @@
-// Host-prerequisite check on the TUI Install tab (lib/tui hostcheck.go).
 package tests
 
 import (
@@ -16,7 +15,7 @@ func TestTuiHostPrereqOk(testingT *testing.T) {
 	appModel.SetPrereq(func() tui.Prereq { return tui.Prereq{RootOK: true} })
 	mm, _ := appModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	appModel = mm.(*tui.Model)
-	mm, _ = appModel.Update(keyRunes('6')) // Install tab
+	mm, _ = appModel.Update(keyRunes('6'))
 	model := mm.(*tui.Model)
 
 	out := model.View()
@@ -35,7 +34,7 @@ func TestTuiHostPrereqMissingAndNotRoot(testingT *testing.T) {
 	})
 	mm, _ := appModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	appModel = mm.(*tui.Model)
-	mm, _ = appModel.Update(keyRunes('6')) // Install tab
+	mm, _ = appModel.Update(keyRunes('6'))
 	model := mm.(*tui.Model)
 
 	out := model.View()
@@ -51,7 +50,7 @@ func TestTuiHostPrereqHiddenByDefault(testingT *testing.T) {
 	appModel := tui.New(config.Default(true), "/tmp/test-gentoo.toml")
 	mm, _ := appModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	appModel = mm.(*tui.Model)
-	mm, _ = appModel.Update(keyRunes('6')) // Install tab
+	mm, _ = appModel.Update(keyRunes('6'))
 	model := mm.(*tui.Model)
 
 	if out := model.View(); strings.Contains(out, "Host prerequisites") {

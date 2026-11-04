@@ -1,4 +1,3 @@
-// Headless TUI model: tabs, editors, pickers and overlays.
 package tests
 
 import (
@@ -17,7 +16,6 @@ func keyDown() tea.KeyMsg            { return tea.KeyMsg{Type: tea.KeyDown} }
 func keyUp() tea.KeyMsg              { return tea.KeyMsg{Type: tea.KeyUp} }
 func keyLeft() tea.KeyMsg            { return tea.KeyMsg{Type: tea.KeyLeft} }
 
-// rowDownN advances the cursor count rows down, returning the updated model.
 func rowDownN(appModel *tui.Model, count int) *tui.Model {
 	for idx := 0; idx < count; idx++ {
 		mm, _ := appModel.Update(keyDown())
@@ -30,7 +28,6 @@ func TestTuiTabSwitchAndEdit(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	// Switch to tab 2 (System).
 	mm, _ := appModel.Update(keyRunes('2'))
 	model, ok := mm.(*tui.Model)
 	if !ok {
@@ -44,10 +41,8 @@ func TestTuiTabSwitchAndEdit(testingT *testing.T) {
 		testingT.Fatal("must not be dirty before edits")
 	}
 
-	// First row on System tab is Hostname; open the editor.
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
-	// Type a hostname and confirm. The editor opens pre-filled, so clear it.
 	for range model.Config().System.Hostname {
 		mm, _ = model.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 		model = mm.(*tui.Model)
@@ -71,22 +66,20 @@ func TestTuiToggleAndHelp(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	// Tab 5 (Packages): first row toggles Enable sshd.
 	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 	before := model.Config().Packages.EnableSSHD
-	mm, _ = model.Update(keyEnter()) // toggle in place
+	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 	if model.Config().Packages.EnableSSHD == before {
 		testingT.Fatal("toggle had no effect")
 	}
 
-	// Help overlay opens and closes with any key.
-	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp}) // move to next row
+	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyRunes('?'))
 	model = mm.(*tui.Model)
-	mm, _ = model.Update(keyEnter()) // dismiss
+	mm, _ = model.Update(keyEnter())
 	_ = mm
 }
 
@@ -94,16 +87,14 @@ func TestTuiProfileSelect(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	// Tab 4 (Gentoo). The Profile field is the second row.
 	mm, _ := appModel.Update(keyRunes('4'))
 	model := mm.(*tui.Model)
-	mm, _ = model.Update(keyDown()) // move to Profile
+	mm, _ = model.Update(keyDown())
 	model = mm.(*tui.Model)
-	mm, _ = model.Update(keyEnter()) // open the picker
+	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
 	profile := "default/linux/amd64/23.0/desktop/gnome"
-	// Type the profile in the filter, then Enter to select.
 	for _, ch := range profile {
 		mm, _ = model.Update(keyRunes(ch))
 		model = mm.(*tui.Model)
@@ -123,21 +114,16 @@ func TestTuiReadOnlyProfileRows(testingT *testing.T) {
 	cfg := config.Default(true)
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome"
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
-	// Wide terminal: row positions assume the two-column layout (narrow
-	// serial terminals stack the indicator above the path).
 	mm, _ := appModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	appModel = mm.(*tui.Model)
 
-	// Tab 5 (Packages).
 	mm2, _ := appModel.Update(keyRunes('5'))
 	model := mm2.(*tui.Model)
 
 	view := model.View()
-	// The 'Selected profile' row shows the friendly description, not the path.
 	if !strings.Contains(view, "GNOME desktop (OpenRC)") {
 		testingT.Fatalf("Packages view should show friendly profile name, got:\n%s", view)
 	}
-	// 'Installed by profile' shows a package count instead of the concat list.
 	if !strings.Contains(view, "packages") {
 		testingT.Fatalf("Packages view should show an installed-by-profile count, got:\n%s", view)
 	}
@@ -145,8 +131,6 @@ func TestTuiReadOnlyProfileRows(testingT *testing.T) {
 		testingT.Fatalf("Packages view should not expose the concat package list, got:\n%s", view)
 	}
 
-	// Navigate down to the 'Installed by profile' row (visible pos 13)
-	// and open the package-list modal.
 	model = rowDownN(model, 13)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
@@ -156,7 +140,6 @@ func TestTuiReadOnlyProfileRows(testingT *testing.T) {
 		testingT.Fatalf("modal should list profile packages (incl. gnome-base/gnome), got:\n%s", modal)
 	}
 
-	// The modal must not change the configuration.
 	if model.Config().Gentoo.Profile != cfg.Gentoo.Profile {
 		testingT.Fatal("opening the package modal must not modify config")
 	}
@@ -166,12 +149,9 @@ func TestTuiSelectedProfileOpensPicker(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	// Tab 5 (Packages).
 	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 
-	// Navigate down to the 'Selected profile' row (visible pos 12,
-	// after the two make.conf rows, USE flags row and the firmware rows were added) and open the picker.
 	model = rowDownN(model, 12)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
@@ -196,15 +176,13 @@ func TestTuiProfileModalShowsFriendlyLabel(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	// Tab 4 (Gentoo). The Profile field is the second row.
 	mm, _ := appModel.Update(keyRunes('4'))
 	model := mm.(*tui.Model)
-	mm, _ = model.Update(keyDown()) // move to Profile
+	mm, _ = model.Update(keyDown())
 	model = mm.(*tui.Model)
-	mm, _ = model.Update(keyEnter()) // open the picker
+	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
-	// The picker rows should show the friendly description, not the full path.
 	view := model.View()
 	if !strings.Contains(view, "desktop/systemd") && !strings.Contains(view, "Desktop") {
 		testingT.Fatalf("profile picker should list profiles, got:\n%s", view)
@@ -218,23 +196,20 @@ func TestTuiReposAndPackagesPickers(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	// Tab 5 (Packages).
 	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 
-	// Navigate to 'Enable repositories/overlays' (visible pos 6) and open it.
 	model = rowDownN(model, 6)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
-	// Filter for guru and toggle it on.
 	for _, ch := range "guru" {
 		mm, _ = model.Update(keyRunes(ch))
 		model = mm.(*tui.Model)
 	}
 	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model = mm.(*tui.Model)
-	mm, _ = model.Update(keyEnter()) // apply
+	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
 	if len(model.Config().Packages.EnablingRepos) != 1 ||
@@ -242,20 +217,16 @@ func TestTuiReposAndPackagesPickers(testingT *testing.T) {
 		testingT.Fatalf("enabling repos = %v, want [guru]", model.Config().Packages.EnablingRepos)
 	}
 
-	// Navigate to 'Additional packages' (visible pos 7) and open the picker.
 	mm, _ = model.Update(keyDown())
 	model = mm.(*tui.Model)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
 	view := model.View()
-	// Keep the gentoo package check on the unfiltered, scrollable list.
 	if !strings.Contains(view, "app-editors/vim") {
 		testingT.Fatalf("additional-packages picker should list gentoo package vim, got:\n%s", view)
 	}
 
-	// Filter for the guru-only package to confirm enabled-overlay atoms are
-	// offered (it may be scrolled out of the visible window otherwise).
 	for _, ch := range "fastfetch" {
 		mm, _ = model.Update(keyRunes(ch))
 		model = mm.(*tui.Model)
@@ -270,15 +241,13 @@ func TestTuiMakeConfOptionsPicker(testingT *testing.T) {
 	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
+	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 
-	// Navigate to 'make.conf options' (visible selectable pos 10).
 	model = rowDownN(model, 10)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
-	// The picker lists the catalog. Toggle the first option ('jobs').
 	if viewSnapshot := model.View(); !strings.Contains(viewSnapshot, "Parallel build jobs") {
 		testingT.Fatalf("make.conf picker should list job option, got:\n%s", viewSnapshot)
 	}
@@ -299,15 +268,13 @@ func TestTuiMakeConfViewer(testingT *testing.T) {
 	cfg.MakeConf.Extra = "CFLAGS=\"-O3 -pipe\""
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 
-	mm, _ := appModel.Update(keyRunes('5')) // Packages tab
+	mm, _ := appModel.Update(keyRunes('5'))
 	model := mm.(*tui.Model)
 
-	// Navigate to 'edit make.conf' (visible selectable pos 11).
 	model = rowDownN(model, 11)
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
-	// The viewer shows the effective make.conf content (scrollable, no edit).
 	view := model.View()
 	if !strings.Contains(view, "make.conf") {
 		testingT.Fatalf("make.conf viewer should render the file, got:\n%s", view)
@@ -319,7 +286,6 @@ func TestTuiMakeConfViewer(testingT *testing.T) {
 		testingT.Fatalf("make.conf viewer should render the extra block, got:\n%s", view)
 	}
 
-	// Closing leaves the config unchanged (view-only).
 	mm, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	model = mm.(*tui.Model)
 	if len(model.Config().MakeConf.Options) != 2 {
@@ -328,21 +294,16 @@ func TestTuiMakeConfViewer(testingT *testing.T) {
 }
 
 func TestTuiQEMUDeviceFallback(testingT *testing.T) {
-	// Force the "no block devices discovered" case so the picker has to
-	// fall back to the QEMU default paths.
 	orig := tui.BlockDevices
 	tui.BlockDevices = func() []string { return nil }
 	testingT.Cleanup(func() { tui.BlockDevices = orig })
 
-	cfg := config.Default(true) // classic scheme; shows the "└ Device" row
+	cfg := config.Default(true)
 	appModel := tui.New(cfg, "/tmp/test-gentoo.toml")
 	model := appModel
 
-	// Disk tab is active by default and the cursor is clamped onto the first
-	// selectable row. Rows: Partitioning scheme(pos 0), ├ Boot type,
-	// └ Device(pos 2).
 	model = rowDownN(model, 2)
-	mm, _ := model.Update(keyEnter()) // open the device picker
+	mm, _ := model.Update(keyEnter())
 	model = mm.(*tui.Model)
 
 	view := model.View()
@@ -353,8 +314,6 @@ func TestTuiQEMUDeviceFallback(testingT *testing.T) {
 		testingT.Fatalf("device picker should offer the QEMU virtio /dev/vda, got:\n%s", view)
 	}
 
-	// The first fallback is /dev/sda; Enter confirms even though the node
-	// does not exist in this forced-empty scenario.
 	mm, _ = model.Update(keyEnter())
 	model = mm.(*tui.Model)
 

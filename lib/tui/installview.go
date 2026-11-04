@@ -11,42 +11,29 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// EncryptionKeyEnv mirrors installer.EncryptionKeyEnv without importing
-// the installer package from the TUI.
 const EncryptionKeyEnv = "GENTOO_INSTALL_ENCRYPTION_KEY"
 
-// InstallDecision is the user's answer to a failed installation step.
 type InstallDecision int
 
 const (
-	// DecideRetry reruns the failed step.
 	DecideRetry InstallDecision = iota
-	// DecideAbort aborts the installation.
 	DecideAbort
 )
 
-// InstallFunc performs the entire installation, streaming progress via
-// EmitInstallLine and finishing with EmitInstallDone.
 type InstallFunc func() error
 
-// Messages driving the install view.
 type InstallStartMsg struct{}
 
-// InstallLineMsg carries one streamed output line.
 type InstallLineMsg struct{ Line string }
 
-// InstallDoneMsg terminates the install view; Err nil means success.
 type InstallDoneMsg struct{ Err error }
 
-// InstallFailedMsg reports a failed step and how to answer it.
 type InstallFailedMsg struct {
 	Cmdline string
 	Err     string
-	// Decide is called with the user's choice.
-	Decide func(InstallDecision)
+	Decide  func(InstallDecision)
 }
 
-// Install states.
 const (
 	instIdle = iota
 	instRunning
@@ -62,9 +49,6 @@ var instStateNames = map[int]string{
 
 const maxInstLines = 5000
 
-// installCardH is the fixed outer height (border + padding included) of the
-// install status card, chosen so the modal stays a constant size while
-// steps scroll under the loading bar.
 const installCardH = 24
 
 var reAnsi = regexp.MustCompile(
@@ -72,8 +56,6 @@ var reAnsi = regexp.MustCompile(
 
 func stripAnsi(str string) string { return reAnsi.ReplaceAllString(str, "") }
 
-// Program plumbing (pVPN-style): background goroutines push messages
-// through the shared program reference.
 var globalProgram *tea.Program
 
 func sendInstall(msg tea.Msg) {
@@ -82,39 +64,26 @@ func sendInstall(msg tea.Msg) {
 	}
 }
 
-// SetProgram stores the running tea.Program so installer goroutines can
-// stream into the TUI. Call before p.Run().
 func SetProgram(prog *tea.Program) { globalProgram = prog }
 
-// EmitInstallLine streams one output line into the install window.
 func EmitInstallLine(line string) { sendInstall(InstallLineMsg{Line: line}) }
 
-// EmitInstallDone signals completion of the installation goroutine.
 func EmitInstallDone(err error) { sendInstall(InstallDoneMsg{Err: err}) }
 
-// EmitInstallFailed reports a failed step awaiting a user decision.
 func EmitInstallFailed(failedMsg InstallFailedMsg) { sendInstall(failedMsg) }
 
-// SetInstallFunc wires the install routine triggered by the confirm
-// overlay (injected by main).
 func (model *Model) SetInstallFunc(fn InstallFunc) { model.instFn = fn }
 
-// InstallState reports idle/running/waiting/done/aborted (tests).
 func (model *Model) InstallState() string { return instStateNames[model.instState] }
 
-// InstallActive reports whether the full-screen install view is shown.
 func (model *Model) InstallActive() bool { return model.installing }
 
-// InstallLines returns the buffered log lines (tests).
 func (model *Model) InstallLines() []string {
 	out := make([]string, len(model.instLines))
 	copy(out, model.instLines)
 	return out
 }
 
-// instStep is one entry of the progress checklist. Steps are discovered
-// dynamically from "[+] <name>" log lines, which both host and chroot
-// phases emit.
 type instStep struct {
 	name   string
 	failed bool
@@ -128,14 +97,11 @@ func newProgressModel(width int) progress.Model {
 }
 
 func (model *Model) appendInstLine(line string) {
-	raw := line // preserve ANSI codes for log overlay
+	raw := line
 	line = strings.TrimRight(stripAnsi(line), "\r \t")
 	if line == "" {
 		return
 	}
-	// Command echo (Runner logs "$ cmd" via Log, arriving as "[+] $ cmd"):
-	// pin to the header line, never a checklist step. Otherwise every
-	// mount/emerge floods the card and pins progress at (n-1)/n.
 	if cmd, ok := strings.CutPrefix(line, "[+] $ "); ok {
 		model.curCmd = strings.TrimSpace(cmd)
 	} else if cmd, ok := strings.CutPrefix(line, "$ "); ok {
@@ -163,7 +129,6 @@ func (model *Model) appendInstLine(line string) {
 	}
 }
 
-// markCurrentStepDone flags the active step complete before a new one starts.
 func (model *Model) markCurrentStepDone() {
 	for idx := range model.instSteps {
 		if !model.instSteps[idx].done {
@@ -173,7 +138,6 @@ func (model *Model) markCurrentStepDone() {
 	}
 }
 
-// stepProgress returns the fraction of finished steps.
 func (model *Model) stepProgress() float64 {
 	total := len(model.instSteps)
 	if total == 0 {
@@ -191,7 +155,6 @@ func (model *Model) stepProgress() float64 {
 	return float64(done) / float64(total)
 }
 
-// beginInstall switches to the install view and launches the goroutine.
 func (model *Model) beginInstall() {
 	if model.instFn == nil || model.instState != instIdle {
 		return
@@ -206,15 +169,12 @@ func (model *Model) beginInstall() {
 	}()
 }
 
-// vpInitReset prepares the install card state.
 func (model *Model) vpInitReset() {
 	model.instSteps = nil
 	model.prog = newProgressModel(40)
 	model.appendInstLine("[+] Starting installation")
 }
 
-// requestStartInstall runs pre-flight collection (luks passphrase)
-// before launching. Called from the confirm overlay button.
 func (model *Model) requestStartInstall() {
 	if model.usedEnc && os.Getenv(EncryptionKeyEnv) == "" {
 		model.collectLuksKey("", "")
@@ -230,7 +190,7 @@ func (model *Model) collectLuksKey(note, pending string) {
 	}
 	model.openSecret(title, note, func(mm *Model, value string) {
 		if value == "" {
-			return // cancelled
+			return
 		}
 		if pending == "" {
 			if len(value) < 8 {
@@ -249,7 +209,6 @@ func (model *Model) collectLuksKey(note, pending string) {
 	})
 }
 
-// openSecret opens a masked single-line text overlay.
 func (model *Model) openSecret(title, note string, onDone func(*Model, string)) {
 	ti := textinput.New()
 	ti.Placeholder = "enter passphrase"
@@ -262,7 +221,6 @@ func (model *Model) openSecret(title, note string, onDone func(*Model, string)) 
 	model.textFn = &textState{fn: onDone}
 }
 
-// updateInstallMsg handles install-related tea.Msg values.
 func (model *Model) updateInstallMsg(msg tea.Msg) {
 	switch msg := msg.(type) {
 	case InstallLineMsg:
@@ -286,7 +244,6 @@ func (model *Model) updateInstallMsg(msg tea.Msg) {
 	}
 }
 
-// failButtons are the choices offered while waiting after a failure.
 var failButtons = []string{"Retry", "Abort"}
 
 func (model *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -323,7 +280,6 @@ func (model *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, nil
 	}
 	if model.instState == instWaiting {
-		// Waiting but no failure panel (transient); nothing else to do.
 		return model, nil
 	}
 	switch msg.String() {
@@ -337,9 +293,6 @@ func (model *Model) updateInstallKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
-// leaveInstallView returns to the tabs. A finished or failed installation is
-// reset to idle so a fresh installation can be started again without exiting
-// the program.
 func (model *Model) leaveInstallView() {
 	model.installing = false
 	if model.instState == instDone || model.instState == instAborted {
@@ -366,22 +319,15 @@ func (model *Model) decideFail(decision InstallDecision) {
 	}
 }
 
-// openLogOverlay shows the buffered raw output in a scrollable modal.
-// It uses a dedicated viewport with tail-follow: new output jumps to the
-// bottom while the user stays at the bottom, and scrolling up pauses the
-// follow until End/G resumes it.
 func (model *Model) openLogOverlay() {
 	model.overlay = overlay{kind: ovLog}
 	model.rawFollow = true
 	model.rawDirty = true
 	if model.rawVp.Height == 0 {
-		// Sized on first render; jump to bottom once content is set.
 		model.rawVp.GotoBottom()
 	}
 }
 
-// renderFailPanel renders the decision panel shown while a step waits
-// for the user's choice after a failure.
 func (model *Model) renderFailPanel() string {
 	var body strings.Builder
 	body.WriteString(warnStyle.Render("$") + " " + helpStyle.Render(model.fail.Cmdline) + "\n")
@@ -399,10 +345,6 @@ func (model *Model) renderFailPanel() string {
 	return body.String()
 }
 
-// renderInstallView draws the status card: pinned header and current
-// command over the loading bar, with the step checklist scrolling up
-// underneath it. The card has a constant size so streaming output never
-// resizes the modal; the failure decision panel is stacked below, unchanged.
 func (model *Model) renderInstallView() string {
 	width, height := model.width, model.height
 	if width == 0 {
@@ -448,20 +390,11 @@ func (model *Model) renderInstallView() string {
 
 	var cmdLine string
 	if model.curCmd != "" {
-		// Single line: long chroot paths (e.g. devpts on
-		// /tmp/gentoo-install/root/dev/pts) must ellipsize, never wrap
-		// and break the fixed card height.
 		cmdLine = truncateToWidth(unsetStyle.Render("$ "+model.curCmd), cardW-8)
 	}
 
 	bar := model.prog.ViewAs(model.stepProgress())
 
-	// Data box: border 2 + padding 2 rows, then header (1), blank, cmd (1),
-	// blank, bar (1), blank, checklist (rest), blank, hint (1). The
-	// checklist window is bottom-anchored, so older steps scroll up under
-	// the loading bar as new ones stream in. On short serial terminals
-	// (e.g. 80x24 over -nographic) shrink to fit so lipgloss.Place can
-	// still center the card instead of overflowing top-aligned.
 	cardH := installCardH
 	if height > 0 {
 		cardH = minInt(installCardH, maxInt(14, height-2))
@@ -478,8 +411,6 @@ func (model *Model) renderInstallView() string {
 		helpStyle.Render(hint),
 	}, "\n\n")
 
-	// lipgloss Height excludes the 2 border rows, so budget them out to hit
-	// the fixed outer size.
 	card := modalBoxStyle.Width(cardW - 6).Height(cardH - 2).Render(body)
 
 	stack := []string{card}
@@ -494,8 +425,6 @@ func (model *Model) renderInstallView() string {
 		lipgloss.JoinVertical(lipgloss.Center, stack...))
 }
 
-// renderChecklist renders the step list inside the available height with
-// a sliding window around the newest entries.
 func (model *Model) renderChecklist(maxW, maxH int) string {
 	if len(model.instSteps) == 0 {
 		return ""
@@ -522,7 +451,6 @@ func (model *Model) renderChecklist(maxW, maxH int) string {
 		default:
 			line = unsetStyle.Render("· " + step.name)
 		}
-		// MaxWidth wraps; the fixed-height card needs one row per step.
 		body.WriteString(truncateToWidth(line, maxW) + "\n")
 	}
 	return strings.TrimSuffix(body.String(), "\n")

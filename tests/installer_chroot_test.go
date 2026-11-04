@@ -1,4 +1,3 @@
-// Full in-chroot installation sequences (MainInstallGentooInChroot).
 package tests
 
 import (
@@ -9,8 +8,6 @@ import (
 	"gentooinstall/lib/installer"
 )
 
-// kernelAndBootScaffold plants the /boot, /usr/src/linux symlink and the
-// /sys/class/block partition info InstallKernelEFI/BIOS needs.
 func kernelAndBootScaffold(testingT *testing.T, ctx *installer.Context, kver string, partNum string) {
 	testingT.Helper()
 	mkScratchDir(testingT, ctx, "/boot")
@@ -24,8 +21,6 @@ func kernelAndBootScaffold(testingT *testing.T, ctx *installer.Context, kver str
 	}
 }
 
-// fstabRow mirrors the row layout GenerateFstab uses so tests can assert the
-// exact stored content.
 func fstabRow(fs, mountpoint, typ, opts, dumpPass string) string {
 	return fmt.Sprintf("%-46s  %-24s  %-6s  %-96s %s",
 		fs, mountpoint, typ, opts, dumpPass)
@@ -55,8 +50,6 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		return "", fmt.Errorf("unexpected device for blkid: %s", dev)
 	}
 	ctx.EvalSymlinks = func(path string) (string, error) {
-		// Fakes the realpath of the EFI partition's sysfs parent so
-		// InstallKernelEFI falls back to the registered GPT table.
 		if path == "/sys/class/block/fake-part_efi/.." {
 			return "/sys/class/block/fake-part_efi", nil
 		}
@@ -104,7 +97,6 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		"passwd -d root",
 	)
 
-	// Files produced in the scratch root.
 	if got := readScratch(testingT, ctx, "/etc/hostname"); got != "gentoo\n" {
 		testingT.Fatalf("/etc/hostname = %q", got)
 	}
@@ -124,7 +116,6 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		testingT.Fatalf("/etc/portage/package.use/systemd = %q", got)
 	}
 
-	// repos.conf written for git sync.
 	repos := readScratch(testingT, ctx, "/etc/portage/repos.conf/gentoo.conf")
 	for _, want := range []string{"main-repo = gentoo", "sync-type = git",
 		"sync-depth = 1", "sync-uri = https://anongit.gentoo.org/git/repo/sync/gentoo.git"} {
@@ -133,8 +124,6 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		}
 	}
 
-	// make.conf accumulates MAKEOPTS + parallel-fetch + binpkg FEATURES +
-	// ACCEPT_KEYWORDS.
 	makeConf := readScratch(testingT, ctx, "/etc/portage/make.conf")
 	for _, want := range []string{"MAKEOPTS=\"-j8\"", "ACCEPT_KEYWORDS=\"~amd64\"",
 		"FEATURES=\"parallel-fetch\"", "FEATURES=\"getbinpkg binpkg-request-signature\""} {
@@ -143,18 +132,15 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		}
 	}
 
-	// networkd unit.
 	net := readScratch(testingT, ctx, "/etc/systemd/network/20-wired.network")
 	if !strings.Contains(net, "DHCP=yes") {
 		testingT.Fatalf("networkd unit missing DHCP:\n%s", net)
 	}
 
-	// sshd configuration present.
 	if got := readScratch(testingT, ctx, "/etc/ssh/sshd_config"); !strings.Contains(got, "PermitRootLogin") {
 		testingT.Fatalf("sshd_config looks wrong:\n%s", got)
 	}
 
-	// fstab rows from the layout + blkid stub.
 	fstab := readScratch(testingT, ctx, "/etc/fstab")
 	for _, row := range []string{
 		fstabRow("UUID="+rootUUID, "/", "ext4", "defaults,noatime,errors=remount-ro,discard", "0 1"),
@@ -166,18 +152,14 @@ func TestMainInstallGentooInChrootSystemdEFILuks(testingT *testing.T) {
 		}
 	}
 
-	// efibootmgr re-run script recorded the same entry.
 	script := readScratch(testingT, ctx, "/boot/efi/efibootmgr_add_entry.sh")
 	if !strings.Contains(script, "efibootmgr --verbose --create --disk /dev/fake-gpt --part 3") {
 		testingT.Fatalf("efibootmgr_add_entry.sh:\n%s", script)
 	}
-	// initramfs regenerator helper carries the initramfs path.
 	helper := readScratch(testingT, ctx, "/boot/efi/generate_initramfs.sh")
 	if !strings.Contains(helper, "/boot/efi/initramfs.img") {
 		testingT.Fatalf("generate_initramfs.sh:\n%s", helper)
 	}
-	// The removable-media fallback boot loader was installed and its UEFI
-	// stub dependency was enabled through package.use.
 	if got := readScratch(testingT, ctx, "/etc/portage/package.use/uefi-stub"); got != "sys-apps/systemd boot\n" {
 		testingT.Fatalf("/etc/portage/package.use/uefi-stub = %q", got)
 	}
@@ -198,7 +180,6 @@ func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_bios": uEfi, "part_root": uRoot})
 	mkScratchDir(testingT, ctx, "/etc")
 
-	// OpenRC configurators rewrite existing conf.d files in place.
 	writeScratch(testingT, ctx, "/etc/conf.d/hostname", "hostname=\"gentoo\"\n")
 	writeScratch(testingT, ctx, "/etc/conf.d/keymaps", "keymap=\"us\"\n")
 	ctx.BlkidUUID = func(dev string) (string, error) {
@@ -239,7 +220,6 @@ func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 		"passwd -d root",
 	)
 
-	// conf.d rewrites.
 	if got := readScratch(testingT, ctx, "/etc/conf.d/hostname"); got != "hostname=\"gentoo\"\n" {
 		testingT.Fatalf("/etc/conf.d/hostname = %q", got)
 	}
@@ -250,13 +230,11 @@ func TestMainInstallGentooInChrootOpenRCBIOS(testingT *testing.T) {
 		testingT.Fatalf("/etc/timezone = %q", got)
 	}
 
-	// syslinux.cfg embeds the root UUID in the APPEND line.
 	cfgContent := readScratch(testingT, ctx, "/boot/bios/syslinux/syslinux.cfg")
 	if !strings.Contains(cfgContent, "root=UUID=aaaaaaa1-0000-0000-0000-000000000005") {
 		testingT.Fatalf("syslinux.cfg missing root=UUID line:\n%s", cfgContent)
 	}
 
-	// No EFI partition rows in fstab for BIOS installs.
 	fstab := readScratch(testingT, ctx, "/etc/fstab")
 	if strings.Contains(fstab, "/boot/efi") {
 		testingT.Fatalf("/etc/fstab mentions /boot/efi on a BIOS install:\n%s", fstab)
@@ -291,8 +269,6 @@ func TestMainInstallGentooInChrootFirmwareSections(testingT *testing.T) {
 	if !containsLine(lines, "emerge --verbose --getbinpkg linux-firmware") {
 		testingT.Fatalf("linux-firmware should be installed, got:\n%q", lines)
 	}
-	// The unselected directories are pruned, including members of the intel
-	// category that are not themselves selected (e100, isci, ...).
 	for _, want := range []string{
 		"rm -rf /lib/firmware/amdgpu",
 		"rm -rf /lib/firmware/nvidia",
@@ -305,7 +281,6 @@ func TestMainInstallGentooInChrootFirmwareSections(testingT *testing.T) {
 		}
 	}
 
-	// Selected sections must not be pruned.
 	for _, line := range lines {
 		if strings.Contains(line, "rm -rf /lib/firmware/i915") ||
 			strings.Contains(line, "rm -rf /lib/firmware/intel") {
@@ -344,7 +319,6 @@ func TestMainInstallGentooInChrootSkipsFirmware(testingT *testing.T) {
 	}
 }
 
-// containsLine reports whether want appears in lines.
 func containsLine(lines []string, want string) bool {
 	for _, line := range lines {
 		if line == want {

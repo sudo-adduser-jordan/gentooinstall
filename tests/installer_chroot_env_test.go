@@ -1,5 +1,3 @@
-// Chroot environment preparation and verification (PrepareChrootEnv,
-// EnsureDevSymlinks, CheckChrootEnv, MountByID, UnmountChroot).
 package tests
 
 import (
@@ -19,9 +17,6 @@ func requireLsblk(testingT *testing.T) {
 	}
 }
 
-// fakeMountedChroot simulates a chroot whose virtual filesystems are already
-// mounted: the mount commands are stubbed, but the entries the verification
-// step inspects (proc/self, dev) exist on disk.
 func fakeMountedChroot(testingT *testing.T) string {
 	testingT.Helper()
 	dir := testingT.TempDir()
@@ -76,10 +71,6 @@ func TestPrepareChrootEnvMountSequence(testingT *testing.T) {
 	}
 }
 
-// TestPrepareChrootEnvCreatesFdSymlinks is the regression test for the live
-// ISO failure: devtmpfs-only /dev without udev has no fd symlinks, and the
-// bare --rbind would propagate that gap. The stubbed rbind binds nothing,
-// so the symlinks must come from PrepareChrootEnv itself.
 func TestPrepareChrootEnvCreatesFdSymlinks(testingT *testing.T) {
 	requireLsblk(testingT)
 	cfg := classicCfg("/dev/sdX", false, false)
@@ -100,7 +91,7 @@ func TestPrepareChrootEnvCreatesFdSymlinks(testingT *testing.T) {
 func TestPrepareChrootEnvFailsFastWithoutProc(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, stub := testContext(testingT, cfg, nil)
-	dir := testingT.TempDir() // no proc/self: mounts cannot have succeeded
+	dir := testingT.TempDir()
 
 	err := installer.PrepareChrootEnv(ctx, dir)
 	if err == nil {
@@ -112,8 +103,6 @@ func TestPrepareChrootEnvFailsFastWithoutProc(testingT *testing.T) {
 	if len(stub.Calls()) == 0 {
 		testingT.Fatal("mounts should have been attempted before verification failed")
 	}
-	// The fd symlinks are still created so a retry after mounting /proc
-	// finds a complete /dev.
 	if _, err := os.Lstat(filepath.Join(dir, "dev", "fd")); err != nil {
 		testingT.Fatalf("dev/fd should exist even on verification failure: %v", err)
 	}
@@ -151,7 +140,6 @@ func TestEnsureDevSymlinks(testingT *testing.T) {
 			testingT.Fatalf("dev/%s -> %q, %v; want %q", name, got, err, want)
 		}
 	}
-	// Idempotent and never clobbers existing entries.
 	keep := filepath.Join(dir, "dev", "stdout")
 	if err := os.Remove(keep); err != nil {
 		testingT.Fatal(err)
@@ -204,8 +192,6 @@ func TestMountByIDRefusesStaleMount(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, _ := testContext(testingT, cfg, nil)
 	ctx.IsMountpoint = func(string) bool { return true }
-	// /proc is really mounted (from "proc"), which cannot be the layout's
-	// root device: reuse must be refused, not silently accepted.
 	err := installer.MountByID(ctx, ctx.Layout.RootID, "/proc")
 	if err == nil || !strings.Contains(err.Error(), "stale") {
 		testingT.Fatalf("expected stale-mount error, got: %v", err)

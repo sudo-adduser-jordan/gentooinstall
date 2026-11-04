@@ -19,8 +19,6 @@ func (model *Model) openHelp(title, body string) {
 	model.overlay = overlay{kind: ovHelp, title: title, body: body}
 }
 
-// openProfilePackages opens a scrollable modal listing the packages that the
-// currently selected profile installs.
 func (model *Model) openProfilePackages() {
 	model.overlay = overlay{kind: ovPackages, title: ePackage + " Packages installed by profile"}
 }
@@ -87,7 +85,6 @@ func (model *Model) openMultiPicker(title string, opts []option, current []strin
 		kind: ovPicker, title: title, opts: opts, input: in,
 		filter: "", multiChoice: true, selected: sel,
 	}
-	// Start on the first selected entry.
 	for idx, opt := range opts {
 		if len(opt.groupDirs) > 0 {
 			continue
@@ -100,8 +97,6 @@ func (model *Model) openMultiPicker(title string, opts []option, current []strin
 	model.multiFn = fn
 }
 
-// updatePickerKeys handles key input for pickers; routed reports whether
-// the key belongs to the filter input.
 func (model *Model) updatePickerKeys(msg tea.KeyMsg) (routed bool, cmd tea.Cmd) {
 	switch msg.String() {
 	case "down", "ctrl+n":
@@ -126,9 +121,6 @@ func (model *Model) updatePickerKeys(msg tea.KeyMsg) (routed bool, cmd tea.Cmd) 
 	}
 }
 
-// handleRawViewportKeys scrolls the dedicated raw output viewport. Any
-// scroll away from the bottom pauses tail-follow; reaching the bottom
-// (via keys or End/G) resumes it.
 func (model *Model) handleRawViewportKeys(msg tea.KeyMsg) {
 	switch msg.String() {
 	case "down", "j":
@@ -152,18 +144,12 @@ func (model *Model) handleRawViewportKeys(msg tea.KeyMsg) {
 	}
 }
 
-// syncRawViewport sizes the dedicated raw viewport, incrementally
-// colorizes lines appended since the last render, and refreshes the
-// viewport content only when something changed. New output jumps to the
-// bottom while tail-follow is on; a scrolled-up viewport keeps its offset.
 func (model *Model) syncRawViewport(width, viewportHeight int) {
 	if model.rawVp.Width != width || model.rawVp.Height != viewportHeight {
 		model.rawVp = viewport.New(width, viewportHeight)
 		model.rawDirty = true
 	}
 	if len(model.rawContent) > len(model.instRawLines) {
-		// instRawLines is capped (oldest lines dropped); drop the same
-		// prefix from the colorized cache so indexes stay aligned.
 		model.rawContent = append([]string(nil),
 			model.rawContent[len(model.rawContent)-len(model.instRawLines):]...)
 		model.rawDirty = true
@@ -189,15 +175,6 @@ func (model *Model) syncRawViewport(width, viewportHeight int) {
 	}
 }
 
-// colorizeRawLine paints one raw output line for the raw window. Lines that
-// already carry ANSI codes (e.g. the demo stream) pass through untouched;
-// plain lines — the common case for piped child output, which disables its
-// own colors when stdout isn't a TTY — get fallback highlighting so steps,
-// commands, atoms and failures are distinguishable.
-//
-// Explicit SGR codes (shared with demo.go) are used instead of lipgloss
-// styles so colors survive dumb/test terminals where lipgloss downgrades to
-// ASCII and would otherwise render plain text.
 func colorizeRawLine(stripped, raw string) string {
 	if strings.Contains(raw, "\x1b") {
 		return raw
@@ -230,21 +207,16 @@ func colorizeRawLine(stripped, raw string) string {
 	return highlightAtoms(lineContent)
 }
 
-// colorizeCmdLine paints "$ cmd args", highlighting package atoms in green.
 func colorizeCmdLine(commandLine string) string {
 	rest := strings.TrimPrefix(commandLine, "$ ")
 	prompt := demoYellow + "$" + demoReset
 	if rest == "" {
 		return prompt
 	}
-	// Keep the dimmed command style across green atoms: re-apply dim after
-	// each atom's reset so trailing args don't lose the dimming.
 	args := strings.ReplaceAll(highlightAtomsPlain(rest), demoReset, demoReset+demoDim)
 	return prompt + " " + demoDim + args + demoReset
 }
 
-// highlightAtoms paints whitespace-separated category/name tokens green,
-// leaving the rest of the line untouched.
 func highlightAtoms(subject string) string {
 	out := highlightAtomsPlain(subject)
 	if out == subject {
@@ -253,8 +225,6 @@ func highlightAtoms(subject string) string {
 	return out
 }
 
-// highlightAtomsPlain is the ANSI-core of highlightAtoms so callers can nest
-// it inside other sequences (e.g. the dimmed command line).
 func highlightAtomsPlain(subject string) string {
 	parts := strings.Split(subject, " ")
 	painted := false
@@ -270,8 +240,6 @@ func highlightAtomsPlain(subject string) string {
 	return strings.Join(parts, " ")
 }
 
-// handleViewportKeys applies scroll keys to the shared log viewport used
-// by the log/config/make.conf/packages overlays.
 func (model *Model) handleViewportKeys(msg tea.KeyMsg) {
 	switch msg.String() {
 	case "down", "j":
@@ -341,9 +309,9 @@ func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			opts := model.filteredOpts()
 			if model.overlay.multiChoice {
 				var vals []string
-				for _, opt := range model.overlay.opts { // preserve original order
+				for _, opt := range model.overlay.opts {
 					if len(opt.groupDirs) > 0 {
-						continue // category rows never contribute a value themselves
+						continue
 					}
 					if model.overlay.selected[opt.Value] {
 						vals = append(vals, opt.Value)
@@ -366,9 +334,6 @@ func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return model, nil
 		case " ", "space":
-			// For multi-choice, Space toggles the focused row regardless of
-			// filter focus (so users can search then toggle). Package/repo
-			// names don't need a literal space in the filter.
 			if model.overlay.multiChoice {
 				opts := model.filteredOpts()
 				if model.overlay.cursor < len(opts) {
@@ -377,8 +342,6 @@ func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 					opt := opts[model.overlay.cursor]
 					if len(opt.groupDirs) > 0 {
-						// Category row: select all members if any are missing,
-						// otherwise clear them all.
 						allSelected := true
 						for _, dir := range opt.groupDirs {
 							if !model.overlay.selected[dir] {
@@ -416,7 +379,7 @@ func (model *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return model, nil
 		case "enter":
 			if isArea {
-				break // newline goes to the editor below
+				break
 			}
 			val := strings.TrimSpace(model.overlay.input.Value())
 			st := model.textFn
@@ -633,7 +596,6 @@ func (model *Model) renderOverlay() string {
 			}
 			line := marker + opt.Value
 			if opt.primaryDesc {
-				// Prefer the friendly description as the primary label.
 				primary := opt.Desc
 				if primary == "" {
 					primary = opt.Value
@@ -710,8 +672,6 @@ func (model *Model) renderOverlay() string {
 	return ""
 }
 
-// stripLeadingEmoji removes an emoji prefix added at call sites so titles
-// are not decorated twice.
 func stripLeadingEmoji(emoji string) string {
 	for _, prefix := range []string{eWarn + " ", eInfo + " ", ePencil + " ", eScroll + " "} {
 		if rest, ok := strings.CutPrefix(emoji, prefix); ok {
@@ -721,7 +681,6 @@ func stripLeadingEmoji(emoji string) string {
 	return emoji
 }
 
-// wrapText wraps s at width runes per line, preserving blank lines.
 func wrapText(text string, width int) string {
 	width = maxInt(10, width)
 	var out []string

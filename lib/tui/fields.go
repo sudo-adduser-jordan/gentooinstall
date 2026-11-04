@@ -8,34 +8,27 @@ import (
 	"gentooinstall/lib/config"
 )
 
-// field is one editable row inside a tab.
 type field struct {
-	label string
-	help  string
-	vis   func(*config.Config) bool
-	summ  func(*config.Config) string
-	kind  fieldKind
-	// toggle
-	getBool func(*config.Config) bool
-	setBool func(*config.Config, bool)
-	// text
-	getText func(*config.Config) string
-	setText func(*config.Config, string)
-	multi   bool // textarea (newline separated)
-	// choice / picker
-	options   func(*config.Config) []option
-	getChoice func(*config.Config) string
-	setChoice func(*config.Config, string)
-	onPick    func(*Model, *field, string) // optional custom pick handler
-	filter    bool
-	// multi choice
+	label       string
+	help        string
+	vis         func(*config.Config) bool
+	summ        func(*config.Config) string
+	kind        fieldKind
+	getBool     func(*config.Config) bool
+	setBool     func(*config.Config, bool)
+	getText     func(*config.Config) string
+	setText     func(*config.Config, string)
+	multi       bool
+	options     func(*config.Config) []option
+	getChoice   func(*config.Config) string
+	setChoice   func(*config.Config, string)
+	onPick      func(*Model, *field, string)
+	filter      bool
 	getStrings  func(*config.Config) []string
 	setStrings  func(*config.Config, []string)
-	preSeed     func(*config.Config) []string // pre-select when value is empty
+	preSeed     func(*config.Config) []string
 	multiChoice bool
 
-	// watchMirror marks the "Gentoo mirror" text row so editing it re-probes
-	// the mirror reachability indicator.
 	watchMirror bool
 }
 
@@ -54,21 +47,15 @@ const (
 type option struct {
 	Value       string
 	Desc        string
-	primaryDesc bool // render Desc as the leading label instead of Value
-	// groupDirs marks a category row that toggles all listed directories at
-	// once, and indent marks member rows shown beneath it.
-	groupDirs []string
-	indent    bool
+	primaryDesc bool
+	groupDirs   []string
+	indent      bool
 }
 
 func sep(label string) *field {
 	return &field{label: label, kind: kSeparator}
 }
 
-// readOnly builds a non-editable display row. Its value is rendered in the
-// given style. get returns the string to display. An optional onPick handler
-// is invoked when the row is activated (e.g. to open a picker or modal);
-// when nil, activation shows the field's help.
 func readOnly(label, help string, get func(*config.Config) string, style lipgloss.Style,
 	onPick ...func(*Model, *field, string)) *field {
 	fld := &field{

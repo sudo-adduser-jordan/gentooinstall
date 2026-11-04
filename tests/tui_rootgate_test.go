@@ -1,4 +1,3 @@
-// Root-required gate of the TUI (lib/tui model.rootOK).
 package tests
 
 import (
@@ -27,13 +26,11 @@ func TestTuiRootGate(testingT *testing.T) {
 		testingT.Fatalf("tab UI rendered despite non-root:\n%s", out)
 	}
 
-	// Any other key is swallowed; the page stays up.
 	mm, _ = appModel.Update(keyEnter())
 	if model := mm.(*tui.Model); !strings.Contains(model.View(), "must be run as root") {
 		testingT.Fatalf("enter must leave the root-required page up:\n%s", model.View())
 	}
 
-	// q quits.
 	_, cmd := appModel.Update(keyRunes('q'))
 	if cmd == nil {
 		testingT.Fatal("q on the root-required page must quit (non-nil command)")
@@ -41,7 +38,6 @@ func TestTuiRootGate(testingT *testing.T) {
 }
 
 func TestTuiRootGateNotTriggeredAsRoot(testingT *testing.T) {
-	// Default rootOK is true (tests, demo): the UI renders normally.
 	appModel := tui.New(config.Default(true), "/tmp/test-gentoo.toml")
 	mm, _ := appModel.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	out := mm.(*tui.Model).View()

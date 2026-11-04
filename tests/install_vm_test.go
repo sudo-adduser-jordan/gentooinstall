@@ -1,11 +1,3 @@
-// Opt-in QEMU end-to-end test that executes a full installation for every
-// shipped build template inside the VM (needs GENTOOINSTALL_E2E=1 and
-// GENTOOINSTALL_E2E_INSTALL=1; run via `make vm-install`). Each template is
-// staged as builds/custom.toml on the ISO, a `gentooinstall.install=...`
-// kernel flag makes the live init boot straight into a headless
-// `gentooinstall install`, and the test asserts the `gentooinstall install:
-// success` marker on the serial console. This is slow (stage3 download +
-// chroot + kernel per file), hence opt-in and local-only.
 package tests
 
 import (
@@ -22,16 +14,12 @@ import (
 	"gentooinstall/lib/config"
 )
 
-// installWatchdog bounds one full VM install. A full install includes the
-// stage3 download, portage sync and the chroot work, which on a 2-vCPU guest
-// can take tens of minutes on a slow mirror.
 const installWatchdog = 60 * time.Minute
 
-// vmInstallCase describes the VM fixture a build template needs.
 type vmInstallCase struct {
-	name    string // builds/<name>
-	disks   int    // raw disk images to attach (/dev/sda, /dev/sdb, ...)
-	prepare bool   // pre-partition + format the first disk (existing-efi)
+	name    string
+	disks   int
+	prepare bool
 }
 
 var vmInstallCases = []vmInstallCase{
@@ -44,7 +32,6 @@ var vmInstallCases = []vmInstallCase{
 	{name: "existing-efi.toml", prepare: true},
 }
 
-// TestInstallInVM runs a full install in QEMU for each shipped build template.
 func TestInstallInVM(testingT *testing.T) {
 	if os.Getenv("GENTOOINSTALL_E2E") == "" {
 		testingT.Skip("set GENTOOINSTALL_E2E=1 to run QEMU e2e tests")
@@ -68,14 +55,10 @@ func TestInstallInVM(testingT *testing.T) {
 	}
 }
 
-// runInstallInVM performs one full install inside QEMU for a build template.
 func runInstallInVM(testingT *testing.T, root string, tc vmInstallCase) {
 	testingT.Helper()
 	dir := testingT.TempDir()
 
-	// Stage the template with VM-appropriate device paths, then build an ISO
-	// whose default grub entry boots straight into a headless install of it
-	// (release.sh GENTOOINSTALL_INSTALL_CFG hook).
 	staged := filepath.Join(dir, "custom.toml")
 	cfg := stageConfig(testingT, root, tc.name, staged)
 	fw := cfg.Disk.BootType
@@ -110,10 +93,6 @@ func runInstallInVM(testingT *testing.T, root string, tc vmInstallCase) {
 	}
 }
 
-// stageConfig loads builds/<name>, rewrites the placeholder device paths for
-// the VM fixtures (/dev/sdX -> /dev/sda, /dev/sdY -> /dev/sdb, sdX1..3 ->
-// sda1..3) and saves the result to out. The staged config is what tells the
-// test which firmware the VM must boot with.
 func stageConfig(testingT *testing.T, root, name, out string) *config.Config {
 	testingT.Helper()
 	cfg, err := config.Load(filepath.Join(root, "builds", name))
@@ -138,11 +117,6 @@ func stageConfig(testingT *testing.T, root, name, out string) *config.Config {
 	return cfg
 }
 
-// diskBuses returns the QEMU disk bus to attach each disk image on, derived
-// from the configured device paths in attach order (multi-device schemes use
-// Disk.Devices, everything else Disk.Device, with partition suffixes stripped
-// to reach the whole disk). A configured /dev/vd* device needs virtio-blk to
-// show up at that path; /dev/sd* maps to the IDE bus QEMU presents by default.
 func diskBuses(cfg *config.Config) []string {
 	names := cfg.Disk.Devices
 	if len(names) == 0 {
@@ -159,8 +133,6 @@ func diskBuses(cfg *config.Config) []string {
 	return buses
 }
 
-// TestDiskBuses pins the bus mapping used by runInstallInVM so a build that
-// targets /dev/vd* gets a virtio-blk disk and /dev/sd* an IDE one.
 func TestDiskBuses(testingT *testing.T) {
 	cases := []struct {
 		name  string
@@ -196,11 +168,6 @@ func TestDiskBuses(testingT *testing.T) {
 	}
 }
 
-// prePrepareExisting partitions and formats the first (raw) disk for the
-// existing-efi template: GPT with a 512M FAT32 ESP, an 8G swap and an ext4
-// root filling the rest. sgdisk operates on the file directly; formatting
-// needs the partitions visible through a loop device, so it requires root
-// (skips cleanly otherwise).
 func prePrepareExisting(testingT *testing.T, img string) {
 	testingT.Helper()
 	for _, tool := range []string{"sgdisk", "mkfs.vfat", "mkswap", "mkfs.ext4", "losetup"} {
@@ -221,7 +188,6 @@ func prePrepareExisting(testingT *testing.T, img string) {
 	defer func() {
 		_ = exec.Command("losetup", "-d", loop).Run()
 	}()
-	// Partition nodes appear asynchronously; wait briefly for loopNp1.
 	part := loop + "p1"
 	for attempt := 0; attempt < 50; attempt++ {
 		if _, err := os.Stat(part); err == nil {
@@ -234,8 +200,6 @@ func prePrepareExisting(testingT *testing.T, img string) {
 	mustRun(testingT, "mkfs.ext4", "-F", loop+"p3")
 }
 
-// buildInstallISO builds the live ISO with GENTOOINSTALL_INSTALL_CFG set so
-// the default grub entry boots straight into a headless install of cfg.
 func buildInstallISO(testingT *testing.T, root, out, cfg string) {
 	testingT.Helper()
 	cmd := exec.Command(filepath.Join(root, "scripts", "release.sh"), out)
@@ -250,12 +214,6 @@ func buildInstallISO(testingT *testing.T, root, out, cfg string) {
 	assertISOName(testingT, out)
 }
 
-// bootInstallVM boots the ISO under QEMU with the firmware matching the staged
-// config (OVMF for efi, SeaBIOS for bios), attaches the raw disk images on the
-// bus each configured device expects, and captures the serial console until
-// the guest powers off (or the watchdog fires). -no-reboot makes QEMU exit
-// when the install init powers the guest down, which is how the test knows the
-// install completed.
 func bootInstallVM(testingT *testing.T, iso, fw string, disks, buses []string) string {
 	testingT.Helper()
 	if len(disks) != len(buses) {
@@ -313,8 +271,6 @@ func bootInstallVM(testingT *testing.T, iso, fw string, disks, buses []string) s
 	}
 }
 
-// ovmfFiles locates the OVMF firmware (code + a writable vars copy) for a UEFI
-// boot, skipping the test when the host has none installed.
 func ovmfFiles(testingT *testing.T) (code, vars string) {
 	testingT.Helper()
 	candidates := [][2]string{
@@ -346,7 +302,6 @@ func ovmfFiles(testingT *testing.T) (code, vars string) {
 	return "", ""
 }
 
-// mustRun runs a host command, failing the test on error with its output.
 func mustRun(testingT *testing.T, name string, args ...string) {
 	testingT.Helper()
 	if out, err := exec.Command(name, args...).CombinedOutput(); err != nil {

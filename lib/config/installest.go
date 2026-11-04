@@ -5,15 +5,11 @@ import (
 	"strings"
 )
 
-// Constants used by the install overview. Every figure is an approximation
-// of a typical Gentoo installation (there is no dependency resolution), so
-// both estimates are intentionally surfaced as "~" values.
-
 const (
 	baseInstalledMinimalGiB = 1.6
 	baseInstalledDesktopGiB = 2.4
 
-	portageTreeGiB           = 0.4 // rsync or shallow git mirror
+	portageTreeGiB           = 0.4
 	portageGitFullHistoryGiB = 2.0
 
 	kernelBinGiB    = 0.5
@@ -27,8 +23,6 @@ const (
 	basePackagesDesktop = 850
 )
 
-// EstimateInstallSize returns a human-readable approximation of the total
-// installed size for the current configuration.
 func (cfg *Config) EstimateInstallSize() string {
 	var giB float64
 	if strings.Contains(cfg.Gentoo.Stage3Variant, "desktop") {
@@ -60,9 +54,6 @@ func (cfg *Config) EstimateInstallSize() string {
 	return fmt.Sprintf("~%.1f GiB", giB)
 }
 
-// EstimatePackageCount returns an approximation of the total number of
-// packages installed on the new system: the stage3 base for the selected
-// variant, the profile set, user-selected packages and fixed system pieces.
 func (cfg *Config) EstimatePackageCount() int {
 	base := basePackagesMinimal
 	if strings.Contains(cfg.Gentoo.Stage3Variant, "desktop") {
@@ -70,7 +61,7 @@ func (cfg *Config) EstimatePackageCount() int {
 	}
 	count := base + len(cfg.ProfilePackages()) + len(cfg.Packages.Additional) +
 		len(cfg.Packages.CustomPackages)
-	count++ // kernel
+	count++
 	if cfg.Packages.EnableSSHD {
 		count++
 	}

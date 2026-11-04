@@ -1,4 +1,3 @@
-// Device ID resolution (disklayout.Resolver, Canonicalize, SplitIDList).
 package tests
 
 import (
@@ -32,7 +31,7 @@ func TestResolverDeviceByPtUuidCached(testingT *testing.T) {
 
 func TestResolverCachedEnvRoundTrip(testingT *testing.T) {
 	resolver := &disklayout.Resolver{}
-	resolver.SetCachedLsblk("  \n") // blank must not seed the cache
+	resolver.SetCachedLsblk("  \n")
 	if cached := resolver.CachedEnvValue(); cached != "" {
 		testingT.Fatalf("blank cache seeded %q", cached)
 	}

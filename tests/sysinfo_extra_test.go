@@ -1,4 +1,3 @@
-// Mirror hosts, device enumeration and locale/keymap helpers.
 package tests
 
 import (
@@ -51,7 +50,6 @@ func TestDefaultKeymapValidation(testingT *testing.T) {
 }
 
 func TestTimezonesKeymapsDoNotFail(testingT *testing.T) {
-	// Host-dependent enumeration; only assert it never panics and stays sorted.
 	tz := sysinfo.Timezones()
 	for idx := 1; idx < len(tz); idx++ {
 		if tz[idx-1] > tz[idx] {

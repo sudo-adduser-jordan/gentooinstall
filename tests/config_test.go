@@ -1,5 +1,3 @@
-// Package tests hosts all gentooinstall test suites, kept separate from the
-// production packages so they exercise only the exported API surface.
 package tests
 
 import (
@@ -99,8 +97,6 @@ func TestDetectedFirmwareFor(testingT *testing.T) {
 		testingT.Fatalf("DetectedFirmwareFor with no input = %v, want none", got)
 	}
 
-	// Intel CPUs need no firmware beyond what their modules select; AMD CPUs
-	// always pull in the CPU microcode directory.
 	got = config.DetectedFirmwareFor(nil, "GenuineIntel")
 	if got != nil {
 		testingT.Fatalf("DetectedFirmwareFor(intel) = %v, want none", got)
@@ -108,8 +104,6 @@ func TestDetectedFirmwareFor(testingT *testing.T) {
 }
 
 func TestFirmwareCatalogCoversEveryDirectory(testingT *testing.T) {
-	// Every directory previously listed is covered by exactly one category,
-	// so pruning by category never silently drops a firmware tree.
 	seen := map[string]string{}
 	for _, section := range config.FirmwareSections {
 		if section.Name == "" || len(section.Dirs) == 0 {
@@ -170,8 +164,6 @@ func TestResolveSavePath(testingT *testing.T) {
 			testingT.Fatalf("ResolveSavePath(%q) = %q, want %q", in, got, want)
 		}
 	}
-	// Paths outside a builds/ directory pass through unchanged, custom.toml
-	// included, so user-owned files are never rewritten or moved.
 	for _, keep := range []string{
 		"/tmp/something.toml",
 		"/etc/gentooinstall/openrc.toml",
@@ -185,8 +177,6 @@ func TestResolveSavePath(testingT *testing.T) {
 
 func TestSaveReportsUnwritableParent(testingT *testing.T) {
 	dir := testingT.TempDir()
-	// A regular file in the way of the parent path forces MkdirAll to fail
-	// regardless of the running user, and the error must name the directory.
 	blocker := filepath.Join(dir, "blocker")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		testingT.Fatal(err)
@@ -202,9 +192,6 @@ func TestSaveReportsUnwritableParent(testingT *testing.T) {
 }
 
 func TestBuildTemplates(testingT *testing.T) {
-	// Every shipped template must parse, validate, and round-trip losslessly.
-	// Scan builds/*.toml so newly added templates are covered automatically
-	// (custom.toml is user-generated and excluded).
 	matches, err := filepath.Glob(filepath.Join("..", "builds", "*.toml"))
 	if err != nil {
 		testingT.Fatal(err)
@@ -298,7 +285,6 @@ func TestProfileValidation(testingT *testing.T) {
 	cfg := config.Default(false)
 	cfg.System.Timezone = "Europe/Berlin"
 	cfg.System.Hostname = "host"
-	// Default stage3 variant is "systemd", so use a systemd profile.
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome/systemd"
 	if errs := cfg.Validate(); len(errs) != 0 {
 		testingT.Fatalf("valid profile should not error: %v", errs)
@@ -319,31 +305,26 @@ func TestProfileVariantInitMismatch(testingT *testing.T) {
 		return cfg
 	}
 
-	// systemd stage3 + OpenRC profile => mismatch.
 	cfg := newCfg("systemd", "default/linux/amd64/23.0/desktop")
 	if errs := cfg.Validate(); len(errs) != 1 {
 		testingT.Fatalf("expected 1 init-mismatch error, got %v", errs)
 	}
 
-	// OpenRC stage3 + systemd profile => mismatch.
 	cfg = newCfg("openrc", "default/linux/amd64/23.0/systemd")
 	if errs := cfg.Validate(); len(errs) != 1 {
 		testingT.Fatalf("expected 1 init-mismatch error, got %v", errs)
 	}
 
-	// systemd stage3 + systemd profile => clean.
 	cfg = newCfg("systemd", "default/linux/amd64/23.0/desktop/gnome/systemd")
 	if errs := cfg.Validate(); len(errs) != 0 {
 		testingT.Fatalf("matching init/profiles should not error: %v", errs)
 	}
 
-	// desktop-openrc stage3 + desktop (OpenRC) profile => clean.
 	cfg = newCfg("desktop-openrc", "default/linux/amd64/23.0/desktop")
 	if errs := cfg.Validate(); len(errs) != 0 {
 		testingT.Fatalf("matching desktop/OpenRC should not error: %v", errs)
 	}
 
-	// no profile selected => no mismatch check.
 	cfg = newCfg("systemd", "")
 	if errs := cfg.Validate(); len(errs) != 0 {
 		testingT.Fatalf("no profile should not trigger mismatch: %v", errs)
@@ -351,8 +332,6 @@ func TestProfileVariantInitMismatch(testingT *testing.T) {
 }
 
 func TestProfileVariantInitSkipExotic(testingT *testing.T) {
-	// Exotic variants have no catalog profile counterpart, so any profile is
-	// allowed without a mismatch error.
 	cfg := config.Default(false)
 	cfg.System.Timezone = "Europe/Berlin"
 	cfg.System.Hostname = "host"
@@ -368,12 +347,10 @@ func TestAdvisories(testingT *testing.T) {
 	cfg.System.Timezone = "Europe/Berlin"
 	cfg.System.Hostname = "host"
 
-	// No profile selected -> no advisories.
 	if warns := cfg.Advisories(); len(warns) != 0 {
 		testingT.Fatalf("expected no advisories, got %v", warns)
 	}
 
-	// Desktop stage3 + non-desktop profile => advisory, but not a blocking error.
 	cfg.Gentoo.Stage3Variant = "desktop-systemd"
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/systemd"
 	if warns := cfg.Advisories(); len(warns) != 1 {
@@ -383,14 +360,12 @@ func TestAdvisories(testingT *testing.T) {
 		testingT.Fatalf("advisory must not block: %v", errs)
 	}
 
-	// Non-desktop stage3 + desktop profile => advisory.
 	cfg.Gentoo.Stage3Variant = "systemd"
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome"
 	if warns := cfg.Advisories(); len(warns) != 1 {
 		testingT.Fatalf("expected 1 advisory, got %v", warns)
 	}
 
-	// Aligned => no advisory.
 	cfg.Gentoo.Stage3Variant = "desktop-systemd"
 	cfg.Gentoo.Profile = "default/linux/amd64/23.0/desktop/gnome/systemd"
 	if warns := cfg.Advisories(); len(warns) != 0 {
@@ -432,7 +407,6 @@ func TestProfilePackages(testingT *testing.T) {
 		testingT.Fatalf("kde profile packages %v missing plasma-meta", got)
 	}
 
-	// Unknown profiles resolve to no packages (no panic).
 	cfg.Gentoo.Profile = "bogus/profile"
 	if got := cfg.ProfilePackages(); got != nil {
 		testingT.Fatalf("unknown profile should have no packages, got %v", got)
@@ -440,13 +414,11 @@ func TestProfilePackages(testingT *testing.T) {
 }
 
 func TestRepoPackages(testingT *testing.T) {
-	// The gentoo repo is always included, regardless of enabled overlays.
 	base := config.RepoPackages(nil)
 	if !contains(base, "app-editors/vim") || !contains(base, "sys-apps/htop") {
 		testingT.Fatalf("gentoo repo packages missing entries: %v", base)
 	}
 
-	// Enabling guru adds its curated packages.
 	withGuru := config.RepoPackages([]string{"guru"})
 	if !contains(withGuru, "app-misc/fastfetch") {
 		testingT.Fatalf("guru packages missing fastfetch: %v", withGuru)
@@ -455,7 +427,6 @@ func TestRepoPackages(testingT *testing.T) {
 		testingT.Fatalf("enabling guru should add packages: base=%d guru=%d", len(base), len(withGuru))
 	}
 
-	// Unknown overlays are ignored without panicking.
 	withUnknown := config.RepoPackages([]string{"nope"})
 	if len(withUnknown) != len(base) {
 		testingT.Fatalf("unknown overlay should not change catalog: %v", withUnknown)
@@ -470,8 +441,6 @@ func TestRepoPackages(testingT *testing.T) {
 }
 
 func TestEmbeddedRepoLists(testingT *testing.T) {
-	// Every known repo must ship an embedded static package list so the
-	// picker is never empty. Verify parsing and sorting.
 	names := []string{"gentoo", "guru", "kde", "cachyos", "librewolf"}
 	for _, name := range names {
 		if !pkglists.Has(name) {
@@ -486,7 +455,6 @@ func TestEmbeddedRepoLists(testingT *testing.T) {
 		}
 	}
 
-	// An unknown repo has no list and yields no atoms.
 	if pkglists.Has("missing-repo") {
 		testingT.Fatal("Has(missing-repo) should be false")
 	}

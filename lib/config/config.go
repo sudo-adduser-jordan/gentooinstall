@@ -1,5 +1,3 @@
-// Package config defines the gentooinstall configuration model and its TOML
-// representation (gentoo.toml).
 package config
 
 import (
@@ -12,7 +10,6 @@ import (
 	"gentooinstall/lib/pkglists"
 )
 
-// Scheme names for [disk].
 const (
 	SchemeClassic    = "classic_single_disk"
 	SchemeExisting   = "existing_partitions"
@@ -23,7 +20,6 @@ const (
 	SchemeCustom     = "custom"
 )
 
-// Schemes lists all supported partitioning schemes with a short description.
 var Schemes = []struct {
 	Name string
 	Desc string
@@ -37,13 +33,11 @@ var Schemes = []struct {
 	{SchemeCustom, "Custom (expert option; declarative action list in [disk.custom])"},
 }
 
-// Stage3Variant is one selectable stage3 tarball variant.
 type Stage3Variant struct {
 	ID          string
 	Description string
 }
 
-// Stage3Variants mirrors ALL_STAGE3_VARIANTS from the bash configurator.
 var Stage3Variants = []Stage3Variant{
 	{"openrc", "Minimal OpenRC base (recommended)"},
 	{"openrc-splitusr", "Minimal OpenRC base with a split-usr filesystem layout"},
@@ -63,16 +57,13 @@ var Stage3Variants = []Stage3Variant{
 	{"musl-hardened", "Hardened OpenRC base using musl (Experimental)"},
 }
 
-// Archs lists supported gentoo architectures.
 var Archs = []string{"x86", "amd64", "arm", "arm64"}
 
-// SubArchs lists supported x86 sub-architectures.
 var SubArchs = []string{"i486", "i686"}
 
-// Disk holds the [disk] section.
 type Disk struct {
 	Scheme     string   `toml:"scheme"`
-	BootType   string   `toml:"boot_type"` // efi | bios
+	BootType   string   `toml:"boot_type"`
 	Device     string   `toml:"device"`
 	Devices    []string `toml:"devices"`
 	BootDevice string   `toml:"boot_device"`
@@ -80,21 +71,20 @@ type Disk struct {
 	UseSwap  bool   `toml:"use_swap"`
 	SwapSize string `toml:"swap_size"`
 
-	SwapDevice string `toml:"swap_device"` // existing_partitions only
+	SwapDevice string `toml:"swap_device"`
 
 	UseLuks bool   `toml:"use_luks"`
-	RootFS  string `toml:"root_fs"` // ext4 | btrfs
+	RootFS  string `toml:"root_fs"`
 
-	ZFSPoolType    string `toml:"zfs_pool_type"` // standard | custom
+	ZFSPoolType    string `toml:"zfs_pool_type"`
 	ZFSEncrypt     bool   `toml:"zfs_encrypt"`
 	ZFSUseCompress bool   `toml:"zfs_use_compression"`
 	ZFSCompression string `toml:"zfs_compression"`
-	BtrfsRaidType  string `toml:"btrfs_raid_type"` // raid0 | raid1
+	BtrfsRaidType  string `toml:"btrfs_raid_type"`
 
 	Custom []CustomAction `toml:"custom"`
 }
 
-// CustomAction is one declarative disk action used by the custom scheme.
 type CustomAction struct {
 	Action   string   `toml:"action"`
 	NewID    string   `toml:"new_id,omitempty"`
@@ -108,18 +98,17 @@ type CustomAction struct {
 	IDs      []string `toml:"ids,omitempty"`
 	PoolType string   `toml:"pool_type,omitempty"`
 	Encrypt  bool     `toml:"encrypt,omitempty"`
-	Compress string   `toml:"compress,omitempty"` // "" disables compression
+	Compress string   `toml:"compress,omitempty"`
 	RaidType string   `toml:"raid_type,omitempty"`
 }
 
-// System holds the [system] section.
 type System struct {
 	Hostname             string   `toml:"hostname"`
 	Timezone             string   `toml:"timezone"`
 	Keymap               string   `toml:"keymap"`
 	KeymapInitramfsOther bool     `toml:"keymap_initramfs_other"`
 	KeymapInitramfs      string   `toml:"keymap_initramfs"`
-	Locales              []string `toml:"locales"` // locale.gen lines, e.g. "en_US.UTF-8 UTF-8"
+	Locales              []string `toml:"locales"`
 	Locale               string   `toml:"locale"`
 
 	Systemd                      bool     `toml:"-"`
@@ -131,20 +120,12 @@ type System struct {
 	InitramfsSSHD                bool     `toml:"initramfs_sshd"`
 }
 
-// Profile identifies one selectable Gentoo profile (eselect profile).
 type Profile struct {
-	ID   string
-	Desc string
-	// Packages are the curated portage atoms typically installed for this
-	// profile. Gentoo profiles themselves do not ship a fixed package set
-	// (the @profile set is empty); these are maintained here as a sensible
-	// default set (often the environment's meta-packages) used both for
-	// display and, when enabled, for installation.
+	ID       string
+	Desc     string
 	Packages []string
 }
 
-// Profiles lists the selectable eselect profiles. It covers the common
-// amd64 23.0 profiles and is intentionally the single place to extend.
 var Profiles = []Profile{
 	{
 		ID: "default/linux/amd64/23.0", Desc: "Minimal base (OpenRC)",
@@ -212,14 +193,13 @@ var Profiles = []Profile{
 	},
 }
 
-// Gentoo holds the [gentoo] section.
 type Gentoo struct {
 	Mirror                 string `toml:"mirror"`
 	Arch                   string `toml:"arch"`
 	Subarch                string `toml:"subarch"`
 	Stage3Variant          string `toml:"stage3_variant"`
 	Profile                string `toml:"profile"`
-	PortageSyncType        string `toml:"portage_sync_type"` // git | rsync
+	PortageSyncType        string `toml:"portage_sync_type"`
 	PortageGitFullHistory  bool   `toml:"portage_git_full_history"`
 	PortageGitMirror       string `toml:"portage_git_mirror"`
 	PortageRsyncMirror     string `toml:"portage_rsync_mirror"`
@@ -228,42 +208,31 @@ type Gentoo struct {
 	SelectMirrorsLargeFile bool   `toml:"select_mirrors_large_file"`
 }
 
-// Packages holds the [packages] section.
 type Packages struct {
 	Additional            []string `toml:"additional"`
 	CustomPackages        []string `toml:"custom_packages"`
 	EnablingRepos         []string `toml:"enabling_repos"`
 	EnableSSHD            bool     `toml:"enable_sshd"`
 	EnableBinpkg          bool     `toml:"enable_binpkg"`
-	KernelType            string   `toml:"kernel_type"` // bin | source
+	KernelType            string   `toml:"kernel_type"`
 	KernelDeblob          bool     `toml:"kernel_deblob"`
 	InstallFirmware       bool     `toml:"install_firmware"`
-	FirmwareSections      []string `toml:"firmware_sections"` // dirs to keep; empty = install everything
+	FirmwareSections      []string `toml:"firmware_sections"`
 	RootSSHAuthorizedKeys []string `toml:"ssh_authorized_keys"`
-	// UseFlags are /etc/portage/package.use lines, e.g. "dev-libs/openssl -asm".
-	UseFlags []string `toml:"use_flags"`
+	UseFlags              []string `toml:"use_flags"`
 }
 
-// MakeConf holds the [makeconf] section: user-selected make.conf options to
-// append to /etc/portage/make.conf at the end of installation, plus a
-// freeform block of extra content.
 type MakeConf struct {
-	// Options are the keys of MakeConfOptions that were toggled on.
 	Options []string `toml:"options"`
-	// Extra is arbitrary multi-line content appended verbatim.
-	Extra string `toml:"extra"`
+	Extra   string   `toml:"extra"`
 }
 
-// MakeConfOption is one selectable make.conf option.
 type MakeConfOption struct {
 	Key  string
 	Desc string
-	// Line is the make.conf line appended when the option is picked.
 	Line string
 }
 
-// MakeConfOptions is the fixed catalog of make.conf options offered in the
-// TUI picker.
 var MakeConfOptions = []MakeConfOption{
 	{
 		Key: "jobs", Desc: "Parallel build jobs (-jN) matching the CPU count",
@@ -291,7 +260,6 @@ var MakeConfOptions = []MakeConfOption{
 	},
 }
 
-// LookupMakeConfOption returns the catalog entry for a key, or nil.
 func LookupMakeConfOption(key string) *MakeConfOption {
 	for index := range MakeConfOptions {
 		if MakeConfOptions[index].Key == key {
@@ -301,7 +269,6 @@ func LookupMakeConfOption(key string) *MakeConfOption {
 	return nil
 }
 
-// Config is the whole gentoo.toml file.
 type Config struct {
 	Disk     Disk     `toml:"disk"`
 	System   System   `toml:"system"`
@@ -310,9 +277,6 @@ type Config struct {
 	MakeConf MakeConf `toml:"makeconf"`
 }
 
-// Default returns the built-in default configuration
-// (port of load_default_config). EFI is the default boot type on modern
-// machines; it falls back to BIOS only when the live system reports no EFI.
 func Default(hasEFI bool) *Config {
 	boot := "efi"
 	if !hasEFI {
@@ -363,7 +327,6 @@ func Default(hasEFI bool) *Config {
 	}
 }
 
-// LookupProfile returns the profile with the given id, or nil.
 func LookupProfile(id string) *Profile {
 	for index := range Profiles {
 		if Profiles[index].ID == id {
@@ -373,21 +336,12 @@ func LookupProfile(id string) *Profile {
 	return nil
 }
 
-// Repo identifies a synced ebuild repository (overlay) that can be enabled
-// via eselect repository. The "gentoo" repo is always present; the others
-// are optional overlays the user can enable.
 type Repo struct {
-	Name string
-	Desc string
-	// IndexURL is the base URL of the repo's synced tree. Its complete
-	// package list is its "metadata/pkg_desc_index" file, downloaded into
-	// data/repos/<name>.packages by scripts/packages.sh and embedded at
-	// build time (see lib/pkglists). It is not used at runtime.
+	Name     string
+	Desc     string
 	IndexURL string
 }
 
-// Overlays lists the optional third-party repositories offered in the TUI,
-// in addition to the always-on "gentoo" repo.
 var Overlays = []Repo{
 	{Name: "guru", Desc: "Community-curated GURU overlay",
 		IndexURL: "https://github.com/gentoo-mirror/guru"},
@@ -399,27 +353,14 @@ var Overlays = []Repo{
 		IndexURL: "https://gitlab.com/librewolf-community/browser/gentoo"},
 }
 
-// MainRepoIndexURL is the base URL of the main Gentoo ebuild repository
-// (rsync-friendly mirror) whose "metadata/pkg_desc_index" feeds
-// data/repos/gentoo.packages.
 const MainRepoIndexURL = "https://mirrors.kernel.org/gentoo-portage"
 
-// FirmwareSection is one selectable vendor category of the
-// sys-kernel/linux-firmware package. Dirs are the top-level directories under
-// /lib/firmware that the category covers and that are pruned when the
-// category is not selected.
 type FirmwareSection struct {
 	Name string
 	Desc string
 	Dirs []string
 }
 
-// FirmwareSections lists the linux-firmware vendor categories offered in the
-// TUI. Selecting none installs the whole package; selecting some installs
-// only the chosen top-level firmware directories. Entries whose Description
-// carries "(Wi-Fi)" cover wireless-firmware directories and are shown with
-// that hint in the picker. The union of Dirs covers every firmware directory
-// shipped by the package.
 var FirmwareSections = []FirmwareSection{
 	{Name: "amd", Desc: "AMD/ATI GPU, CPU microcode, platform",
 		Dirs: []string{"amd", "amdgpu", "amd-ucode", "amdtee", "r128", "radeon"}},
@@ -465,8 +406,6 @@ var FirmwareSections = []FirmwareSection{
 		Dirs: []string{"atusb", "matrox", "yam"}},
 }
 
-// WirelessFirmwareDir reports whether the firmware directory carries wireless
-// (Wi-Fi) firmware, used to hint those rows in the picker.
 func WirelessFirmwareDir(dir string) bool {
 	switch dir {
 	case "ath10k", "ath11k", "ath12k", "ath6k", "ath9k_htc", "atmel", "brcm",
@@ -478,10 +417,6 @@ func WirelessFirmwareDir(dir string) bool {
 	return false
 }
 
-// firmwareModuleDirs maps loaded kernel module names to the top-level
-// linux-firmware directories that hold their firmware. It is used to infer
-// which firmware directories a machine needs from the modules its kernel has
-// loaded.
 var firmwareModuleDirs = map[string][]string{
 	"3c59x":         {"3com"},
 	"aacraid":       {"adaptec"},
@@ -579,9 +514,6 @@ var firmwareModuleDirs = map[string][]string{
 	"mgag200":       {"matrox"},
 }
 
-// DetectedFirmwareFor returns the firmware directories a machine needs given
-// its loaded kernel modules and CPU vendor string ("AuthenticAMD" pulls in
-// the AMD CPU microcode). The result is sorted.
 func DetectedFirmwareFor(modules []string, cpuVendor string) []string {
 	seen := map[string]bool{}
 	for _, module := range modules {
@@ -603,9 +535,6 @@ func DetectedFirmwareFor(modules []string, cpuVendor string) []string {
 	return det
 }
 
-// DetectedFirmwareSections probes the running system (/proc/modules and
-// /proc/cpuinfo) and returns the firmware directories its kernel already
-// loaded drivers for. It is used to pre-select the firmware-sections picker.
 func DetectedFirmwareSections() []string {
 	var modules []string
 	if data, err := os.ReadFile("/proc/modules"); err == nil {
@@ -627,11 +556,8 @@ func DetectedFirmwareSections() []string {
 	return DetectedFirmwareFor(modules, cpuVendor)
 }
 
-// DefaultPortageRsyncMirror is the canonical rsync URI used when no custom
-// portage_rsync_mirror is configured.
 const DefaultPortageRsyncMirror = "rsync://rsync.gentoo.org/gentoo-portage"
 
-// LookupOverlay returns the overlay with the given name, or nil.
 func LookupOverlay(name string) *Repo {
 	for index := range Overlays {
 		if Overlays[index].Name == name {
@@ -641,11 +567,6 @@ func LookupOverlay(name string) *Repo {
 	return nil
 }
 
-// RepoPackages returns the complete catalog of atoms to offer in the
-// additional-packages picker. It unions the always-on gentoo repo with the
-// packages of each enabled overlay, drawn from the statically embedded
-// package lists. Repos with no static list present are skipped (their items
-// can still be added via the "Custom atoms" field).
 func RepoPackages(enabled []string) []string {
 	seen := map[string]bool{}
 	all := make([]string, 0, 256)
@@ -667,9 +588,6 @@ func RepoPackages(enabled []string) []string {
 	return all
 }
 
-// ProfileDesc returns the human-readable description of a profile, or ""
-// for an unknown/empty id. It mirrors Desc so the TUI can show friendly
-// names in place of the full profile path.
 func ProfileDesc(id string) string {
 	if profile := LookupProfile(id); profile != nil {
 		return profile.Desc
@@ -677,15 +595,10 @@ func ProfileDesc(id string) string {
 	return ""
 }
 
-// ProfileUsesSystemd reports whether the profile id selects a systemd init.
-// It matches the real Gentoo naming convention where systemd profiles end
-// in a "/systemd" segment.
 func ProfileUsesSystemd(id string) bool {
 	return strings.HasSuffix(id, "/systemd")
 }
 
-// ProfilePackages returns the curated package set for the currently
-// selected profile. It is empty when no (known) profile is selected.
 func (cfg *Config) ProfilePackages() []string {
 	profile := LookupProfile(cfg.Gentoo.Profile)
 	if profile == nil {
@@ -694,18 +607,14 @@ func (cfg *Config) ProfilePackages() []string {
 	return profile.Packages
 }
 
-// UsesSystemd reports whether the selected stage3 variant uses systemd.
 func (cfg *Config) UsesSystemd() bool { return strings.Contains(cfg.Gentoo.Stage3Variant, "systemd") }
 
-// UsesMusl reports whether the selected stage3 variant is musl-based.
 func (cfg *Config) UsesMusl() bool { return strings.Contains(cfg.Gentoo.Stage3Variant, "musl") }
 
-// Stage3BaseName returns "stage3-$arch-$variant".
 func (cfg *Config) Stage3BaseName() string {
 	return fmt.Sprintf("stage3-%s-%s", cfg.Gentoo.Arch, cfg.Gentoo.Stage3Variant)
 }
 
-// Stage3BaseNameCustom handles the x32 / x86-subarch naming special case.
 func (cfg *Config) Stage3BaseNameCustom() string {
 	if strings.Contains(cfg.Gentoo.Stage3Variant, "x32") {
 		return "stage3-" + cfg.Gentoo.Stage3Variant
@@ -713,7 +622,6 @@ func (cfg *Config) Stage3BaseNameCustom() string {
 	return fmt.Sprintf("stage3-%s-%s", cfg.Gentoo.Subarch, cfg.Gentoo.Stage3Variant)
 }
 
-// Stage3BaseNameFinal picks the basename actually used for downloads.
 func (cfg *Config) Stage3BaseNameFinal() string {
 	if (cfg.Gentoo.Arch == "amd64" && strings.Contains(cfg.Gentoo.Stage3Variant, "x32")) ||
 		(cfg.Gentoo.Arch == "x86" && cfg.Gentoo.Subarch != "") {
@@ -727,8 +635,6 @@ var hostnameRe = regexp.MustCompile(
 
 var keymapRe = regexp.MustCompile(`^[0-9A-Za-z-]*$`)
 
-// Validate checks semantic correctness of the configuration
-// (everything checkable without touching disks).
 func (cfg *Config) Validate() []error {
 	var errs []error
 	addf := func(format string, args ...any) {
@@ -820,9 +726,6 @@ func (cfg *Config) Validate() []error {
 	if cfg.Gentoo.Profile != "" && LookupProfile(cfg.Gentoo.Profile) == nil {
 		addf("unknown profile %q", cfg.Gentoo.Profile)
 	} else if cfg.Gentoo.Profile != "" && profileCompatVariant(cfg.Gentoo.Stage3Variant) {
-		// The stage3 variant and the eselect profile must agree on the init
-		// system. Exotic variants (musl, hardened, x32, llvm, ...) have no
-		// matching profile in the catalog, so the check is skipped for them.
 		variantInit, profileInit := initName(cfg.UsesSystemd()), initName(ProfileUsesSystemd(cfg.Gentoo.Profile))
 		if cfg.UsesSystemd() != ProfileUsesSystemd(cfg.Gentoo.Profile) {
 			addf("stage3 variant %q uses %s but profile %q selects %s (init mismatch)",
@@ -839,11 +742,6 @@ func (cfg *Config) Validate() []error {
 	return errs
 }
 
-// profileCompatVariant reports whether a stage3 variant has a counterpart in
-// the Profiles catalog, i.e. it is a plain base or desktop variant whose init
-// system is well-defined. Exotic variants (musl, hardened, x32, llvm,
-// nomultilib, selinux) have no matching profile in the catalog, so init
-// consistency with a selected profile cannot be enforced for them.
 func profileCompatVariant(id string) bool {
 	for _, variant := range Stage3Variants {
 		if variant.ID != id {
@@ -866,9 +764,6 @@ func initName(systemd bool) string {
 	return "OpenRC"
 }
 
-// Advisories returns non-fatal warnings about the configuration. Unlike
-// Validate, these do not block installation but are surfaced to the user for
-// attention (e.g. desktop alignment between the stage3 variant and profile).
 func (cfg *Config) Advisories() []string {
 	var warns []string
 	if cfg.Gentoo.Profile == "" {

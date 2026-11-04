@@ -9,25 +9,16 @@ import (
 	"strings"
 )
 
-// maxLineTeeLine caps the length of a single forwarded line.
 const maxLineTeeLine = 4096
 
-// maxTailLines caps how many child-output lines are kept for error reports.
 const maxTailLines = 40
 
-// lineTee is an io.Writer that optionally mirrors bytes to a sink writer
-// and forwards every complete line to a callback. It is used to stream
-// child-process output into the TUI install window while keeping the
-// original destination (or discarding it when sink is nil).
 type lineTee struct {
 	sink io.Writer
 	fn   func(line string)
 	buf  bytes.Buffer
 }
 
-// NewLineTee returns a writer that copies everything written to it into
-// sink (which may be nil to discard) and invokes fn once per complete
-// newline-terminated line.
 func NewLineTee(sink io.Writer, fn func(line string)) io.Writer {
 	return &lineTee{sink: sink, fn: fn}
 }
@@ -54,8 +45,6 @@ func (tee *lineTee) Write(data []byte) (int, error) {
 
 func (tee *lineTee) emit(line string) {
 	line = strings.TrimRight(line, "\n")
-	// Keep only the portion after the last carriage return so progress
-	// bars do not accumulate into one giant line.
 	if index := strings.LastIndexByte(line, '\r'); index >= 0 {
 		line = line[index+1:]
 	}
@@ -70,7 +59,6 @@ func (tee *lineTee) emit(line string) {
 	}
 }
 
-// Flush emits a trailing partial line if one is buffered.
 func (tee *lineTee) Flush() {
 	if tee.buf.Len() == 0 {
 		return
@@ -80,9 +68,6 @@ func (tee *lineTee) Flush() {
 	tee.emit(line + "\n")
 }
 
-// TailWriter mirrors every write to sink while retaining the last maxLines
-// newline-terminated lines, so a failing child's final output can be
-// surfaced in errors instead of being lost in scrollback.
 type TailWriter struct {
 	sink  io.Writer
 	max   int
@@ -90,8 +75,6 @@ type TailWriter struct {
 	buf   string
 }
 
-// NewTailWriter returns a writer that forwards raw bytes to sink (nil to
-// discard) and keeps the last maxLines complete non-blank lines.
 func NewTailWriter(sink io.Writer, maxLines int) *TailWriter {
 	if maxLines < 1 {
 		maxLines = 1
@@ -99,7 +82,6 @@ func NewTailWriter(sink io.Writer, maxLines int) *TailWriter {
 	return &TailWriter{sink: sink, max: maxLines}
 }
 
-// Write mirrors data to the sink and retains complete lines for Tail.
 func (tw *TailWriter) Write(data []byte) (int, error) {
 	count := len(data)
 	if tw.sink != nil {
@@ -127,8 +109,6 @@ func (tw *TailWriter) push(line string) {
 	}
 }
 
-// Flush records a trailing partial line (prompt-style output that ends
-// without a newline), mirroring lineTee.Flush.
 func (tw *TailWriter) Flush() {
 	if tw.buf == "" {
 		return
@@ -137,14 +117,10 @@ func (tw *TailWriter) Flush() {
 	tw.buf = ""
 }
 
-// Tail returns the retained lines in their original order.
 func (tw *TailWriter) Tail() []string { return append([]string{}, tw.lines...) }
 
-// InstallLogPath is the rolling log of an installation run, kept on the
-// live system so failures stay greppable after the TUI window scrolls.
 func InstallLogPath() string { return filepath.Join(TmpDir, "install.log") }
 
-// OpenInstallLog appends to InstallLogPath, creating it and its parents.
 func OpenInstallLog() (io.WriteCloser, error) {
 	path := InstallLogPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

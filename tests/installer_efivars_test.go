@@ -1,4 +1,3 @@
-// EFI firmware checks and efivarfs mounting.
 package tests
 
 import (
@@ -10,12 +9,10 @@ import (
 	"gentooinstall/lib/installer"
 )
 
-// nonEFIHost makes the context report a host that was not booted under UEFI.
 func nonEFIHost(ctx *installer.Context) {
 	ctx.Stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
 }
 
-// efiMountLine is the exact efivarfs mount invocation recorded by the stub.
 const efiMountLine = "mount -t efivarfs efivarfs /sys/firmware/efi/efivars"
 
 func TestMountEfiVarsHostNotUEFI(testingT *testing.T) {

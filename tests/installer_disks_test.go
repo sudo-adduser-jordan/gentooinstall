@@ -1,4 +1,3 @@
-// Disk action application (ApplyDiskActions across layout schemes).
 package tests
 
 import (
@@ -45,8 +44,6 @@ func TestApplyDiskActionsClassicEFILuksSwap(testingT *testing.T) {
 		testingT.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		// waitPartition must be skipped when capturing, otherwise the 10x1s
-		// retry loop would make this test crawl.
 		testingT.Fatalf("ApplyDiskActions took %v; waitPartition did not fast-path", elapsed)
 	}
 
@@ -68,7 +65,6 @@ func TestApplyDiskActionsClassicEFILuksSwap(testingT *testing.T) {
 		"mkfs.ext4 -q -L root /dev/fake-part_luks_root",
 	)
 
-	// cryptsetup keyed operations must feed the passphrase on stdin.
 	calls := stub.Calls()
 	if calls[5].Stdin != "test-passphrase" {
 		testingT.Fatalf("luksFormat stdin = %q", calls[5].Stdin)
@@ -216,8 +212,6 @@ func TestApplyDiskActionsUnmountsBusyTarget(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
 	ctx, stub := testContext(testingT, cfg, map[string]string{"gpt": uGpt, "part_efi": uEfi, "part_root": uRoot})
-	// Simulate an auto-mounted USB: the target whole disk has a mounted
-	// filesystem and an active swap partition.
 	ctx.TargetResources = func(device string) (mounts, swaps []string) {
 		if device != "/dev/sdX" {
 			testingT.Fatalf("expected whole-disk /dev/sdX, got %s", device)
@@ -309,8 +303,6 @@ func TestApplyDiskActionsPartprobeWhenAvailable(testingT *testing.T) {
 func TestApplyDiskActionsSwallowSwapoffFailure(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, stub := testContext(testingT, cfg, classicSeeds())
-	// swapoff runs best-effort; even when it is scripted to fail the apply
-	// must succeed (the failure is swallowed with `_ =`).
 	stub.FailOn = []string{"swapoff"}
 
 	if err := installer.ApplyDiskActions(ctx); err != nil {

@@ -1,5 +1,3 @@
-// Package pkglists exposes the static per-repository package lists
-// embedded from data/repos (refreshed daily by scripts/packages.sh).
 package pkglists
 
 import (
@@ -9,7 +7,6 @@ import (
 	"gentooinstall/data/repos"
 )
 
-// Has reports whether a static package list exists for the given repo name.
 func Has(name string) bool {
 	if name == "" {
 		return false
@@ -18,8 +15,6 @@ func Has(name string) bool {
 	return err == nil
 }
 
-// Atoms returns the complete, deduplicated, sorted list of package atoms for
-// a repo, or nil if no static list exists for it.
 func Atoms(name string) []string {
 	content, err := repos.ReadFile(name)
 	if err != nil {
@@ -32,7 +27,6 @@ func Atoms(name string) []string {
 		if line == "" {
 			continue
 		}
-		// pkg_desc_index lines are "<category/name> <versions>: <desc>".
 		atom := line
 		if index := strings.IndexByte(line, ' '); index > 0 {
 			atom = line[:index]

@@ -1,4 +1,3 @@
-// Live winsize detection: CSI reply parsing, clamping and the TUI poll.
 package tests
 
 import (
@@ -37,21 +36,16 @@ func TestParseCSITextAreaReply(testingT *testing.T) {
 	}
 }
 
-// TestGetWinsizeSane asserts the kernel query either reports a clamped
-// usable size or reports unknown — never garbage a layout would consume.
 func TestGetWinsizeSane(testingT *testing.T) {
 	cols, rows, ok := live.GetWinsize()
 	if !ok {
-		return // no tty (pipes, CI): unknown is the correct answer
+		return
 	}
 	if cols < 20 || cols > 1000 || rows < 10 || rows > 500 {
 		testingT.Fatalf("unclamped winsize (%d,%d)", cols, rows)
 	}
 }
 
-// TestWinsizePollStops asserts the TUI size poll reschedules while the
-// size is unsettled and stops after consecutive stable reads, so it can
-// never churn repaints forever.
 func TestWinsizePollStops(testingT *testing.T) {
 	model := tui.New(config.Default(true), "/tmp/test-gentoo.toml")
 	stopped := false

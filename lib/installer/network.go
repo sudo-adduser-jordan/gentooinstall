@@ -5,8 +5,6 @@ import (
 	"strings"
 )
 
-// EnableService enables a service for the chosen init system
-// (port of enable_service).
 func EnableService(ctx *Context, name string) error {
 	if ctx.Cfg.UsesSystemd() {
 		return ctx.Runner.Try("systemctl", "enable", name)
@@ -16,7 +14,6 @@ func EnableService(ctx *Context, name string) error {
 
 const networkdTemplate = "[Match]\nName=%s\n\n[Network]\n%s"
 
-// ConfigureNetworking sets up networking for the new system.
 func ConfigureNetworking(ctx *Context) error {
 	if ctx.Cfg.UsesSystemd() {
 		if !ctx.Cfg.System.SystemdNetworkd {
@@ -59,7 +56,6 @@ func ConfigureNetworking(ctx *Context) error {
 		return nil
 	}
 
-	// OpenRC: install and enable dhcpcd.
 	ctx.Runner.log("Installing dhcpcd")
 	if err := ctx.Runner.Try("emerge", "--verbose", "net-misc/dhcpcd"); err != nil {
 		return err

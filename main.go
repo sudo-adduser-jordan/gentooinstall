@@ -1,5 +1,3 @@
-// Command gentooinstall is the Go rewrite of gentoo-install: a pVPN-style
-// numbered-tabs configurator plus a full installation engine.
 package main
 
 import (
@@ -38,13 +36,6 @@ func requireRoot() {
 	}
 }
 
-// defaultConfigPath returns the configuration file used when none is given.
-// It prefers builds/custom.toml next to the process (the repo checkout, the
-// live ISO ramfs, or the release archive, where builds/*.toml always ships)
-// and falls back to the builds/default.toml template until the first save.
-// A bare binary without a builds/ directory (e.g. go install) can neither
-// find nor create one under <cwd>, so it falls back to the per-user config
-// file ($XDG_CONFIG_HOME/gentooinstall/custom.toml), created on first save.
 func defaultConfigPath() string {
 	buildDir := filepath.Join(cwd(), "builds")
 	if _, err := os.Stat(buildDir); err == nil {
@@ -157,9 +148,6 @@ func main() {
 	}
 }
 
-// headlessInstallRequest reads the headless-install kernel parameters
-// (`gentooinstall.install=<config path>`, optional `gentooinstall.install-key=<key>`)
-// from /proc/cmdline. An empty cfg means no headless install was requested.
 func headlessInstallRequest() (cfg, key string) {
 	data, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
@@ -176,11 +164,6 @@ func headlessInstallRequest() (cfg, key string) {
 	return cfg, key
 }
 
-// runHeadlessInstall drives a full installation from the PID-1 init path.
-// The actual install runs in a child process (this binary's "install" mode)
-// so a fatal() inside the CLI never kills PID 1; the marker line is mirrored
-// to the serial console (the headless e2e asserts on it) and the machine is
-// powered off either way so QEMU's -no-reboot terminates the capture.
 func runHeadlessInstall(cfg, key string) {
 	if !filepath.IsAbs(cfg) {
 		cfg = filepath.Join("/builds", cfg)
@@ -215,9 +198,6 @@ func runHeadlessInstall(cfg, key string) {
 	report("success")
 }
 
-// powerOff attempts a clean shutdown after a headless install. The live rootfs
-// ships busybox, so `poweroff -f` (a direct reboot() syscall, PID-1 safe) is
-// preferred; a bare exit would kill init and panic the kernel instead.
 func powerOff() {
 	if err := exec.Command("poweroff", "-f").Run(); err == nil {
 		return
@@ -226,12 +206,6 @@ func powerOff() {
 	os.Exit(0)
 }
 
-// printHeadlessBanner writes msg to the first serial port (ttyS0) so headless
-// serial consoles observe the boot even when /dev/console is a graphical tty0.
-// The initramfs ships no device nodes, so as PID 1 (root) we create a missing
-// /dev/ttyS0 on the fly (char major 4, minor 64); any failure is ignored.
-// Muted while the TUI owns a serial-only console (the single grub entry):
-// raw writes there would smear the alt-screen.
 func printHeadlessBanner(msg string) {
 	if live.TuiActive() {
 		return
@@ -249,11 +223,6 @@ func printHeadlessBanner(msg string) {
 	}
 }
 
-// pingSelectedMirror resolves the default Gentoo mirror over the live network
-// and mirrors the outcome to the serial console (`live: mirror <host>: ok` /
-// `fail: <note>`). It only takes effect when running as the live-ISO init.
-// It waits briefly for the concurrent DHCP bring-up to populate /etc/resolv.conf
-// so the probe exercises real DNS + outbound HTTPS + CA certs end-to-end.
 func pingSelectedMirror() {
 	if os.Getpid() != 1 {
 		return
@@ -269,13 +238,9 @@ func pingSelectedMirror() {
 	defer cancel()
 	host := sysinfo.MirrorHost(mirror)
 	st := sysinfo.MirrorProbe(ctx, mirror)
-	// Serial-only: this runs in a goroutine after the TUI owns the terminal, so
-	// a stdout write here would smear across the TUI's framebuffer tty.
 	printHeadlessBanner(fmt.Sprintf("live: mirror %s: %s\n", host, noteToSerial(st)))
 }
 
-// noteToSerial maps a probe status to the serial-friendly ok/fail summary used
-// by the headless mirror self-check.
 func noteToSerial(st sysinfo.MirrorStatus) string {
 	if st.OK {
 		return "ok"
@@ -286,10 +251,6 @@ func noteToSerial(st sysinfo.MirrorStatus) string {
 	return "fail: " + st.Note
 }
 
-// runDemo records the simulated install demo as an animated GIF by driving
-// the real TUI inside the external charmbracelet/vhs virtual terminal. The
-// demo is non-destructive (it never touches disks), so it is safe for any
-// user. The `vhs` binary must be installed separately.
 func runDemo(args []string) {
 	out := "demo.gif"
 	for index := 0; index < len(args); index++ {
@@ -338,17 +299,6 @@ func runDemo(args []string) {
 	fmt.Println("[+] wrote", out)
 }
 
-// demoTape returns a VHS tape that boots the gentooinstall configurator, walks
-// the numbered tabs, starts the simulated install demo on the Install tab,
-// lets it run to completion (retrying the single simulated failure), then
-// quits. We spawn the real binary (this process's own argv[0]) so the
-// recording captures the actual TUI rather than a replayed message stream.
-// The Output path is quoted: VHS's lexer otherwise treats a leading "/" of an
-// absolute path as a Wait-regex delimiter. Instead of fixed sleeps, the demo
-// is synchronized with `Wait+Screen /regex/` commands that poll the rendered
-// terminal rows, so the retry and quit presses land exactly when the
-// corresponding screens are visible (line-scoped `Wait` sees no output from
-// full-screen TUIs); `Set WaitTimeout 30s` covers the whole demo.
 func demoTape(out string) string {
 	binPath := argv0()
 	return strings.Join([]string{
@@ -356,27 +306,14 @@ func demoTape(out string) string {
 		"Set Width 2000",
 		"Set Height 700",
 		"Set FontSize 16",
-		// VHS's default font stack (vhs.go) lists only coding monospaces and
-		// ends in "Apple Symbols"; none render colour emoji, so the tab icons
-		// fall back to a glyph with an inconsistent width and the tab boxes'
-		// right borders shift. "Noto Color Emoji" must come FIRST in the
-		// cascade: the mono fonts claim those codepoints and paint them at a
-		// wider advance, so listing it last never wins. Leading with it makes
-		// every emoji resolve to its uniform 2-cell advance, exactly the width
-		// lipgloss/xterm.js assume, keeping the borders aligned. ASCII text is
-		// not in Noto Color Emoji, so letters still fall through to JetBrains
-		// Mono.
 		`Set FontFamily "Noto Color Emoji, JetBrains Mono, DejaVu Sans Mono, Noto Sans Mono, monospace"`,
 		"Set Padding 12",
-		// The demo takes >15s to complete after the retry, so give the
-		// screen-scoped waits a larger budget than the 15s default.
 		"Set WaitTimeout 30s",
 		"",
 		`Type "` + binPath + ` --demo"`,
 		"Enter",
 		"Sleep 1.2s",
 		"",
-		// Walk the numbered tabs so the recording shows each section.
 		"Type \"2\"",
 		"Sleep 700ms",
 		"Type \"3\"",
@@ -390,14 +327,9 @@ func demoTape(out string) string {
 		"Type \"1\"",
 		"Sleep 700ms",
 		"",
-		// Open the Install tab and start the simulated demo.
 		"Type \"6\"",
 		"Sleep 400ms",
 		"Type \"d\"",
-		// The demo fails once (stage3 download) and shows the decision
-		// panel; Retry resumes it. The Wait+Screen polls land on the exact
-		// frame the panel appears; hold briefly so viewers can read it,
-		// then retry, then hold again on the success screen before quitting.
 		"Wait+Screen /action required/",
 		"Sleep 2s",
 		"Type \"r\"",
@@ -409,8 +341,6 @@ func demoTape(out string) string {
 	}, "\n")
 }
 
-// argv0 returns the absolute path of the running binary so the VHS tape can
-// relaunch it. fallbacks to a bare "gentooinstall" on PATH if that fails.
 func argv0() string {
 	if exe, err := os.Executable(); err == nil {
 		if abs, err := filepath.Abs(exe); err == nil {
@@ -422,10 +352,6 @@ func argv0() string {
 }
 
 func runTUI(cfgPath string, demo bool) {
-	// Under CI (e.g. the GitHub Actions demo-GIF job), termenv/lipgloss
-	// detect no color support and render monochrome, even though the VHS
-	// recording terminal supports truecolor. Force a color profile so the
-	// recorded TUI keeps its colours.
 	if lipgloss.ColorProfile() == termenv.Ascii {
 		lipgloss.SetColorProfile(termenv.TrueColor)
 	}
@@ -440,16 +366,10 @@ func runTUI(cfgPath string, demo bool) {
 	model.SetInstallFunc(func() error {
 		return runInstallTUI(cfg, cfgPath)
 	})
-	// Unprivileged users get the root-required page instead of the whole
-	// UI; the demo recording (a simulated install) bypasses the gate.
 	model.SetRoot(os.Geteuid() == 0 || demo)
-	// Host-prerequisite probe shown on the Install tab: the TUI never
-	// imports the installer package, so main injects the lookup.
 	model.SetPrereq(func() tui.Prereq {
 		runner := installer.NewRunner(io.Discard, io.Discard)
 		ctx := &installer.Context{Runner: runner}
-		// The layout flags decide the extra host programs (btrfs, zfs,
-		// mdadm, cryptsetup), so attach the real layout when it builds.
 		if layout, err := disklayout.BuildFromConfig(cfg, ""); err == nil {
 			ctx.Layout = layout
 		}
@@ -459,13 +379,6 @@ func runTUI(cfgPath string, demo bool) {
 		}
 	})
 
-	// The TUI always renders to the caller's terminal. As the live-ISO init
-	// that is /dev/console: the single grub entry (console=ttyS0) puts it on
-	// the serial port, so under QEMU -nographic -serial stdio the TUI appears
-	// directly in the terminal that launched QEMU instead of a framebuffer VT.
-	// The guest kernel reports a 0x0 winsize there (QEMU forwards no
-	// resizes), so detect the real host window now — before the alt-screen
-	// owns stdin — and publish it for bubbletea and the TUI size poll.
 	if cols, rows, ok := live.DetectWinsize(); ok {
 		live.ApplyWinsize(cols, rows)
 	}
@@ -473,9 +386,6 @@ func runTUI(cfgPath string, demo bool) {
 	program := tea.NewProgram(model, opts...)
 	tui.SetProgram(program)
 	if os.Getpid() == 1 {
-		// Headless serial consoles cannot see the framebuffer TUI; announce
-		// its launch so e2e tests can assert the boot reached the TUI.
-		// Serial-only: stdout is the TUI's terminal from here on.
 		printHeadlessBanner("live: tui starting\n")
 	}
 	live.SetTuiActive(true)
@@ -487,7 +397,6 @@ func runTUI(cfgPath string, demo bool) {
 	}
 }
 
-// fillSystemDefaults detects timezone/keymap when unset.
 func fillSystemDefaults(cfg *config.Config) {
 	if strings.TrimSpace(cfg.System.Timezone) == "" {
 		cfg.System.Timezone = sysinfo.CurrentTimezone()
@@ -531,10 +440,6 @@ func newRunner(interactive bool) *installer.Runner {
 	return runner
 }
 
-// assumeYes reports whether automated (non-interactive) confirmation is
-// requested via GENTOOINSTALL_ASSUME_YES=1. Every yes/no prompt answers with
-// its intended default and the pre-apply countdown is skipped; used by the
-// headless QEMU test harness.
 func assumeYes() bool {
 	return os.Getenv("GENTOOINSTALL_ASSUME_YES") == "1"
 }
@@ -564,8 +469,6 @@ func buildLayout(cfg *config.Config) *disklayout.Layout {
 	return layout
 }
 
-// unmountStale best-effort unmounts a previous run's chroot mounts without
-// ever prompting: cleanup failures warn, they must not block a fresh install.
 func unmountStale(ctx *installer.Context, dir string) {
 	prev := ctx.Runner.OnFailure
 	ctx.Runner.OnFailure = installer.DefaultOnFailure
@@ -593,8 +496,6 @@ func runInstall(cfgPath string) {
 	nonInteractive := assumeYes()
 	runner := newRunner(!nonInteractive)
 	runner.NonInteractive = nonInteractive
-	// Mirror everything (host phases plus the chroot child) into the
-	// persistent install log so a failure can be inspected afterwards.
 	if file, err := installer.OpenInstallLog(); err == nil {
 		runner.Stdout = io.MultiWriter(runner.Stdout, file)
 		runner.Stderr = io.MultiWriter(runner.Stderr, file)
@@ -608,8 +509,6 @@ func runInstall(cfgPath string) {
 		SourceConfig: cfgPath,
 	}
 
-	// Drop stale mounts from a previous run before touching disks
-	// (port of gentoo_umount); best effort, never prompts.
 	unmountStale(ctx, installer.RootMountpoint)
 
 	fmt.Printf("[+] Live firmware: %s; configured boot type: %s (EFIID=%s BIOSID=%s)\n",
@@ -620,10 +519,6 @@ func runInstall(cfgPath string) {
 	if err := installer.CheckFilesystemSupport(ctx); err != nil {
 		fatal("%v", err)
 	}
-	// The live ISO ships the toolset, but a degraded rootfs or a different
-	// host may lack some programs. Ask before aborting: installing them is
-	// a one-liner on the Alpine live rootfs (apk). Non-interactive runs
-	// (GENTOOINSTALL_ASSUME_YES) answer yes automatically.
 	if missing := installer.MissingPrograms(ctx); len(missing) > 0 {
 		fmt.Fprintf(os.Stderr, "[!] Missing required programs: %s\n", strings.Join(missing, " "))
 		ok, err := installer.AskYesNo(ctx.Runner, "Install them now via apk?", true)
@@ -654,10 +549,6 @@ func runInstall(cfgPath string) {
 	}
 	fmt.Println("[+] Disk configuration was applied successfully")
 
-	// The root filesystem must be mounted before the stage3 download so
-	// the tarball is staged on the (disk-backed) target disk instead of
-	// the RAM-backed /tmp: mounting later would hide the download beneath
-	// the new mount (same ordering as the TUI flow).
 	fmt.Println("[+] Mounting root filesystem")
 	if err := installer.MountRoot(ctx); err != nil {
 		fatal("%v", err)
@@ -684,8 +575,6 @@ func runInstall(cfgPath string) {
 		installer.UnmountChroot(ctx, installer.RootMountpoint)
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			// Preserve the child's exit code for scripting, but surface the
-			// wrapped error (including the child-output tail) first.
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(ee.ExitCode())
 		}
@@ -750,7 +639,7 @@ func runChroot(args []string) {
 		fatal("'%s' is not a mountpoint", dir)
 	}
 
-	cfg := &config.Config{} // minimal context; chroot shell needs no config
+	cfg := &config.Config{}
 	_ = cfg
 	ctx := &installer.Context{
 		Runner:   newRunner(true),
@@ -796,42 +685,25 @@ func runInChroot(cfgPath string) {
 	}
 }
 
-// tuiInstaller drives an installation from inside the live TUI. All
-// output is streamed into the install window and every interactive
-// prompt is answered through the window instead of the terminal.
 type tuiInstaller struct {
 	cfg    *config.Config
 	path   string
 	runner *installer.Runner
 	decide chan tui.InstallDecision
 
-	// logFile appends every install line (host + chroot child output) to
-	// the persistent install log so failures survive window scrollback.
 	logFile io.Closer
 
-	// decided records that the user has already answered a prompt for the
-	// current step. It prevents a command-level abort (the user chose
-	// "Abort" on the runner's OnFailure prompt) from also triggering a
-	// second, redundant phase-level prompt for the same failure.
 	decided bool
 }
 
-// awaitDecision reports a failure to the install window and blocks
-// until the user answers with Retry or Abort.
 func (inst *tuiInstaller) awaitDecision(cmdline string, err error) tui.InstallDecision {
 	return inst.awaitDecisionCore(cmdline, err)
 }
 
-// awaitPhaseDecision reports a phase-level failure and blocks until the
-// user answers with Retry or Abort.
 func (inst *tuiInstaller) awaitPhaseDecision(cmdline string, err error) tui.InstallDecision {
 	return inst.awaitDecisionCore(cmdline, err)
 }
 
-// ensureHostPrograms offers to install any missing required host programs
-// through the live ISO's apk before the install proceeds. The user answers
-// through the install-window decision panel: Retry runs the apk install and
-// re-checks, Abort stops the installation.
 func (inst *tuiInstaller) ensureHostPrograms(ctx *installer.Context) error {
 	for {
 		missing := installer.MissingPrograms(ctx)
@@ -853,7 +725,6 @@ func (inst *tuiInstaller) ensureHostPrograms(ctx *installer.Context) error {
 	}
 }
 
-// awaitDecisionCore implements the shared decision loop.
 func (inst *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.InstallDecision {
 	inst.decided = true
 	for {
@@ -871,15 +742,12 @@ func (inst *tuiInstaller) awaitDecisionCore(cmdline string, err error) tui.Insta
 	}
 }
 
-// logf emits a progress line through the runner's Log hook.
 func (inst *tuiInstaller) logf(format string, args ...any) {
 	if inst.runner != nil && inst.runner.Log != nil {
 		inst.runner.Log(format, args...)
 	}
 }
 
-// newTUIRunner builds a non-interactive runner streaming everything
-// into the TUI install window (nothing goes to the real terminal).
 func (inst *tuiInstaller) newRunner() *installer.Runner {
 	var sink io.Writer
 	if file, err := installer.OpenInstallLog(); err == nil {
@@ -891,7 +759,7 @@ func (inst *tuiInstaller) newRunner() *installer.Runner {
 	runner.NonInteractive = true
 	runner.OnFailure = func(cmdline string, err error) installer.FailAction {
 		if inst.awaitDecision(cmdline, err) == tui.DecideRetry {
-			inst.decided = false // the phase may still complete; keep retry options open
+			inst.decided = false
 			return installer.FailRetry
 		}
 		return installer.FailAbort
@@ -900,8 +768,6 @@ func (inst *tuiInstaller) newRunner() *installer.Runner {
 	return runner
 }
 
-// runInstallTUI performs the host-side installation while the TUI stays
-// alive, mirroring runInstall but without any terminal interactivity.
 func runInstallTUI(cfg *config.Config, cfgPath string) error {
 	resolved := config.ResolveSavePath(cfgPath)
 	if err := cfg.Save(resolved); err != nil {
@@ -971,23 +837,15 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 		time.Sleep(time.Second)
 	}
 
-	// The remaining host-side steps run as decidable phases: any failure
-	// pauses the install and lets the user Retry the phase or abort.
-	// Retries only re-run the failed phase; it must remain safe to repeat
-	// without re-partitioning already-handled disks.
 	phases := []struct {
 		name      string
-		cleanRoot bool // clear the root mountpoint before a retry
+		cleanRoot bool
 		fn        func() error
 	}{
 		{"Unmounting stale filesystems", false,
 			func() error { unmountStale(ctx, installer.RootMountpoint); return nil }},
 		{"Applying disk configuration", false,
 			func() error { return installer.ApplyDiskActions(ctx) }},
-		// The root filesystem must be mounted before the stage3 download so
-		// the tarball can be staged on the (disk-backed) target disk instead
-		// of the RAM-backed /tmp, which is too small for a ~400MB tarball on
-		// low-memory live systems. MountByID is idempotent per mountpoint.
 		{"Mounting root filesystem", false,
 			func() error { return installer.MountRoot(ctx) }},
 		{"Downloading stage3", false,
@@ -1027,8 +885,6 @@ func runInstallTUI(cfg *config.Config, cfgPath string) error {
 	}
 }
 
-// runPhase runs one installation phase, pausing on failure so the user can
-// decide how to proceed. A nil return means the phase succeeded.
 func (inst *tuiInstaller) runPhase(ctx *installer.Context, name string, cleanRoot bool, fn func() error) error {
 	inst.decided = false
 	inst.logf(name)
@@ -1039,18 +895,12 @@ func (inst *tuiInstaller) runPhase(ctx *installer.Context, name string, cleanRoo
 			return nil
 		}
 		if inst.decided {
-			// The failure was already answered at the command level; do not
-			// prompt a second time for the same underlying error.
 			inst.decided = false
 			return fmt.Errorf("%s failed: %w", name, err)
 		}
 		switch inst.awaitPhaseDecision(name, err) {
 		case tui.DecideRetry:
-			inst.decided = false // the retried phase may fail again; re-prompt then
-			// Rebuild the layout from the current config so a Retry never
-			// reuses a stale EFI/BIOS role set (e.g. user fixed BootType
-			// to bios but retried an EFI-built run). A rebuild failure
-			// aborts instead of retrying with known-stale roles.
+			inst.decided = false
 			if fresh, ferr := buildLayoutE(ctx.Cfg); ferr != nil {
 				return fmt.Errorf("%s: refreshed layout invalid, abort instead of retrying stale layout: %w", name, ferr)
 			} else {

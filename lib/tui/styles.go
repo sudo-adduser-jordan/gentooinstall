@@ -1,10 +1,7 @@
-// Package tui implements the gentooinstall configurator: a Bubble Tea app with
-// numbered tabs, inspired by pVPN's terminal UI.
 package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// Emoji used across the UI.
 const (
 	eGear    = "🔧"
 	eGlobe   = "🌐"
@@ -21,7 +18,6 @@ const (
 	eDisk    = "💾"
 )
 
-// tabEmoji maps a tab name to its icon.
 func tabEmoji(name string) string {
 	switch name {
 	case "Disk":
@@ -49,19 +45,14 @@ var (
 	white        = lipgloss.Color("#FFFFFF")
 	dim          = lipgloss.AdaptiveColor{Light: "#4B5563", Dark: "#9CA3AF"}
 
-	// teal is used for read-only, profile-derived packages so they are
-	// visually distinct from manually entered additional packages.
 	profileTeal = lipgloss.AdaptiveColor{Light: "#0F766E", Dark: "#5EEAD4"}
 
-	// fg is the regular value color; faint is for placeholders and
-	// pending rows; selBg is the soft highlight behind the selected row.
 	fg    = lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"}
 	faint = lipgloss.AdaptiveColor{Light: "#B0B5BD", Dark: "#4B5563"}
 	selBg = lipgloss.AdaptiveColor{Light: "#EDE9FE", Dark: "#312A45"}
 )
 
 var (
-	// Tab bar boxes.
 	tabActiveBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(accent).
@@ -75,7 +66,6 @@ var (
 				Foreground(fg).
 				Padding(0, 1)
 
-	// Filled pills used inside overlays and panels.
 	pillActiveStyle = lipgloss.NewStyle().
 			Foreground(white).
 			Background(accent).
@@ -104,7 +94,6 @@ var (
 	cfgBoxInvalidStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(bad).Padding(0, 1)
 	cfgBoxWarnStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(warn).Padding(0, 1)
 
-	// Mirror reachability indicator boxes (green ok, amber probing, red down).
 	mirrorBoxValidStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(good).Padding(0, 1)
 	mirrorBoxWarnStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(warn).Padding(0, 1)
 	mirrorBoxInvalidStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(bad).Padding(0, 1)

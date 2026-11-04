@@ -1,4 +1,3 @@
-// Stage3 resolution, download, resume and verification.
 package tests
 
 import (
@@ -42,7 +41,6 @@ func TestWantedPrograms(testingT *testing.T) {
 	if fmt.Sprint(req) != fmt.Sprint(wantReq) {
 		testingT.Fatalf("required programs = %v, want %v", req, wantReq)
 	}
-	// rhash is optional (sha512sum suffices); it may never be required.
 	for _, prog := range req {
 		if prog == "rhash" {
 			testingT.Fatalf("rhash must stay optional, got required: %v", req)
@@ -86,8 +84,6 @@ func TestResolveStage3(testingT *testing.T) {
 	if hits != 1 {
 		testingT.Fatalf("expected 1 listing request, got %d", hits)
 	}
-	// The authoritative latest-*.txt names the newest tarball, even though
-	// the index also lists an older one.
 	if info.Basename != "stage3-amd64-systemd-20240121T123456Z.tar.xz" {
 		testingT.Fatalf("ResolveStage3 = %q (want name from latest-*.txt)", info.Basename)
 	}
@@ -125,7 +121,6 @@ func TestResolveStage3FallsBackToIndex(testingT *testing.T) {
 	if hits != 2 {
 		testingT.Fatalf("expected 2 requests (.txt then index), got %d", hits)
 	}
-	// Fallback picks the newest tarball from the index.
 	if info.Basename != "stage3-amd64-systemd-20240121T123456Z.tar.xz" {
 		testingT.Fatalf("ResolveStage3 fallback = %q", info.Basename)
 	}
@@ -151,9 +146,6 @@ func TestResolveStage3NoMatch(testingT *testing.T) {
 }
 
 func TestResolveStage3SurfacesLatestErrors(testingT *testing.T) {
-	// A server error (not a 404) on the authoritative latest-*.txt listing
-	// must fail with the real cause instead of silently falling back to the
-	// index the way an absent listing (404) legitimately does.
 	var hits int
 	ts := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hits++
@@ -181,33 +173,17 @@ func TestResolveStage3SurfacesLatestErrors(testingT *testing.T) {
 	}
 }
 
-// stage3Mirror serves the tarball, its DIGESTS file and the release gpg key,
-// recording request counts.
 type stage3Mirror struct {
-	ts      *httptest.Server
-	mu      sync.Mutex
-	hits    map[string]int
-	payload []byte
-	hash    string
-	// failTarball rejects the next failTarballN requests for the tarball
-	// (before serving them) with an HTTP error, so retries kick in.
-	failTarballN int
-	// latestSize is the published byte size written into the latest-*.txt
-	// listing; the download space pre-check compares it with free space.
-	latestSize int64
-	// digestsFirstIrrelevant serves the DIGESTS file with a valid-looking
-	// but foreign .tar.xz line first, so tests can prove the verifier
-	// picks the line naming our tarball instead of the first match.
+	ts                     *httptest.Server
+	mu                     sync.Mutex
+	hits                   map[string]int
+	payload                []byte
+	hash                   string
+	failTarballN           int
+	latestSize             int64
 	digestsFirstIrrelevant bool
-	// digestsBlake2bFirst serves the current upstream layout: a "# BLAKE2B
-	// HASH" section (128-hex, same length as SHA512) naming our tarball
-	// before the real "# SHA512 HASH" section. Tests prove the verifier
-	// honors the section markers instead of returning the BLAKE2B digest.
-	digestsBlake2bFirst bool
-	// digestsBlake2bOnly serves a DIGESTS file with only a "# BLAKE2B
-	// HASH" section (no SHA512 at all), so tests can prove a listing
-	// without any SHA512 digest is rejected.
-	digestsBlake2bOnly bool
+	digestsBlake2bFirst    bool
+	digestsBlake2bOnly     bool
 }
 
 func newStage3Mirror(testingT *testing.T, payload []byte) *stage3Mirror {
@@ -273,9 +249,6 @@ func (mirror *stage3Mirror) count(sub string) int {
 	return 0
 }
 
-// countTarball returns the number of requests for exactly the tarball path
-// (the .DIGESTS sibling ends in basename+".DIGESTS", so a substring match
-// against basename would count it too).
 func (mirror *stage3Mirror) countTarball(basename string) int {
 	mirror.mu.Lock()
 	defer mirror.mu.Unlock()
@@ -331,7 +304,6 @@ func TestDownloadStage3ResumesFromVerifiedMarker(testingT *testing.T) {
 	ctx, _ := testContext(testingT, cfg, nil)
 	mkScratchDir(testingT, ctx, "/tmp/gentoo-install/root/.gentoo-stage3")
 	path := "/tmp/gentoo-install/root/.gentoo-stage3/stage3-amd64-systemd-20240121T123456Z.tar.xz"
-	// A resume needs the verified tarball the marker was written for.
 	writeScratch(testingT, ctx, path, string(payload))
 	writeScratch(testingT, ctx, path+".verified",
 		"stage3-amd64-systemd-20240121T123456Z.tar.xz\n")
@@ -403,7 +375,6 @@ func TestDownloadStage3ChecksumMismatch(testingT *testing.T) {
 	payload := []byte("different bytes than digest")
 	mirror := newStage3Mirror(testingT, payload)
 	defer mirror.ts.Close()
-	// Corrupt the served tarball after computing the digests.
 	mirror.mu.Lock()
 	mirror.payload = []byte("tampered")
 	mirror.mu.Unlock()
@@ -429,8 +400,6 @@ func TestDownloadStage3PrefersBasenameDigest(testingT *testing.T) {
 	ctx, _ := testContext(testingT, cfg, nil)
 	mkScratchDir(testingT, ctx, "/tmp/gentoo-install")
 
-	// The first .tar.xz line names a foreign file; the verifier must use
-	// the line naming our tarball instead of failing the checksum.
 	if _, err := installer.DownloadStage3(ctx); err != nil {
 		testingT.Fatalf("DownloadStage3 with reordered DIGESTS: %v", err)
 	}
@@ -447,10 +416,6 @@ func TestDownloadStage3SkipsBlake2bDigests(testingT *testing.T) {
 	ctx, stub := testContext(testingT, cfg, nil)
 	mkScratchDir(testingT, ctx, "/tmp/gentoo-install")
 
-	// Current upstream DIGESTS files list a 128-hex BLAKE2B digest before
-	// the SHA512 digest for the same tarball; the verifier must pick the
-	// SHA512 section instead of failing the checksum against the BLAKE2B
-	// value (same length, same basename).
 	info, err := installer.DownloadStage3(ctx)
 	if err != nil {
 		testingT.Fatalf("DownloadStage3 with BLAKE2B-first DIGESTS: %v", err)
@@ -474,8 +439,6 @@ func TestDownloadStage3RejectsBlake2bOnlyDigests(testingT *testing.T) {
 	ctx, _ := testContext(testingT, cfg, nil)
 	mkScratchDir(testingT, ctx, "/tmp/gentoo-install")
 
-	// A listing with only a BLAKE2B section carries no SHA512 digest, so the
-	// verification must fail rather than trust a foreign algorithm's hash.
 	_, err := installer.DownloadStage3(ctx)
 	if err == nil {
 		testingT.Fatal("expected failure with BLAKE2B-only DIGESTS")
@@ -490,7 +453,7 @@ func TestDownloadStage3RetriesTransientFailures(testingT *testing.T) {
 	mirror := newStage3Mirror(testingT, payload)
 	defer mirror.ts.Close()
 	mirror.mu.Lock()
-	mirror.failTarballN = 2 // first two tarball fetches fail with a 500
+	mirror.failTarballN = 2
 	mirror.mu.Unlock()
 
 	cfg := classicCfg("/dev/sdX", false, false)
@@ -522,9 +485,6 @@ func TestDownloadStage3FailsFastOnNoSpace(testingT *testing.T) {
 	payload := []byte("the tarball bytes")
 	mirror := newStage3Mirror(testingT, payload)
 	defer mirror.ts.Close()
-	// Lie about the published size: the target root filesystem in the test
-	// has nowhere near this much free space, so the pre-download check must
-	// fail fast without touching the tarball.
 	mirror.mu.Lock()
 	mirror.latestSize = 1 << 49
 	mirror.mu.Unlock()
@@ -600,8 +560,6 @@ func TestExtractStage3(testingT *testing.T) {
 	if err := installer.ExtractStage3(ctx, info); err != nil {
 		testingT.Fatal(err)
 	}
-	// Root device mounted into the (empty) root mountpoint, staged tarball
-	// extracted, then the scratch dir cleaned up.
 	assertCmds(testingT, stub,
 		"mount /dev/fake-part_root /tmp/gentoo-install/root",
 		"tar -xpf /tmp/gentoo-install/root/.gentoo-stage3/stage3.tar.xz --xattrs --numeric-owner",

@@ -1,4 +1,3 @@
-// Mirror reachability probing and the TUI mirror indicator.
 package tests
 
 import (
@@ -66,7 +65,7 @@ func TestMirrorProbe(testingT *testing.T) {
 	testingT.Run("connection refused is no network", func(testingT *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {}))
 		downURL := ts.URL
-		ts.Close() // now connection refused
+		ts.Close()
 		st := sysinfo.MirrorProbe(context.Background(), downURL)
 		if st.OK {
 			testingT.Fatalf("probe = %+v, want down", st)
@@ -120,7 +119,6 @@ func TestTuiMirrorIndicator(testingT *testing.T) {
 		mm, _ := model.Update(tui.MirrorProbeMsg{OK: true, Note: "ok"})
 		model = mm.(*tui.Model)
 
-		// Gentoo tab, move the cursor onto the "Gentoo mirror" text row.
 		mm, _ = model.Update(keyRunes('4'))
 		model = mm.(*tui.Model)
 		model = rowDownN(model, 5)

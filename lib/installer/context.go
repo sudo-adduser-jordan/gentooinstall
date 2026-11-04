@@ -9,26 +9,15 @@ import (
 	"gentooinstall/lib/disklayout"
 )
 
-// Standard locations (port of scripts/config.sh constants).
 const (
-	// TmpDir is the working directory on the live system.
-	TmpDir = "/tmp/gentoo-install"
-	// RootMountpoint is where the target root filesystem is mounted.
-	RootMountpoint = TmpDir + "/root"
-	// RepoBind stages the installer binary and config for the chroot.
-	RepoBind = TmpDir + "/bind"
-	// UUIDStorageDir persists generated partition/array UUIDs across runs.
-	UUIDStorageDir = TmpDir + "/uuids"
-	// LuksHeaderBackupDir holds LUKS header backups.
+	TmpDir              = "/tmp/gentoo-install"
+	RootMountpoint      = TmpDir + "/root"
+	RepoBind            = TmpDir + "/bind"
+	UUIDStorageDir      = TmpDir + "/uuids"
 	LuksHeaderBackupDir = TmpDir + "/luks-headers"
-	// Stage3ScratchDir is where the verified stage3 tarball is staged, inside
-	// the mounted target root filesystem. TmpDir sits on the live system's
-	// RAM-backed initramfs, which cannot hold a ~400MB tarball on low-memory
-	// hosts; the target disk can.
-	Stage3ScratchDir = RootMountpoint + "/.gentoo-stage3"
+	Stage3ScratchDir    = RootMountpoint + "/.gentoo-stage3"
 )
 
-// Context carries all state through the install phases.
 type Context struct {
 	Runner *Runner
 
@@ -37,63 +26,33 @@ type Context struct {
 
 	Resolver *disklayout.Resolver
 
-	// SourceConfig is the absolute path of the config on the live system.
 	SourceConfig string
 
 	EncryptionKey string
 	InChroot      bool
 
-	// BlkidUUID, when non-nil, resolves a device path to its filesystem UUID
-	// (used by KernelCmdline, GenerateFstab and the kernel installers).
-	// Production code leaves it nil so BlkidUUIDForID falls back to
-	// disklayout.GetBlkidField; tests inject a stub to avoid invoking blkid.
 	BlkidUUID func(dev string) (string, error)
 
-	// EvalSymlinks canonicalizes a block device path. Production leaves it
-	// nil so filepath.EvalSymlinks is used; tests inject a stub because the
-	// scratch devices they operate on are not real symlinks in /dev.
 	EvalSymlinks func(p string) (string, error)
 
-	// IsMountpoint reports whether a path is currently mounted. Production
-	// leaves it nil so /proc/mounts is consulted; tests inject a stub to
-	// keep the recorded command sequence independent of the host.
 	IsMountpoint func(path string) bool
 
-	// TargetResources returns the mountpoints and active swap devices under a
-	// whole-disk target device, so ApplyDiskActions can release them before
-	// repartitioning. Production leaves it nil so the live system is probed
-	// (lsblk + /proc/swaps); tests inject a stub to keep the recorded command
-	// sequence independent of the host.
 	TargetResources func(device string) (mounts, swaps []string)
 
-	// Stat, when non-nil, replaces os.Stat for host-firmware detection
-	// (EFI). Production leaves it nil so /sys/firmware/efi is probed on the
-	// real host; tests inject a stub to keep behavior independent of the
-	// machine running the suite.
 	Stat func(path string) (os.FileInfo, error)
 
-	// Filesystems, when non-nil, replaces the /proc/filesystems probe for
-	// kernel filesystem support (vfat). Production leaves it nil so the
-	// live kernel is probed; tests inject a stub.
 	Filesystems func(fs string) bool
 
-	// Root, when non-empty, is prefixed onto every static absolute path the
-	// installer writes or reads, so tests can run against a scratch
-	// directory without touching the real filesystem. Production builds
-	// leave it empty and keep the current behavior. Paths passed in as
-	// parameters (mountpoints, chroot dirs, tar paths) are never prefixed.
 	Root string
 
 	Stage3File string
 	NProc      int
 }
 
-// EnsureTmpDirs creates the standard working directories.
 func EnsureTmpDirs() error {
 	return os.MkdirAll(TmpDir, 0o755)
 }
 
-// MustExist errors when path is missing.
 func MustExist(path, what string) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("%s not found: %s: %w", what, path, err)
@@ -101,15 +60,10 @@ func MustExist(path, what string) error {
 	return nil
 }
 
-// BinInBind is where the gentooinstall binary lives inside the chroot.
 func BinInBind() string { return filepath.Join(RepoBind, "gentooinstall-self") }
 
-// ConfigInBind is where the config file lives inside the chroot.
 func ConfigInBind() string { return filepath.Join(RepoBind, "config.toml") }
 
-// StageBind copies the gentooinstall binary and the config file into the bind
-// directory so both are reachable from within the chroot. This replaces
-// the bash repo-dir bind mount.
 func StageBind(ctx *Context) error {
 	if err := os.MkdirAll(RepoBind, 0o755); err != nil {
 		return err
@@ -133,5 +87,4 @@ func StageBind(ctx *Context) error {
 	return os.WriteFile(ConfigInBind(), cfgData, 0o644)
 }
 
-// IsEFI resolves the boot mode from layout roles.
 func (ctx *Context) IsEFI() bool { return ctx.Layout.EFIID != "" }

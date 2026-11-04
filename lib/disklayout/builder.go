@@ -11,10 +11,8 @@ import (
 	"gentooinstall/lib/config"
 )
 
-// UUIDStore generates stable uuids per id, persisted below Dir.
-// It ports load_or_generate_uuid.
 type UUIDStore struct {
-	Dir string // empty disables persistence (tests)
+	Dir string
 }
 
 func randomUUID() string {
@@ -22,8 +20,8 @@ func randomUUID() string {
 	if _, err := rand.Read(raw[:]); err != nil {
 		panic(fmt.Sprintf("crypto/rand failed: %v", err))
 	}
-	raw[6] = (raw[6] & 0x0f) | 0x40 // version 4
-	raw[8] = (raw[8] & 0x3f) | 0x80 // variant 10xx
+	raw[6] = (raw[6] & 0x0f) | 0x40
+	raw[8] = (raw[8] & 0x3f) | 0x80
 	hex := fmt.Sprintf("%x", raw[:])
 	return fmt.Sprintf("%s-%s-%s-%s-%s", hex[0:8], hex[8:12], hex[12:16], hex[16:20], hex[20:32])
 }
@@ -32,7 +30,6 @@ func uuidFileName(id string) string {
 	return base64.StdEncoding.WithPadding(base64.NoPadding).EncodeToString([]byte(id))
 }
 
-// Get returns the stored uuid for id, generating and persisting one if needed.
 func (store *UUIDStore) Get(id string) string {
 	if store.Dir == "" {
 		return randomUUID()
@@ -49,7 +46,6 @@ func (store *UUIDStore) Get(id string) string {
 	return uuid
 }
 
-// UuidToMdUUID converts a hyphenated uuid to the mdadm colon notation.
 func UuidToMdUUID(uuid string) string {
 	normalized := strings.ReplaceAll(strings.ToLower(uuid), "-", "")
 	if len(normalized) != 32 {
@@ -58,15 +54,12 @@ func UuidToMdUUID(uuid string) string {
 	return fmt.Sprintf("%s:%s:%s:%s", normalized[0:8], normalized[8:16], normalized[16:24], normalized[24:32])
 }
 
-// Builder incrementally constructs a Layout, validating as it goes
-// (port of scripts/config.sh).
 type Builder struct {
 	store  UUIDStore
 	flags  Flags
 	layout Layout
 }
 
-// NewBuilder creates a builder using the given uuid persistence directory.
 func NewBuilder(uuidDir string) *Builder {
 	return &Builder{
 		store: UUIDStore{Dir: uuidDir},
@@ -104,7 +97,6 @@ func (builder *Builder) resolveEntry(id, typ, arg string) {
 	builder.layout.resolvable[id] = ResolveEntry{Type: typ, Arg: arg}
 }
 
-// RegisterExisting registers an already-formatted device (register_existing).
 func (builder *Builder) RegisterExisting(newID, device string) error {
 	if newID == "" || device == "" {
 		return fmt.Errorf("existing: new_id and device are required")
@@ -117,7 +109,6 @@ func (builder *Builder) RegisterExisting(newID, device string) error {
 	return nil
 }
 
-// CreateGPT creates a new GPT table on device or on the operand id.
 func (builder *Builder) CreateGPT(newID, device, id string) error {
 	if err := onlyOneOf(device, id); err != nil {
 		return err
@@ -138,7 +129,6 @@ func (builder *Builder) CreateGPT(newID, device, id string) error {
 	return nil
 }
 
-// CreatePartition adds a partition of size ("1GiB" or "remaining").
 func (builder *Builder) CreatePartition(newID, gptID, size, typ string) error {
 	if err := builder.verifyExisting("id", gptID); err != nil {
 		return err
@@ -164,7 +154,6 @@ func (builder *Builder) CreatePartition(newID, gptID, size, typ string) error {
 	return nil
 }
 
-// CreateRaid creates an mdadm array from member ids.
 func (builder *Builder) CreateRaid(newID string, level int, name, idsJoined string) error {
 	builder.flags.UsedRaid = true
 	switch level {
@@ -192,7 +181,6 @@ func (builder *Builder) CreateRaid(newID string, level int, name, idsJoined stri
 	return nil
 }
 
-// CreateLuks wraps device or id into a LUKS2 container named name.
 func (builder *Builder) CreateLuks(newID, name, device, id string) error {
 	builder.flags.UsedLuks = true
 	builder.flags.UsedEncryption = true
@@ -217,7 +205,6 @@ func (builder *Builder) CreateLuks(newID, name, device, id string) error {
 	return nil
 }
 
-// CreateDummy registers a plain device without any action (zfs/btrfs members).
 func (builder *Builder) CreateDummy(newID, device string) error {
 	if _, err := builder.createNewID("new_id", newID); err != nil {
 		return err
@@ -227,7 +214,6 @@ func (builder *Builder) CreateDummy(newID, device string) error {
 	return nil
 }
 
-// Format formats the device identified by idisk.
 func (builder *Builder) Format(id, typ, label string) error {
 	if err := builder.verifyExisting("id", id); err != nil {
 		return err
@@ -242,7 +228,6 @@ func (builder *Builder) Format(id, typ, label string) error {
 	return nil
 }
 
-// FormatZFS creates a zfs pool over all member devices.
 func (builder *Builder) FormatZFS(idsJoined, poolType string, encrypt bool, compress string) error {
 	builder.flags.UsedZFS = true
 	ids := SplitIDList(idsJoined)
@@ -265,7 +250,6 @@ func (builder *Builder) FormatZFS(idsJoined, poolType string, encrypt bool, comp
 	return nil
 }
 
-// FormatBtrfs creates a (possibly multi-device) btrfs filesystem.
 func (builder *Builder) FormatBtrfs(idsJoined, raidType, label string) error {
 	builder.flags.UsedBtrfs = true
 	ids := SplitIDList(idsJoined)
@@ -290,11 +274,8 @@ func (builder *Builder) add(action Action) {
 	builder.layout.Actions = append(builder.layout.Actions, action)
 }
 
-// Finish returns the built layout after preset-specific role assignment.
 func (builder *Builder) Finish() *Layout { return &builder.layout }
 
-// BuildFromConfig constructs the layout described by cfg.Disk
-// (port of all create_*_layout functions).
 func BuildFromConfig(cfg *config.Config, uuidDir string) (*Layout, error) {
 	disk := &cfg.Disk
 	builder := NewBuilder(uuidDir)
@@ -397,7 +378,6 @@ func BuildFromConfig(cfg *config.Config, uuidDir string) (*Layout, error) {
 			builder.layout.BIOSID = "part_" + bt
 		}
 		builder.layout.RootID = "part_root"
-		// RootFSType stays empty: unknown, skip fstab entry.
 
 	case config.SchemeZFSCentric:
 		bt := disk.BootType
@@ -629,13 +609,6 @@ func BuildFromConfig(cfg *config.Config, uuidDir string) (*Layout, error) {
 	return &builder.layout, nil
 }
 
-// CheckBootTypeConsistency verifies the built layout roles agree with the
-// configured boot type. Preset schemes derive EFIID/BIOSID directly from
-// Disk.BootType, so any disagreement means the install would run with a
-// different firmware path than the UI shows (e.g. a stale EFI layout after
-// the user switched the TUI to bios and hit Retry instead of starting a
-// fresh install). Custom schemes replay raw actions and never consult
-// BootType, so they are exempt here and validated by their actions.
 func CheckBootTypeConsistency(cfg *config.Config, layout *Layout) error {
 	if cfg.Disk.Scheme == config.SchemeCustom {
 		return nil

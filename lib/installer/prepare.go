@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-// WantedPrograms returns the host programs required for cfg. Only programs
-// the Go engine actually shells out to are listed: downloads (http), sha512
-// digests and guid generation are implemented in Go, so wget/sha512sum/
-// uuidgen/python3 from the bash port are deliberately absent.
 func WantedPrograms(ctx *Context) (required, wanted []string) {
 	required = []string{"gpg", "hwclock", "lsblk", "ntpd", "partprobe",
 		"sgdisk"}
@@ -35,14 +31,11 @@ func WantedPrograms(ctx *Context) (required, wanted []string) {
 		}
 	}
 	if !HasProgram("rhash") {
-		wanted = append(wanted, "rhash") // optional, sha512sum suffices
+		wanted = append(wanted, "rhash")
 	}
 	return required, wanted
 }
 
-// MissingPrograms returns the required programs from WantedPrograms that
-// are not present on PATH. The runner's LookPath stub, when set, decides
-// availability so tests can control the host environment.
 func MissingPrograms(ctx *Context) []string {
 	required, _ := WantedPrograms(ctx)
 	var missing []string
@@ -54,7 +47,6 @@ func MissingPrograms(ctx *Context) []string {
 	return missing
 }
 
-// CheckPrograms verifies all required programs are present.
 func CheckPrograms(ctx *Context) error {
 	if missing := MissingPrograms(ctx); len(missing) > 0 {
 		return fmt.Errorf("missing required programs: %s", strings.Join(missing, " "))
@@ -74,10 +66,6 @@ func CheckPrograms(ctx *Context) error {
 	return nil
 }
 
-// apkPackages maps a required executable name to the Alpine package that
-// provides it. The live ISO is Alpine-based, so apk is the package manager
-// used to supply missing host tools. Unknown programs fall back to the
-// executable name itself (e.g. "sgdisk" is a valid Alpine package).
 var apkPackages = map[string]string{
 	"gpg":        "gnupg",
 	"hwclock":    "busybox",
@@ -91,8 +79,6 @@ var apkPackages = map[string]string{
 	"rhash":      "rhash",
 }
 
-// ProgramPackages maps executable names to the Alpine packages that
-// provide them (falling back to the name itself).
 func ProgramPackages(programs []string) []string {
 	packages := make([]string, len(programs))
 	for index, program := range programs {
@@ -105,16 +91,10 @@ func ProgramPackages(programs []string) []string {
 	return packages
 }
 
-// InstallProgramsCmdline renders the apk command that would install the
-// given programs, for display in prompts and logs.
 func InstallProgramsCmdline(programs []string) string {
 	return "apk " + CommandLine("add", append([]string{"--no-cache"}, ProgramPackages(programs)...)...)
 }
 
-// InstallMissingPrograms installs the missing required host programs with
-// apk (the live ISO's package manager). It is a no-op when nothing is
-// missing and reports an error when apk is unavailable or programs are
-// still missing after the install (e.g. no network).
 func InstallMissingPrograms(ctx *Context) error {
 	missing := MissingPrograms(ctx)
 	if len(missing) == 0 {
@@ -136,7 +116,6 @@ func InstallMissingPrograms(ctx *Context) error {
 	return nil
 }
 
-// SyncTime synchronizes the system clock (port of sync_time).
 func SyncTime(ctx *Context) error {
 	ctx.Runner.log("Syncing time")
 	switch {
@@ -149,8 +128,6 @@ func SyncTime(ctx *Context) error {
 			return err
 		}
 	default:
-		// Fall back to the Date header of a plain http request, bounded
-		// so a blackholed network cannot hang the install forever.
 		httpClient := &http.Client{Timeout: 15 * time.Second}
 		resp, err := httpClient.Head("http://example.com")
 		if err != nil {
@@ -171,8 +148,6 @@ func SyncTime(ctx *Context) error {
 	return ctx.Runner.Try("hwclock", "--systohc", "--utc")
 }
 
-// PrepareEnvironment checks programs and syncs the clock
-// (port of prepare_installation_environment).
 func PrepareEnvironment(ctx *Context) error {
 	ctx.Runner.log("Preparing installation environment")
 	if err := CheckPrograms(ctx); err != nil {
@@ -181,11 +156,8 @@ func PrepareEnvironment(ctx *Context) error {
 	return SyncTime(ctx)
 }
 
-// EncryptionKeyEnv is read before prompting.
 const EncryptionKeyEnv = "GENTOO_INSTALL_ENCRYPTION_KEY"
 
-// EnsureEncryptionKey resolves the luks/zfs key from env or interactive
-// prompt (port of check_encryption_key).
 func EnsureEncryptionKey(ctx *Context, stdin io.Reader) error {
 	if !ctx.Layout.Flags.UsedEncryption {
 		return nil
@@ -242,8 +214,6 @@ func stdinOrReader(reader io.Reader) io.Reader {
 }
 
 func readSecret(rd *bufio.Reader, prompt string) (string, error) {
-	// Terminal echo suppression requires term handling; for the live ISO
-	// context we accept plain input like the bash fallback path did.
 	fmt.Print(prompt)
 	line, err := rd.ReadString('\n')
 	if err != nil && line == "" {
@@ -252,7 +222,6 @@ func readSecret(rd *bufio.Reader, prompt string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-// SHA512File hex-digests a file without loading it into memory.
 func SHA512File(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {

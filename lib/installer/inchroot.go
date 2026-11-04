@@ -10,12 +10,11 @@ import (
 	"gentooinstall/lib/config"
 )
 
-// SetupChrootEnv applies the environment from dispatch_chroot.sh.
 func SetupChrootEnv(ctx *Context) {
 	setUmask(0o077)
 	nproc := runtime.NumCPU()
 	if nproc < 2 {
-		nproc = 2 // parity with nproc || echo 2 edge cases
+		nproc = 2
 	}
 	ctx.NProc = nproc
 	_ = os.Setenv("NPROC", fmt.Sprint(nproc))
@@ -35,8 +34,6 @@ func (ctx *Context) replaceLine(path, matchPrefix, replacement string) error {
 	return ctx.writeFile(path, []byte(out), 0o644)
 }
 
-// ConfigureBaseSystem sets hostname/timezone/keymap/locale for both init
-// systems (port of configure_base_system).
 func ConfigureBaseSystem(ctx *Context) error {
 	system := &ctx.Cfg.System
 
@@ -136,8 +133,6 @@ func ConfigureBaseSystem(ctx *Context) error {
 	return nil
 }
 
-// ConfigurePortage prepares /etc/portage and mirrors
-// (port of configure_portage).
 func ConfigurePortage(ctx *Context) error {
 	for dir := range map[string]bool{
 		"/etc/portage/package.use":      true,
@@ -219,8 +214,6 @@ func ConfigurePortage(ctx *Context) error {
 	return nil
 }
 
-// appendMakeConfUser appends the make.conf options and freeform extra content
-// selected in the [makeconf] section of gentoo.toml.
 func appendMakeConfUser(ctx *Context) error {
 	path := "/etc/portage/make.conf"
 	arch := ctx.Cfg.Gentoo.Arch
@@ -247,19 +240,10 @@ func appendMakeConfUser(ctx *Context) error {
 	return nil
 }
 
-// reposConfContent returns the /etc/portage/repos.conf/gentoo.conf content
-// for the configured portage sync type (git or rsync). The "gentoo" repo must
-// be registered before any sync (emerge-webrsync or emerge --sync), otherwise
-// portage fails with "Repository 'gentoo' not found".
 func reposConfContent(ctx *Context) string {
 	return reposConfContentFor(ctx, ctx.Cfg.Gentoo.PortageSyncType)
 }
 
-// reposConfContentFor renders the repos.conf content for an explicit sync
-// type instead of the configured one, so the install sequence can register
-// an rsync-typed repo for the emerge-webrsync seed phase even when the
-// configured type is git (webrsync rejects git-typed repos with an
-// "invalid sync type" validation failure).
 func reposConfContentFor(ctx *Context, syncType string) string {
 	gentoo := &ctx.Cfg.Gentoo
 	if syncType == "rsync" {
@@ -295,11 +279,6 @@ sync-openpgp-key-path = /usr/share/openpgp-keys/gentoo-release.asc
 `, gentoo.PortageGitMirror, depth)
 }
 
-// WriteReposConf registers the "gentoo" repository in
-// /etc/portage/repos.conf so portage tools (emerge-webrsync, emerge --sync,
-// emaint) can resolve it. The repository location is pre-created as well;
-// portage reports "Repository 'gentoo' not found" when a configured repo has
-// no usable location, which otherwise breaks the initial emerge-webrsync.
 func WriteReposConf(ctx *Context) error {
 	return writeReposConf(ctx, ctx.Cfg.Gentoo.PortageSyncType)
 }
@@ -318,13 +297,6 @@ func writeReposConf(ctx *Context, syncType string) error {
 	return nil
 }
 
-// SeedPortageTree registers the "gentoo" repository rsync-typed and
-// populates it with emerge-webrsync. The seed always uses the rsync variant,
-// even when the configured sync type is git: emerge-webrsync rejects
-// git-typed repos, and the seed tree is what lets the later
-// `emerge dev-vcs/git` succeed before the real git sync. A stale .git
-// checkout left by a previous git-typed run is dropped first so the seed
-// never layers a snapshot over a git working tree.
 func SeedPortageTree(ctx *Context) error {
 	ctx.Runner.log("Registering gentoo repository in repos.conf")
 	if err := writeReposConf(ctx, "rsync"); err != nil {
@@ -337,9 +309,6 @@ func SeedPortageTree(ctx *Context) error {
 	return ctx.Runner.Try("emerge-webrsync")
 }
 
-// ConfigureGitSync re-syncs the portage tree over git for the git sync type.
-// The rsync-typed seed registration is handled by SeedPortageTree, which runs
-// before the initial emerge-webrsync; for rsync this function is a no-op.
 func ConfigureGitSync(ctx *Context) error {
 	if ctx.Cfg.Gentoo.PortageSyncType != "git" {
 		return nil
@@ -357,9 +326,6 @@ func ConfigureGitSync(ctx *Context) error {
 	return ctx.Runner.Try("emerge", "--sync")
 }
 
-// EnableRepositories enables the user-selected third-party overlays using
-// eselect repository. The main "gentoo" repo is always present and is not
-// touched here. Returns immediately when no overlays were selected.
 func EnableRepositories(ctx *Context) error {
 	sel := ctx.Cfg.Packages.EnablingRepos
 	sel = append([]string{}, sel...)
@@ -390,8 +356,6 @@ func EnableRepositories(ctx *Context) error {
 	return nil
 }
 
-// MainInstallGentooInChroot is the full in-chroot installation sequence
-// (port of main_install_gentoo_in_chroot).
 func MainInstallGentooInChroot(ctx *Context) error {
 	ctx.Runner.log("Clearing root password")
 	if err := ctx.Runner.Try("passwd", "-d", "root"); err != nil {
@@ -444,7 +408,6 @@ func MainInstallGentooInChroot(ctx *Context) error {
 		return err
 	}
 
-	// Before dracut, which might need them for remote unlocking.
 	if err := InstallAuthorizedKeys(ctx); err != nil {
 		return err
 	}
@@ -590,9 +553,6 @@ func MainInstallGentooInChroot(ctx *Context) error {
 		ctx.Runner.log("[!] Root password cleared, set one as soon as possible!")
 	}
 
-	// If configured, change to gentoo testing at the last moment, matching
-	// upstream: this keeps the installation itself on stable so testing
-	// blockers cannot break it. Deal with the blockers after installation.
 	if ctx.Cfg.Gentoo.UsePortageTesting {
 		ctx.Runner.logf("Adding ~%s to ACCEPT_KEYWORDS", ctx.Cfg.Gentoo.Arch)
 		if err := ctx.appendFile("/etc/portage/make.conf",

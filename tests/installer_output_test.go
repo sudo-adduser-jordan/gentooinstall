@@ -1,4 +1,3 @@
-// Output writers, prompts and failure-handling helpers.
 package tests
 
 import (
@@ -44,7 +43,6 @@ func TestLineTeeCarriageReturnMirrorsSink(testingT *testing.T) {
 	var lines []string
 	tee := installer.NewLineTee(&sink, func(line string) { lines = append(lines, line) })
 	tee.Write([]byte("a\rb\n"))
-	// The sink receives every byte unchanged, including the progress frames.
 	if got := sink.String(); got != "a\rb\n" {
 		testingT.Fatalf("sink = %q", got)
 	}

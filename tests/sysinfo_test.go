@@ -1,4 +1,3 @@
-// System information basics and embedded assets.
 package tests
 
 import (
@@ -55,7 +54,6 @@ func TestFallbackKeymapsPresent(testingT *testing.T) {
 }
 
 func TestEFIAndBootType(testingT *testing.T) {
-	// EFI detection must resolve to a boolean (either result is fine).
 	_ = sysinfo.HasEFI()
 }
 

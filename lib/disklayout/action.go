@@ -1,5 +1,3 @@
-// Package disklayout models disk configurations as an ordered list of
-// actions, mirroring scripts/config.sh of the original bash installer.
 package disklayout
 
 import (
@@ -9,7 +7,6 @@ import (
 	"strings"
 )
 
-// ActionKind enumerates all supported disk action types.
 type ActionKind string
 
 const (
@@ -24,7 +21,6 @@ const (
 	ActFormatBtrfs     ActionKind = "format_btrfs"
 )
 
-// Partition type codes understood by sgdisk.
 var PartitionTypeCodes = map[string]string{
 	"bios":  "ef02",
 	"efi":   "ef00",
@@ -34,13 +30,11 @@ var PartitionTypeCodes = map[string]string{
 	"linux": "8300",
 }
 
-// ResolveEntry describes how to find a device for an id at apply time.
 type ResolveEntry struct {
-	Type string // device | ptuuid | partuuid | uuid | mdadm | luks
+	Type string
 	Arg  string
 }
 
-// Action is a single step of the disk configuration.
 type Action struct {
 	Action   ActionKind `json:"action"`
 	NewID    string     `json:"new_id,omitempty"`
@@ -54,11 +48,10 @@ type Action struct {
 	IDs      []string   `json:"ids,omitempty"`
 	PoolType string     `json:"pool_type,omitempty"`
 	Encrypt  bool       `json:"encrypt,omitempty"`
-	Compress string     `json:"compress,omitempty"` // "" = disabled
+	Compress string     `json:"compress,omitempty"`
 	RaidType string     `json:"raid_type,omitempty"`
 }
 
-// Flags tracks which subsystems are used by the layout.
 type Flags struct {
 	UsedRaid                   bool
 	UsedLuks                   bool
@@ -68,44 +61,38 @@ type Flags struct {
 	NoPartitioningOrFormatting bool
 }
 
-// Layout is a fully built disk configuration.
 type Layout struct {
 	Flags Flags
 
 	Actions []Action
 
-	// Role ids.
 	RootID string
 	EFIID  string
 	BIOSID string
 	SwapID string
 
-	RootFSType    string // ext4 | btrfs | zfs | "" (unknown/existing)
+	RootFSType    string
 	RootMountOpts string
 
 	DracutCmdline []string
 
 	uuids        map[string]string
 	resolvable   map[string]ResolveEntry
-	partGPT      map[string]string // partition id -> parent gpt id
-	order        []string          // registration order for expand_ids
+	partGPT      map[string]string
+	order        []string
 	hadRemaining map[string]bool
 }
 
-// UUIDOf returns the generated uuid for a registered id.
 func (layout *Layout) UUIDOf(id string) (string, bool) {
 	uuid, exists := layout.uuids[id]
 	return uuid, exists
 }
 
-// ParentGPTOf returns the gpt table id a partition belongs to.
 func (layout *Layout) ParentGPTOf(partID string) (string, bool) {
 	gptID, exists := layout.partGPT[partID]
 	return gptID, exists
 }
 
-// ExpandIDs returns all registered ids matching regex, joined with ';'
-// (port of expand_ids).
 func (layout *Layout) ExpandIDs(regex string) (string, error) {
 	re, err := regexp.Compile(regex)
 	if err != nil {
@@ -120,7 +107,6 @@ func (layout *Layout) ExpandIDs(regex string) (string, error) {
 	return strings.Join(out, ";"), nil
 }
 
-// SplitIDList splits a ';'-separated id list, dropping empties.
 func SplitIDList(list string) []string {
 	var out []string
 	for _, part := range strings.Split(list, ";") {
@@ -145,7 +131,6 @@ func validUniqueIDs(ids []string) error {
 	return nil
 }
 
-// onlyOneOf mirrors only_one_of from bash.
 func onlyOneOf(device, id string) error {
 	if device != "" && id != "" {
 		return fmt.Errorf("only one of (device, id) can be given")

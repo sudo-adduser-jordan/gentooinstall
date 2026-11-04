@@ -1,4 +1,3 @@
-// Smaller installer units (programs, paths, mountpoints, runner).
 package tests
 
 import (
@@ -47,9 +46,6 @@ func TestWantedProgramsComposition(testingT *testing.T) {
 	}
 }
 
-// TestWantedProgramsNilLayout guards the TUI's host-prerequisite probe,
-// which builds a bare Context (no Layout) before the layout is finalized:
-// the required list must not panic and must stay the base set.
 func TestWantedProgramsNilLayout(testingT *testing.T) {
 	runner := installer.NewRunner(io.Discard, io.Discard)
 	runner.LookPath = func(string) bool { return false }
@@ -114,7 +110,6 @@ func TestRunnerHasProgramStub(testingT *testing.T) {
 func TestMissingPrograms(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, _ := testContext(testingT, cfg, nil)
-	// Everything present except ntpd and sgdisk.
 	ctx.Runner.LookPath = func(name string) bool { return name != "ntpd" && name != "sgdisk" }
 
 	missing := installer.MissingPrograms(ctx)
@@ -150,7 +145,6 @@ func TestProgramPackagesAndCmdline(testingT *testing.T) {
 func TestInstallMissingProgramsInstalls(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, stub := testContext(testingT, cfg, nil)
-	// ntpd/sgdisk are missing until the apk install has been recorded.
 	ctx.Runner.LookPath = func(name string) bool {
 		switch name {
 		case "apk":
@@ -193,7 +187,6 @@ func TestInstallMissingProgramsNoApk(testingT *testing.T) {
 func TestInstallMissingProgramsStillMissing(testingT *testing.T) {
 	cfg := classicCfg("/dev/sdX", false, false)
 	ctx, stub := testContext(testingT, cfg, nil)
-	// apk succeeds but ntpd/sgdisk stay absent: the follow-up check fails.
 	ctx.Runner.LookPath = func(name string) bool {
 		switch name {
 		case "apk", "gpg", "hwclock", "lsblk", "partprobe":

@@ -21,35 +21,24 @@ import (
 	"gentooinstall/lib/sysinfo"
 )
 
-// Minimum terminal size for the TUI; below it only the resize notice is
-// rendered (the layout wraps and breaks when the window is too small).
-// Serial consoles (qemu -nographic) are commonly 80x24, so the narrow
-// layout below must stay usable down to that size.
 const (
 	minWidth  = 80
 	minHeight = 24
 )
 
-// minMainWidth is the smallest main-pane width worth showing beside the
-// logo/hint sidebar. Below it the sidebar is hidden and the main pane
-// takes the full window width (e.g. 80-column serial terminals).
 const minMainWidth = 40
 
-// tabDef is one numbered tab.
 type tabDef struct {
 	name   string
 	fields []*field
-	render func(*Model) string // custom static content (overview)
+	render func(*Model) string
 }
 
-// Model is the root bubbletea model.
 type Model struct {
-	cfg     *config.Config
-	cfgPath string
-	dirty   bool
-	hasEFI  bool
-	// rootOK gates the whole UI: an unprivileged user gets the centered
-	// root-required page instead of the configurator (the demo bypasses it).
+	cfg      *config.Config
+	cfgPath  string
+	dirty    bool
+	hasEFI   bool
 	rootOK   bool
 	prereqFn func() Prereq
 
@@ -60,64 +49,53 @@ type Model struct {
 
 	width, height int
 	status        string
-	statusKind    int // stOK, stErr
+	statusKind    int
 	savedFlash    bool
 
-	// winsizeStable counts consecutive size polls without change; the
-	// poll stops after winsizeStableTicks to avoid repaint churn.
 	winsizeStable int
 
-	// Mirror reachability indicator (bordered box left of the config path).
-	mirrorState int    // mirrorUnknown, mirrorChecking, mirrorOK, mirrorDown
-	mirrorNote  string // short diagnostic shown when down
-	mirrorHost  string // cached scheme://host of the selected mirror
+	mirrorState int
+	mirrorNote  string
+	mirrorHost  string
 
-	// overlay is any modal element stacked above the tab UI.
 	overlay     overlay
 	quitting    bool
-	deferredCmd tea.Cmd // cmd to return after overlay callbacks
+	deferredCmd tea.Cmd
 
-	// Install view state (see installview.go).
 	installing   bool
 	instState    int
-	instLines    []string // stripped lines for step parsing
-	instRawLines []string // raw lines with ANSI codes for log overlay
+	instLines    []string
+	instRawLines []string
 	instSteps    []instStep
 	instDemo     bool
 	spinner      spinner.Model
 	spinOn       bool
 	prog         progress.Model
 	logVp        viewport.Model
-	// rawVp is the dedicated viewport for the raw output window (ovLog).
-	// It is separate from logVp (used by config/make.conf/packages
-	// overlays) so resizing one overlay never resets another, and so
-	// SetContent can be cached instead of rebuilt on every View().
-	rawVp      viewport.Model
-	rawFollow  bool     // tail-follow: jump to bottom on new output
-	rawDirty   bool     // cached rawContent needs a SetContent
-	rawContent []string // colorized lines parallel to instRawLines
-	curStep    string
-	curCmd     string
-	fail       *InstallFailedMsg
-	btnCur     int
-	instFn     InstallFunc
-	usedEnc    bool
-	// Overlay callbacks (moved off package-level maps).
-	pickFn  func(*Model, string)
-	textFn  *textState
-	multiFn func(*Model, []string)
+	rawVp        viewport.Model
+	rawFollow    bool
+	rawDirty     bool
+	rawContent   []string
+	curStep      string
+	curCmd       string
+	fail         *InstallFailedMsg
+	btnCur       int
+	instFn       InstallFunc
+	usedEnc      bool
+	pickFn       func(*Model, string)
+	textFn       *textState
+	multiFn      func(*Model, []string)
 }
 
-// overlay is any modal element stacked above the tab UI.
 type overlay struct {
-	kind  int // ovNone..
+	kind  int
 	title string
 	body  string
 
 	opts    []option
 	cursor  int
 	filter  string
-	current string // single-choice pickers: currently selected value
+	current string
 
 	input textinput.Model
 	area  textarea.Model
@@ -127,12 +105,11 @@ type overlay struct {
 
 	buttons []string
 	btnCur  int
-	onBtn   func(*Model, int) // index into buttons
+	onBtn   func(*Model, int)
 
-	note string // optional hint line for text overlays
+	note string
 }
 
-// Mirror indicator states.
 const (
 	mirrorUnknown = iota
 	mirrorChecking
@@ -140,18 +117,10 @@ const (
 	mirrorDown
 )
 
-// mirrorPollInterval is how often the indicator re-probes the selected mirror
-// so it recovers automatically once the live ISO's background DHCP comes up.
 const mirrorPollInterval = 10 * time.Second
 
-// winsizePollInterval is how often the TUI re-reads the kernel winsize.
-// QEMU -serial stdio never forwards host resizes, so this only picks up
-// sizes that appear late (or are re-applied); it stops after a few stable
-// reads to avoid repaint churn.
 const winsizePollInterval = 2 * time.Second
 
-// winsizeStableTicks bounds the size poll: stop ticking after this many
-// consecutive reads without change (or without a readable size).
 const winsizeStableTicks = 4
 
 const (
@@ -181,15 +150,11 @@ func clearSavedAfter(duration time.Duration) tea.Cmd {
 	return tea.Tick(duration, func(time.Time) tea.Msg { return savedClearMsg{} })
 }
 
-// MirrorProbeMsg carries the result of an asynchronous mirror reachability
-// probe back into the model.
 type MirrorProbeMsg struct {
 	OK   bool
 	Note string
 }
 
-// mirrorProbeCmd probes the currently selected Gentoo mirror in the
-// background and returns the result as a MirrorProbeMsg.
 func (model *Model) mirrorProbeCmd() tea.Cmd {
 	mirror := model.cfg.Gentoo.Mirror
 	return func() tea.Msg {
@@ -200,16 +165,12 @@ func (model *Model) mirrorProbeCmd() tea.Cmd {
 	}
 }
 
-// mirrorTickCmd schedules the next periodic mirror probe so the indicator
-// recovers once the live ISO network (DHCP) comes up.
 func (model *Model) mirrorTickCmd() tea.Cmd {
 	return tea.Tick(mirrorPollInterval, func(time.Time) tea.Msg { return mirrorTickMsg{} })
 }
 
 type mirrorTickMsg struct{}
 
-// probeMirror marks the mirror as "checking" (unless it is already ok) and
-// kicks off a probe plus the periodic re-check.
 func (model *Model) probeMirror() tea.Cmd {
 	if model.mirrorState != mirrorOK {
 		model.mirrorState = mirrorChecking
@@ -217,7 +178,6 @@ func (model *Model) probeMirror() tea.Cmd {
 	return tea.Batch(model.mirrorProbeCmd(), model.mirrorTickCmd())
 }
 
-// New builds the configurator model.
 func New(cfg *config.Config, cfgPath string) *Model {
 	model := &Model{cfg: cfg, cfgPath: cfgPath, hasEFI: sysinfo.HasEFI(),
 		rootOK: true, mirrorState: mirrorUnknown, mirrorHost: mirrorHostName(cfg.Gentoo.Mirror),
@@ -234,19 +194,10 @@ func New(cfg *config.Config, cfgPath string) *Model {
 	return model
 }
 
-// SetHasEFI overrides the host-firmware probe for the install pre-flight
-// checks. Production leaves it at the sysinfo.HasEFI result probed in New;
-// tests use it to simulate a BIOS-booted live system.
 func (model *Model) SetHasEFI(has bool) { model.hasEFI = has }
 
-// SetRoot sets whether the process runs with root privileges. A false value
-// replaces the whole UI with the root-required page (see renderRootRequired)
-// so an unprivileged user cannot walk into a doomed installation. The demo
-// recording keeps the gate off via main, and tests default to root.
 func (model *Model) SetRoot(ok bool) { model.rootOK = ok }
 
-// mirrorHostName returns the host portion of the mirror URL for display,
-// falling back to "mirror" when the URL cannot be parsed.
 func mirrorHostName(mirror string) string {
 	if host := sysinfo.MirrorHost(mirror); host != "" {
 		return host
@@ -256,22 +207,16 @@ func mirrorHostName(mirror string) string {
 
 func (model *Model) markDirty() { model.dirty = true }
 
-// Init implements tea.Model.
 func (model *Model) Init() tea.Cmd {
 	return tea.Batch(model.probeMirror(), winsizeTickCmd())
 }
 
 type WinsizeTickMsg struct{}
 
-// winsizeTickCmd re-reads the kernel winsize; the guest serial port
-// reports 0x0 until detection publishes the host size, which can land
-// after the first frames.
 func winsizeTickCmd() tea.Cmd {
 	return tea.Tick(winsizePollInterval, func(time.Time) tea.Msg { return WinsizeTickMsg{} })
 }
 
-// syncWinsizeFromKernel applies the kernel-known size when it is valid
-// and differs; it reports whether the model changed.
 func (model *Model) syncWinsizeFromKernel() bool {
 	cols, rows, ok := live.GetWinsize()
 	if !ok || (cols == model.width && rows == model.height) {
@@ -281,7 +226,6 @@ func (model *Model) syncWinsizeFromKernel() bool {
 	return true
 }
 
-// visibleRows returns indexes of visible fields for a tab.
 func (model *Model) visibleRows(tab int) []int {
 	var out []int
 	for index, field := range model.tabs[tab].fields {
@@ -292,8 +236,6 @@ func (model *Model) visibleRows(tab int) []int {
 	return out
 }
 
-// clampCursor keeps the active tab's cursor on a selectable (non-separator)
-// row so section titles are never focused.
 func (model *Model) clampCursor(tab int) {
 	rows := model.visibleRows(tab)
 	if len(rows) == 0 {
@@ -314,10 +256,7 @@ func (model *Model) clampCursor(tab int) {
 	}
 }
 
-// Update implements tea.Model.
 func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Check quit first so that every message type honours it, including
-	// key messages that would otherwise return early from the switch.
 	if model.quitting {
 		return model, tea.Quit
 	}
@@ -379,10 +318,6 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, nil
 
 	case mirrorTickMsg:
-		// The ticker is strictly self-renewing (one tick arms exactly one
-		// successor tick and one probe), so periodic re-probes run at a
-		// steady cadence — including while the mirror is unreachable — and
-		// the indicator recovers automatically once DHCP comes up.
 		if model.mirrorState != mirrorOK {
 			model.mirrorState = mirrorChecking
 		}
@@ -390,7 +325,6 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if !model.rootOK {
-			// Root-required page: only quitting makes sense.
 			switch msg.String() {
 			case "q", "ctrl+c":
 				model.quitNow()
@@ -407,15 +341,12 @@ func (model *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model.updateGlobal(msg)
 	}
 
-	// Keep the spinner alive while an install is running.
 	if cmd := model.startSpinner(); cmd != nil {
 		return model, cmd
 	}
 	return model, nil
 }
 
-// startSpinner schedules the first spinner tick once per run; subsequent
-// ticks reschedule themselves until the install stops running.
 func (model *Model) startSpinner() tea.Cmd {
 	if model.instState == instRunning && !model.spinOn {
 		model.spinOn = true
@@ -469,7 +400,7 @@ func (model *Model) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		if model.tabs[model.active].name == "Install" {
 			if model.instState != instIdle {
-				model.installing = true // return to a paused/finished run
+				model.installing = true
 				return model, nil
 			}
 			return model.confirmInstall()
@@ -528,7 +459,7 @@ func (model *Model) activateRow() (tea.Model, tea.Cmd) {
 		model.openText("Edit "+field.label, field.getText(model.cfg), field.multi, onDone)
 	case kChoice:
 		if field.onPick != nil {
-			field.onPick(model, field, "") // custom pickers manage themselves
+			field.onPick(model, field, "")
 			return model, nil
 		}
 		model.openPicker(field.label, field.options(model.cfg), field.getChoice(model.cfg), field.filter,
@@ -549,8 +480,6 @@ func (model *Model) activateRow() (tea.Model, tea.Cmd) {
 				mm.status = ""
 			})
 	case kReadOnly:
-		// read-only rows cannot be edited; a custom handler (e.g. opening a
-		// picker or modal) wins, otherwise show the field's help.
 		if field.onPick != nil {
 			field.onPick(model, field, "")
 			return model, nil
@@ -608,7 +537,6 @@ func (model *Model) saveAs() (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
-// quitNow flags the model as quitting; the next Update call returns tea.Quit.
 func (model *Model) quitNow() {
 	model.quitting = true
 }
@@ -662,12 +590,8 @@ func (model *Model) confirmQuit() (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
-// View implements tea.Model.
 func (model *Model) View() string {
 	if model.width == 0 {
-		// Unknown size (e.g. serial ttyS0 with no winsize yet): assume a
-		// conservative 80x24 so first frames fit instead of emitting a
-		// 100-column layout clipped by the host terminal.
 		model.width, model.height = 80, 24
 	}
 
@@ -689,10 +613,6 @@ func (model *Model) View() string {
 		return out
 	}
 
-	// One layout, live or not: every element is budgeted off measured
-	// chrome (frame + optional sidebar), never off width brackets.
-	// The tab strip keeps the full frame budget (it centers the header);
-	// fields and rules use the pane budget below.
 	inner := maxInt(1, model.width-8)
 	tabs := model.renderTabBarMax(inner)
 	cw := model.contentWidth()
@@ -704,8 +624,6 @@ func (model *Model) View() string {
 		pathBox = lipgloss.JoinVertical(lipgloss.Left, mirror, path)
 	}
 
-	// Render the status message to the right of the path box when it
-	// fits, otherwise on its own row.
 	pathLine := pathBox
 	if model.status != "" {
 		st := helpStyle
@@ -732,8 +650,6 @@ func (model *Model) View() string {
 	}
 	rawBody := body.String()
 
-	// Header budget: tab bar, bordered path line, blank separator, and the
-	// two rows consumed by the window frame.
 	header := lipgloss.JoinVertical(lipgloss.Top, tabs, pathLine)
 	reserved := lipgloss.Height(header) + 1 + 2
 	maxLines := model.height - reserved
@@ -748,8 +664,6 @@ func (model *Model) View() string {
 
 	var out string
 	if left, ok := model.sidebar(); ok {
-		// Static divider height: the full terminal (or more if content
-		// overflows), so it does not change size when switching tabs.
 		totalHeight := maxInt(model.height,
 			maxInt(lipgloss.Height(left), lipgloss.Height(right)))
 		padTo := func(str string, targetLines int) string {
@@ -768,7 +682,6 @@ func (model *Model) View() string {
 			lipgloss.NewStyle().PaddingLeft(1).Render(right))
 		out = model.frameWindow(cols)
 	} else {
-		// Single column: sidebar hidden, main pane spans the window.
 		out = model.frameWindow(right)
 	}
 
@@ -780,22 +693,15 @@ func (model *Model) View() string {
 	return out
 }
 
-// sidebar returns the logo/hint column when it fits alongside a usable
-// main pane, and reports whether it does. The layout measures chrome
-// instead of branching on width brackets, so live serial and normal
-// binary renders share one path.
 func (model *Model) sidebar() (string, bool) {
-	inner := maxInt(1, model.width-8) // frameWindow budget: border + padding
+	inner := maxInt(1, model.width-8)
 	left := lipgloss.JoinVertical(lipgloss.Top, renderLogo(), "", model.renderHints())
-	// Sidebar + divider + side paddings must leave minMainWidth for content.
 	if lipgloss.Width(left)+3+minMainWidth > inner {
 		return "", false
 	}
 	return left, true
 }
 
-// contentWidth is the usable width of the main pane: the frame budget
-// minus the sidebar when shown.
 func (model *Model) contentWidth() int {
 	inner := maxInt(1, model.width-8)
 	if left, ok := model.sidebar(); ok {
@@ -804,13 +710,9 @@ func (model *Model) contentWidth() int {
 	return inner
 }
 
-// frameWindow draws the outer window border around content, sizing the
-// inner area to the terminal minus the border (2 rows) and side padding
-// (2 columns). Content lines wider than the inner width are clipped rather
-// than wrapped, so lipgloss never folds a row onto the next.
 func (model *Model) frameWindow(content string) string {
 	iw, ih := maxInt(1, model.width-4), maxInt(1, model.height-2)
-	inner := maxInt(1, model.width-8) // border (2 cols) + window padding (2 cols)
+	inner := maxInt(1, model.width-8)
 	lines := strings.Split(content, "\n")
 	if len(lines) > ih {
 		lines = lines[:ih]
@@ -825,18 +727,12 @@ func (model *Model) frameWindow(content string) string {
 	return windowStyle.Width(iw).Height(ih).Render(content)
 }
 
-// renderTooSmall shows a centered notice instead of the UI when the
-// terminal is below the minimum size (see minWidth/minHeight), mirroring
-// the behavior of btop.
 func (model *Model) renderTooSmall() string {
 	msg := tooSmallStyle.Render("Terminal too small — resize to at least " +
 		fmt.Sprintf("%dx%d", minWidth, minHeight))
 	return lipgloss.Place(model.width, model.height, lipgloss.Center, lipgloss.Center, msg)
 }
 
-// renderRootRequired shows a centered notice instead of the UI when the
-// process runs without root privileges (see SetRoot), using the same
-// presentation as renderTooSmall.
 func (model *Model) renderRootRequired() string {
 	msg := tooSmallStyle.Render("gentooinstall must be run as root to perform an installation.\n\n" +
 		"Re-run it with sudo, or boot the live ISO (it runs as root).\n\n" +
@@ -844,17 +740,12 @@ func (model *Model) renderRootRequired() string {
 	return lipgloss.Place(model.width, model.height, lipgloss.Center, lipgloss.Center, msg)
 }
 
-// truncateToWidth trims s to w visible columns, splitting within a line.
-// ANSI SGR escape sequences are copied through verbatim and never counted
-// against the width budget, so styled text is truncated only at glyph
-// boundaries (escaping like this keeps the surrounding box borders intact).
 func truncateToWidth(str string, width int) string {
 	var out strings.Builder
 	used := 0
 	data := []byte(str)
 	for pos := 0; pos < len(data); {
 		if data[pos] == '\x1b' {
-			// CSI (model, K, J, H, …): consume params + final byte verbatim.
 			if pos+1 < len(data) && data[pos+1] == '[' {
 				end := pos + 2
 				for end < len(data) && !(data[end] >= 0x40 && data[end] <= 0x7e) {
@@ -867,7 +758,6 @@ func truncateToWidth(str string, width int) string {
 				pos = end + 1
 				continue
 			}
-			// OSC: skip until BEL or ST, carrying it across verbatim.
 			if pos+1 < len(data) && data[pos+1] == ']' {
 				end := pos + 2
 				for end < len(data) && data[end] != 0x07 && !(data[end] == '\x1b' && end+1 < len(data) && data[end+1] == '\\') {
@@ -885,12 +775,12 @@ func truncateToWidth(str string, width int) string {
 				pos = end
 				continue
 			}
-			pos++ // lone ESC: consume the byte that follows
+			pos++
 			continue
 		}
 		runeVal, size := utf8.DecodeRune(data[pos:])
 		if runeVal == utf8.RuneError && size < 2 {
-			pos++ // invalid byte: skip so the loop always advances
+			pos++
 			continue
 		}
 		rw := runewidth.RuneWidth(runeVal)
@@ -911,9 +801,6 @@ func (model *Model) renderTabBar() string {
 	return model.renderTabBarMax(maxInt(1, model.width-8))
 }
 
-// tabStripParts renders one tab box per tab. Compact drops the emoji and
-// box padding so all six tabs fit narrow windows (numbered labels keep
-// the 1-6 keyboard mapping visible).
 func (model *Model) tabStripParts(compact bool) []string {
 	parts := make([]string, len(model.tabs))
 	for index, tab := range model.tabs {
@@ -932,10 +819,6 @@ func (model *Model) tabStripParts(compact bool) []string {
 	return parts
 }
 
-// renderTabBarMax renders the tab strip constrained to maxW visible columns.
-// The full strip is returned when it fits, else the compact strip (all six
-// tabs, no emoji), else a window around the active tab with ellipsis
-// markers so the active tab is never the part clipped off.
 func (model *Model) renderTabBarMax(maxW int) string {
 	parts := model.tabStripParts(false)
 	if stripWidth(parts) <= maxW {
@@ -952,7 +835,6 @@ func (model *Model) renderTabBarMax(maxW int) string {
 	ellipsisL := unsetStyle.Render("…")
 	ellipsisR := unsetStyle.Render("…")
 	ew := lipgloss.Width(ellipsisL) + lipgloss.Width(ellipsisR)
-	// Expand outward from the active tab while the window fits.
 	start, end := model.active, model.active+1
 	used := widths[model.active]
 	for {
@@ -978,9 +860,6 @@ func (model *Model) renderTabBarMax(maxW int) string {
 	if end < len(parts) {
 		out = lipgloss.JoinHorizontal(lipgloss.Top, out, ellipsisR)
 	}
-	// Per-line safety: the strip is multi-row (borders), so a whole-string
-	// cut would slice rows apart. The window above already fits by
-	// construction; this only guards rounding.
 	lines := strings.Split(out, "\n")
 	for index, line := range lines {
 		if lipgloss.Width(line) > maxW {
@@ -998,14 +877,10 @@ func stripWidth(parts []string) int {
 	return total
 }
 
-// bodyWidth is the usable width of the main pane (contentWidth, capped);
-// used for rules and value truncation.
 func (model *Model) bodyWidth() int {
 	return maxInt(40, minInt(90, model.contentWidth()))
 }
 
-// labelWidth computes the padded label column width for the active tab's
-// visible rows so no label ever gets truncated.
 func (model *Model) labelWidth() int {
 	maxLabel := 0
 	for _, idx := range model.visibleRows(model.active) {
@@ -1020,10 +895,6 @@ func (model *Model) labelWidth() int {
 	return minInt(maxInt(maxLabel, 22)+2, maxInt(24, model.bodyWidth()/2))
 }
 
-// mirrorLine renders the mirror reachability indicator as a bordered box
-// shown to the left of the config file path. It shows the mirror host with a
-// red ✗ and short diagnostic when down (the live ISO shows "no network" while
-// DHCP is still coming up), and "..." while a probe is in flight.
 func (model *Model) mirrorLine() string {
 	host := model.mirrorHost
 	if host == "" {
@@ -1035,7 +906,7 @@ func (model *Model) mirrorLine() string {
 		return mirrorBoxWarnStyle.Render(host + " ...")
 	case mirrorOK:
 		return mirrorBoxValidStyle.Render(host)
-	default: // mirrorDown
+	default:
 		note := model.mirrorNote
 		if note == "" {
 			note = "unreachable"
@@ -1044,10 +915,6 @@ func (model *Model) mirrorLine() string {
 	}
 }
 
-// pathLine renders the config file path inside a bordered box whose color
-// reflects the current state: red on validation errors or an error status
-// message, yellow while the configuration is unsaved, amber with
-// advisories, green otherwise. The saved ✓ only appears briefly after saving.
 func (model *Model) pathLine() string {
 	mark := ""
 	box := cfgBoxValidStyle
@@ -1079,7 +946,6 @@ func (model *Model) renderFields() string {
 	rows := model.visibleRows(model.active)
 	cur := model.cursors[model.active]
 
-	// Scroll window. Leaves room for masthead, path line and status.
 	const viewportPad = 4
 	maxRows := model.height - 11
 	if maxRows < 5 {
@@ -1087,8 +953,6 @@ func (model *Model) renderFields() string {
 	}
 	start := 0
 	if len(rows) > maxRows {
-		// Keep cursor in view: show it at the bottom of the viewport
-		// when near the bottom, at the top when near the top.
 		if cur >= len(rows)-maxRows {
 			start = cur - maxRows + 1
 		} else if cur > viewportPad {
@@ -1145,7 +1009,6 @@ func (model *Model) renderFields() string {
 	return body.String()
 }
 
-// sectionRule renders a titled section separator: "── Title ─────".
 func sectionRule(title string, width int) string {
 	styledTitle := titleStyle.Render(title)
 	used := lipgloss.Width(styledTitle) + 1
@@ -1164,7 +1027,6 @@ func truncateRunes(text string, max int) string {
 	return string(runes[:max])
 }
 
-// logoArt is a Gentoo gull ASCII art.
 var logoArt = []string{
 	"         ____		     ",
 	"        /   /\\      ",
@@ -1189,7 +1051,6 @@ var logoArt = []string{
 	"                        ",
 }
 
-// renderLogo returns the colored logo block shown left of the tab row.
 func renderLogo() string {
 	lines := make([]string, len(logoArt))
 	for index, line := range logoArt {
@@ -1198,9 +1059,6 @@ func renderLogo() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderHints builds the left-hand vertical hint column in pVPN style:
-// bracketed bold keys with dim action labels and the color-coded status
-// message at the end.
 func (model *Model) renderHints() string {
 	onInstall := model.tabs[model.active].name == "Install"
 	hints := [][2]string{

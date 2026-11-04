@@ -5,18 +5,15 @@ import (
 	"strings"
 )
 
-// SummaryNode is one row of the disk layout summary tree.
 type SummaryNode struct {
-	ID     string // layout id, may be synthetic (__root__, _raid..., __fs__...)
+	ID     string
 	Name   string
 	Hint   string
 	Desc   string
-	Role   string // "", "bios", "efi", "swap", "root"
-	Indent string // rendered tree prefix, e.g. "│  ├─ "
+	Role   string
+	Indent string
 }
 
-// Summary builds the configured-disk-layout tree shown before applying
-// (port of summarize_disk_actions / print_summary_tree).
 func (layout *Layout) Summary() []*SummaryNode {
 	type nodeInfo struct {
 		node     *SummaryNode
@@ -151,7 +148,6 @@ func displayID(id string) string {
 	}
 }
 
-// SummaryPlain renders the tree as aligned plain text.
 func (layout *Layout) SummaryPlain() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%-40s %-24s %s\n", "NODE", "ID", "OPTIONS"))

@@ -11,7 +11,6 @@ import (
 	"gentooinstall/lib/sysinfo"
 )
 
-// IsMountpoint reports whether path appears in /proc/mounts.
 func IsMountpoint(path string) bool {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -39,9 +38,6 @@ func (ctx *Context) isMountpoint(path string) bool {
 	return IsMountpoint(path)
 }
 
-// MountEfiVars mounts efivarfs when not already present. It is only called
-// for EFI layouts and fails fast when the live system is not running under
-// UEFI, where efivarfs cannot exist.
 func MountEfiVars(ctx *Context) error {
 	if ctx.isMountpoint("/sys/firmware/efi/efivars") {
 		return nil
@@ -67,10 +63,6 @@ func MountEfiVars(ctx *Context) error {
 	return nil
 }
 
-// CheckHostBootMode fails fast when the configured boot type is not
-// supported by the running firmware: an EFI layout on a non-UEFI boot can
-// never mount efivarfs or register boot entries later, so it is rejected
-// before any destructive partitioning happens.
 func CheckHostBootMode(ctx *Context) error {
 	if ctx.IsEFI() && !ctx.hostHasEFI() {
 		return fmt.Errorf("configuration uses an EFI boot partition but the live " +
@@ -84,8 +76,6 @@ func CheckHostBootMode(ctx *Context) error {
 	return nil
 }
 
-// SupportsFilesystem reports whether the running kernel supports fs,
-// honoring the Filesystems stub so tests stay host-independent.
 func (ctx *Context) SupportsFilesystem(fs string) bool {
 	if ctx.Filesystems != nil {
 		return ctx.Filesystems(fs)
@@ -93,12 +83,6 @@ func (ctx *Context) SupportsFilesystem(fs string) bool {
 	return sysinfo.SupportsFilesystem(fs)
 }
 
-// CheckFilesystemSupport fails fast when the live kernel cannot mount the
-// FAT32 boot partition (/boot/efi for EFI layouts, /boot/bios for BIOS
-// layouts). Both are formatted with mkfs.fat, so without vfat every install
-// dies late at mount exit 32 after the stage3 download; reject it before
-// any destructive partitioning instead, with the rebuild-ISO remedy (a
-// retry can never fix a missing kernel driver).
 func CheckFilesystemSupport(ctx *Context) error {
 	if ctx.Layout == nil {
 		return nil
@@ -117,8 +101,6 @@ func CheckFilesystemSupport(ctx *Context) error {
 		"retrying this install cannot help", mountpoint)
 }
 
-// MountSource returns the source device currently mounted at path, or ""
-// when path is not a mountpoint (or /proc/mounts is unreadable).
 func MountSource(path string) string {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -133,8 +115,6 @@ func MountSource(path string) string {
 	return ""
 }
 
-// hasNameserver reports whether resolv.conf data contains at least one
-// active (non-blank, non-comment) nameserver line.
 func hasNameserver(data []byte) bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -148,12 +128,8 @@ func hasNameserver(data []byte) bool {
 	return false
 }
 
-// MountByID mounts the device identified by id at mountpoint.
 func MountByID(ctx *Context, id, mountpoint string) error {
 	if ctx.isMountpoint(mountpoint) {
-		// Already mounted: reuse it only when it is the expected device.
-		// A stale mount from a previous layout must never be silently
-		// reused (a later mkfs/cleanup would hit the wrong filesystem).
 		dev, err := resolveID(ctx, id)
 		if err != nil {
 			return err
@@ -182,24 +158,17 @@ func MountByID(ctx *Context, id, mountpoint string) error {
 
 var virtualFS = []struct {
 	mountpoint string
-	proc       []string // plain mount
-	rbind      bool     // rbind + make-rslave
+	proc       []string
+	rbind      bool
 }{
 	{"/proc", []string{"-t", "proc", "/proc"}, false},
 	{"/run", nil, true},
 	{"/tmp", nil, true},
 	{"/sys", nil, true},
 	{"/dev", nil, true},
-	// devpts must come after /dev: portage, sshd and other tools expect
-	// /dev/pts, and the live ISO's devtmpfs-only /dev never provides it.
 	{"/dev/pts", []string{"-t", "devpts", "devpts", "-o", "gid=5,mode=620"}, false},
 }
 
-// devSymlinks are the standard /dev entries portage's bash helpers rely on
-// (process substitution <(...) needs /dev/fd). The live ISO runs a
-// devtmpfs-only /dev without udev, so these symlinks may be absent on the
-// host; a bare --rbind would then propagate the gap into the chroot and
-// emerge-webrsync fails with "/dev/fd/63: No such file or directory".
 var devSymlinks = []struct{ name, target string }{
 	{"fd", "/proc/self/fd"},
 	{"stdin", "/proc/self/fd/0"},
@@ -207,9 +176,6 @@ var devSymlinks = []struct{ name, target string }{
 	{"stderr", "/proc/self/fd/2"},
 }
 
-// EnsureDevSymlinks creates the standard /dev/{fd,stdin,stdout,stderr}
-// symlinks under chrootDir/dev when missing. Existing entries of any type
-// are never clobbered.
 func EnsureDevSymlinks(chrootDir string) error {
 	devDir := filepath.Join(chrootDir, "dev")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
@@ -229,10 +195,6 @@ func EnsureDevSymlinks(chrootDir string) error {
 	return nil
 }
 
-// CheckChrootEnv verifies the virtual filesystems a chroot needs are usable:
-// /proc must be mounted (proc/self resolves) and /dev/fd must resolve
-// through to it. It fails fast with an actionable message instead of
-// letting portage die later on "/dev/fd/63: No such file or directory".
 func CheckChrootEnv(chrootDir string) error {
 	if fi, err := os.Stat(filepath.Join(chrootDir, "proc", "self")); err != nil || !fi.IsDir() {
 		return fmt.Errorf("chroot at '%s' has no usable /proc "+
@@ -247,13 +209,9 @@ func CheckChrootEnv(chrootDir string) error {
 	return nil
 }
 
-// PrepareChrootEnv copies resolv.conf and mounts the virtual filesystems
-// inside chrootDir (port of gentoo_chroot's environment setup).
 func PrepareChrootEnv(ctx *Context, chrootDir string) error {
 	ctx.Runner.log("Preparing chroot environment")
 	dst := filepath.Join(chrootDir, "etc/resolv.conf")
-	// A missing or nameserver-less host resolv.conf would leave the chroot
-	// without DNS; fail here instead of breaking every fetch later.
 	src, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil {
 		return fmt.Errorf("could not read host resolv.conf (live network not up?): %w", err)
@@ -294,9 +252,6 @@ func PrepareChrootEnv(ctx *Context, chrootDir string) error {
 		}
 	}
 
-	// The live ISO's devtmpfs-only /dev may lack the fd symlinks portage
-	// needs, so create them explicitly, then verify the whole environment
-	// before any chrooted command can fail opaquely on /dev/fd.
 	if err := EnsureDevSymlinks(chrootDir); err != nil {
 		return err
 	}
@@ -304,16 +259,9 @@ func PrepareChrootEnv(ctx *Context, chrootDir string) error {
 		return err
 	}
 
-	// lsblk output must be cached before entering the chroot because it
-	// returns almost no information from within.
 	return ctx.Resolver.CacheLsblkOutput()
 }
 
-// UnmountChroot lazily unmounts the chroot environment at chrootDir: the
-// virtual filesystems in reverse mount order, then chrootDir itself.
-// Missing mountpoints are skipped; the first error is returned after all
-// attempts. Callers use it for best-effort cleanup on failure paths so a
-// re-run does not trip over leaked binds.
 func UnmountChroot(ctx *Context, chrootDir string) error {
 	var firstErr error
 	unmount := func(mp string) {
@@ -331,10 +279,6 @@ func UnmountChroot(ctx *Context, chrootDir string) error {
 	return firstErr
 }
 
-// EnterChroot re-executes this binary inside the chroot to run the
-// in-chroot phase (port of exec chroot ... dispatch_chroot.sh). The child's
-// output is streamed as usual, but also retained so a failure carries the
-// tail back in the returned error instead of only living in scrollback.
 func EnterChroot(ctx *Context, chrootDir string, args ...string) error {
 	if err := CheckChrootEnv(chrootDir); err != nil {
 		return err
@@ -355,7 +299,7 @@ func EnterChroot(ctx *Context, chrootDir string, args ...string) error {
 	cmd := exec.Command("chroot", fullArgs...)
 	if ctx.Runner.NonInteractive {
 		env = append(env, NonInteractiveEnv+"=1")
-		cmd.Stdin = nil // null device
+		cmd.Stdin = nil
 	} else {
 		cmd.Stdin = os.Stdin
 	}
@@ -385,8 +329,6 @@ func EnterChroot(ctx *Context, chrootDir string, args ...string) error {
 	return nil
 }
 
-// ChrootShell drops into an interactive bash within chrootDir
-// (port of `install --chroot DIR` without command).
 func ChrootShell(ctx *Context, chrootDir string, args ...string) error {
 	initScript := filepath.Join(TmpDir, "chroot-init.sh")
 	script := ("source /etc/profile 2>/dev/null; " +

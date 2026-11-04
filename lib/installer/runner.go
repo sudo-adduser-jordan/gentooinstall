@@ -1,5 +1,3 @@
-// Package installer implements the installation engine: environment
-// preparation, disk application, stage3 handling and the chroot phases.
 package installer
 
 import (
@@ -11,25 +9,15 @@ import (
 	"strings"
 )
 
-// FailAction is the user's answer to a failed command when the runner
-// runs interactively.
 type FailAction int
 
 const (
-	// FailRetry reruns the failed command.
 	FailRetry FailAction = iota
-	// FailAbort aborts the installation.
 	FailAbort
-	// FailContinue ignores the failure and continues.
 	FailContinue
-	// FailPrint prints the full output and re-prompts.
 	FailPrint
 )
 
-// CommandExecutor abstracts external command execution so tests can capture
-// the exact command sequences the installer would invoke without running
-// anything. The concrete *Runner implements it; tests replace it with a
-// recording stub. A nil Exec (the default) means commands really run.
 type CommandExecutor interface {
 	Run(name string, args ...string) error
 	QuietRun(name string, args ...string) (string, error)
@@ -37,44 +25,26 @@ type CommandExecutor interface {
 	Try(name string, args ...string) error
 }
 
-// Runner executes external commands with logging and optional
-// interactive failure handling.
 type Runner struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Stdin  io.Reader
 
-	// Exec, when non-nil, receives every command invocation instead of the
-	// real execution path. Used by tests to record/assert command sequences.
 	Exec CommandExecutor
 
-	// Log receives human readable progress lines.
 	Log func(format string, args ...any)
 
-	// OnFailure is consulted whenever a Try'd command fails.
-	// Returning FailAbort aborts the installation.
 	OnFailure func(cmdline string, err error) FailAction
 
-	// Dir sets the working directory for subsequent commands.
 	Dir string
 
-	// NonInteractive disables stdin prompts: AskYesNo answers with its
-	// default and spawned commands read from the null device instead of
-	// the terminal. Used when the installer is driven by the TUI or
-	// re-executed inside the chroot.
 	NonInteractive bool
 
-	// LookPath, when non-nil, is used by HasProgram instead of the
-	// package-level exec.LookPath lookup. Tests set it to control which
-	// external tools are reported as available without touching PATH.
 	LookPath func(name string) bool
 }
 
-// NonInteractiveEnv marks a gentooinstall process as non-interactive; it is set
-// by EnterChroot when the parent runner runs without a terminal.
 const NonInteractiveEnv = "GENTOO_NONINTERACTIVE"
 
-// NewRunner builds a runner writing to stdout/stderr.
 func NewRunner(stdout, stderr io.Writer) *Runner {
 	return &Runner{
 		Stdout: stdout,
@@ -91,13 +61,10 @@ func (runner *Runner) logf(format string, args ...any) {
 	}
 }
 
-// log is an alias used across the package.
 func (runner *Runner) log(format string, args ...any) { runner.logf(format, args...) }
 
-// DefaultOnFailure aborts unconditionally (non-interactive mode).
 func DefaultOnFailure(cmdline string, err error) FailAction { return FailAbort }
 
-// CommandLine renders a command for display.
 func CommandLine(name string, args ...string) string {
 	return strings.TrimSpace(name + " " + strings.Join(args, " "))
 }
@@ -134,7 +101,7 @@ func (runner *Runner) stdinOr(fallback io.Reader) io.Reader {
 		return fallback
 	}
 	if runner.NonInteractive {
-		return nil // exec.Cmd: null device
+		return nil
 	}
 	if runner.Stdin != nil {
 		return runner.Stdin
@@ -142,7 +109,6 @@ func (runner *Runner) stdinOr(fallback io.Reader) io.Reader {
 	return os.Stdin
 }
 
-// Run executes a command, streaming its output to the runner's writers.
 func (runner *Runner) Run(name string, args ...string) error {
 	if runner.Exec != nil {
 		return runner.Exec.Run(name, args...)
@@ -151,7 +117,6 @@ func (runner *Runner) Run(name string, args ...string) error {
 	return runner.cmd(name, args, nil, true).Run()
 }
 
-// QuietRun captures output without streaming it.
 func (runner *Runner) QuietRun(name string, args ...string) (string, error) {
 	if runner.Exec != nil {
 		return runner.Exec.QuietRun(name, args...)
@@ -165,7 +130,6 @@ func (runner *Runner) QuietRun(name string, args ...string) (string, error) {
 	return strings.TrimRight(buf.String(), "\n"), err
 }
 
-// RunWithStdin feeds stdin to the command.
 func (runner *Runner) RunWithStdin(stdin string, name string, args ...string) error {
 	if runner.Exec != nil {
 		return runner.Exec.RunWithStdin(stdin, name, args...)
@@ -174,7 +138,6 @@ func (runner *Runner) RunWithStdin(stdin string, name string, args ...string) er
 	return runner.cmd(name, args, strings.NewReader(stdin), true).Run()
 }
 
-// Try runs a command with interactive failure handling (port of try()).
 func (runner *Runner) Try(name string, args ...string) error {
 	if runner.Exec != nil {
 		return runner.Exec.Try(name, args...)
@@ -208,21 +171,17 @@ func (runner *Runner) Try(name string, args ...string) error {
 			goto prompt
 		case FailContinue:
 			return nil
-		default: // FailAbort
+		default:
 			return fmt.Errorf("command failed: %s: %w", line, err)
 		}
 	}
 }
 
-// HasProgram reports whether an executable is on PATH.
 func HasProgram(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
 }
 
-// HasProgram reports whether a program is available, using LookPath when
-// set (so tests can control host-dependent availability) and otherwise
-// falling back to the package-level HasProgram.
 func (runner *Runner) HasProgram(name string) bool {
 	if runner.LookPath != nil {
 		return runner.LookPath(name)

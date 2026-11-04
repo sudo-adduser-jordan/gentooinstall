@@ -2,21 +2,13 @@ package tui
 
 import "strings"
 
-// Prereq reports the host prerequisites for an installation. It is
-// collected by a callback injected from main (the TUI never imports the
-// installer package) so the Install tab can surface missing programs and
-// the root requirement before the user commits to a destructive install.
 type Prereq struct {
 	RootOK          bool
 	MissingPrograms []string
 }
 
-// SetPrereq wires the host-prerequisite probe used by the Install tab.
-// A nil function (the default) hides the section.
 func (model *Model) SetPrereq(fn func() Prereq) { model.prereqFn = fn }
 
-// renderPrereq renders the host-prerequisite check shown on the Install
-// tab, or "" when no probe is wired (default in tests and the demo).
 func (model *Model) renderPrereq(width int) string {
 	if model.prereqFn == nil {
 		return ""

@@ -1,4 +1,3 @@
-// Disk layout construction from config (disklayout.BuildFromConfig).
 package tests
 
 import (
@@ -97,7 +96,6 @@ func TestClassicBiosSingleDisk(testingT *testing.T) {
 	if layout.RootID != "part_root" || layout.SwapID != "part_swap" {
 		testingT.Fatalf("roles wrong: %+v", layout)
 	}
-	// The bios_grub partition is formatted as FAT32 like bash does.
 	boot := layout.Actions[len(layout.Actions)-3]
 	if boot.ID != "part_bios" || boot.Type != "bios" {
 		testingT.Fatalf("bios boot action: %+v", boot)
@@ -119,7 +117,6 @@ func TestZfsCentricMultiDisk(testingT *testing.T) {
 		testingT.Fatal(err)
 	}
 	got := join(kinds(layout))
-	// Default config enables 8GiB swap, so a swap partition+format exists.
 	want := "create_gpt,create_partition,create_partition,create_partition,create_dummy,format,format,format_zfs"
 	if got != want {
 		testingT.Fatalf("got %s want %s", got, want)
@@ -231,7 +228,6 @@ func TestExistingPartitions(testingT *testing.T) {
 	if !layout.Flags.NoPartitioningOrFormatting {
 		testingT.Fatal("must set NoPartitioningOrFormatting")
 	}
-	// Empty SwapDevice behaves like swap=false (bash ${SWAP_DEVICE:-false}).
 	if got := join(kinds(layout)); got != "existing,existing" {
 		testingT.Fatalf("got %s", got)
 	}
@@ -242,7 +238,6 @@ func TestExistingPartitions(testingT *testing.T) {
 		testingT.Fatalf("RootFSType must stay empty, got %q", layout.RootFSType)
 	}
 
-	// With a swap device present, all three are registered.
 	cfg.Disk.SwapDevice = "/dev/sdB"
 	layout2, err := disklayout.BuildFromConfig(cfg, "")
 	if err != nil {
@@ -280,38 +275,38 @@ func TestCustomScheme(testingT *testing.T) {
 
 func TestBuildValidationErrors(testingT *testing.T) {
 	bad := []func(*config.Config){
-		func(cfg *config.Config) { // unknown parent id
+		func(cfg *config.Config) {
 			cfg.Disk.Custom = []config.CustomAction{
 				{Action: "create_partition", NewID: "p", ID: "nope", Size: "1GiB", Type: "efi"},
 			}
 		},
-		func(cfg *config.Config) { // duplicate id
+		func(cfg *config.Config) {
 			cfg.Disk.Custom = []config.CustomAction{
 				{Action: "create_gpt", NewID: "dup", Device: "/dev/x"},
 				{Action: "create_gpt", NewID: "dup", Device: "/dev/x"},
 			}
 		},
-		func(cfg *config.Config) { // invalid partition type
+		func(cfg *config.Config) {
 			cfg.Disk.Custom = []config.CustomAction{
 				{Action: "create_gpt", NewID: "g", Device: "/dev/x"},
 				{Action: "create_partition", NewID: "p", ID: "g", Size: "1GiB", Type: "ntfs"},
 			}
 		},
-		func(cfg *config.Config) { // partition after remaining
+		func(cfg *config.Config) {
 			cfg.Disk.Custom = []config.CustomAction{
 				{Action: "create_gpt", NewID: "g", Device: "/dev/x"},
 				{Action: "create_partition", NewID: "a", ID: "g", Size: "remaining", Type: "linux"},
 				{Action: "create_partition", NewID: "b", ID: "g", Size: "1GiB", Type: "linux"},
 			}
 		},
-		func(cfg *config.Config) { // format with invalid type
+		func(cfg *config.Config) {
 			cfg.Disk.Custom = []config.CustomAction{
 				{Action: "create_gpt", NewID: "g", Device: "/dev/x"},
 				{Action: "create_partition", NewID: "p", ID: "g", Size: "1GiB", Type: "efi"},
 				{Action: "format", ID: "p", Type: "zfs"},
 			}
 		},
-		func(cfg *config.Config) { // raid needs >=1 member
+		func(cfg *config.Config) {
 			cfg.Disk.Custom = []config.CustomAction{
 				{Action: "create_raid", NewID: "r", Level: "0", Name: "x", IDs: []string{}},
 			}
@@ -328,7 +323,6 @@ func TestBuildValidationErrors(testingT *testing.T) {
 }
 
 func TestClassicNoSwapExt4(testingT *testing.T) {
-	// Classic single disk, no LUKS, no btrfs, no swap: the minimal EFI setup.
 	cfg := classicCfg("/dev/sdX", false, false)
 	cfg.Disk.UseSwap = false
 	layout, err := disklayout.BuildFromConfig(cfg, "")
@@ -373,7 +367,6 @@ func TestSummaryTree(testingT *testing.T) {
 	if rows[1].Name != "part" || !strings.Contains(rows[1].Indent, "├─") {
 		testingT.Fatalf("row1: %+v", rows[1])
 	}
-	// The final fs row under part_root must be a last child.
 	last := rows[len(rows)-1]
 	if !strings.Contains(last.Indent, "└─") {
 		testingT.Fatalf("last row indent: %+v", last)
@@ -384,7 +377,7 @@ func TestSummaryTree(testingT *testing.T) {
 			roles++
 		}
 	}
-	if roles != 3 { // efi + swap + root
+	if roles != 3 {
 		testingT.Fatalf("expected 3 role rows, got %d", roles)
 	}
 	summary := layout.SummaryPlain()
@@ -415,8 +408,6 @@ func TestBootTypeConsistency(testingT *testing.T) {
 		testingT.Fatalf("matching bios should pass: %v", err)
 	}
 
-	// Stale EFI layout reused after switching the TUI to bios must be
-	// rejected instead of failing late at MountEfiVars on a BIOS boot.
 	if err := disklayout.CheckBootTypeConsistency(biosCfg, efiLayout); err == nil {
 		testingT.Fatal("stale EFI layout with bios config should fail")
 	} else if !strings.Contains(err.Error(), "EFIID") {

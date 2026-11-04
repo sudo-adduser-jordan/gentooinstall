@@ -6,11 +6,6 @@ import (
 	"path/filepath"
 )
 
-// path resolves a static absolute path against the context root. It is only
-// meant for hardcoded locations like /etc/portage/make.conf, /boot, or the
-// package constants in context.go; explicit parameter paths (mountpoints,
-// chroot dirs, tarball locations) are passed to commands as-is and never run
-// through here.
 func (ctx *Context) path(path string) string {
 	if ctx.Root == "" {
 		return path
@@ -34,8 +29,6 @@ func (ctx *Context) appendFile(path, line string) error {
 	return nil
 }
 
-// touchFile creates path if missing without truncating existing content
-// (byte-compatible with the bash `touch` of configure_portage).
 func (ctx *Context) touchFile(path string) error {
 	file, err := os.OpenFile(ctx.path(path), os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -51,19 +44,13 @@ func (ctx *Context) stat(path string) (os.FileInfo, error) {
 	return os.Stat(path)
 }
 
-// hostHasEFI reports whether the running firmware is UEFI-capable: the
-// kernel exposes /sys/firmware/efi only on a UEFI boot.
 func (ctx *Context) hostHasEFI() bool {
 	_, err := ctx.stat("/sys/firmware/efi")
 	return err == nil
 }
 
-// HostHasEFI is the exported form of hostHasEFI for preflight logging in
-// main.go: it honors the Stat stub so tests stay host-independent.
 func (ctx *Context) HostHasEFI() bool { return ctx.hostHasEFI() }
 
-// HostBootMode renders the running firmware as "UEFI" or "BIOS/legacy" for
-// install summaries and logs.
 func (ctx *Context) HostBootMode() string {
 	if ctx.hostHasEFI() {
 		return "UEFI"
