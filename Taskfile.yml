@@ -26,7 +26,7 @@ tasks:
     desc: Install gentooinstall into GOBIN
     cmds:
       - printf '{{.BLUE}}[install]{{.RESET}} go install .\n'
-      - go install -trimpath -ldflags "-s -w" .
+      - go install -buildvcs=false -trimpath -ldflags "-s -w" .
 
   update:
     desc: Update Go dependencies and tidy go.mod
@@ -71,7 +71,7 @@ tasks:
       - task: vet
       - printf '{{.BLUE}}[build]{{.RESET}} {{.BIN_DIR}}/{{.BINARY}}\n'
       - mkdir -p {{.BIN_DIR}}
-      - go build -trimpath -ldflags "-s -w" -o {{.BIN_DIR}}/{{.BINARY}} .
+      - go build -buildvcs=false -trimpath -ldflags "-s -w" -o {{.BIN_DIR}}/{{.BINARY}} .
 
   test:
     desc: Run the full suite with race detector and coverage
@@ -143,7 +143,7 @@ tasks:
         mkdir -p "$ROOTFS"/{dev,proc,sys,tmp,etc} "$BUILD_DIR/boot/grub" "$(dirname "$ISO_OUTPUT")"
 
         log "compiling init"
-        CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o "$ROOTFS/init" .
+        CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -buildvcs=false -trimpath -ldflags="-s -w" -o "$ROOTFS/init" .
         chmod 0755 "$ROOTFS/init"
 
         log "locating kernel"
