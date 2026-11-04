@@ -202,14 +202,18 @@ func prePrepareExisting(testingT *testing.T, img string) {
 
 func buildInstallISO(testingT *testing.T, root, out, cfg string) {
 	testingT.Helper()
-	cmd := exec.Command(filepath.Join(root, "scripts", "release.sh"), out)
+	taskBin, err := exec.LookPath("task")
+	if err != nil {
+		testingT.Skip("task not found; install go-task to build the ISO")
+	}
+	cmd := exec.Command(taskBin, "iso")
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "GENTOOINSTALL_INSTALL_CFG="+cfg)
+	cmd.Env = append(os.Environ(), "ISO_OUTPUT="+out, "GENTOOINSTALL_INSTALL_CFG="+cfg)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
-		testingT.Fatalf("release.sh failed: %v\noutput:\n%s", err, buf.String())
+		testingT.Fatalf("task iso failed: %v\noutput:\n%s", err, buf.String())
 	}
 	assertISOName(testingT, out)
 }
