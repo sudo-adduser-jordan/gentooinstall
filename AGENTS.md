@@ -1,5 +1,7 @@
 # AGENTS.md
 
+- https://github.com/oddlama/gentoo-install
+
 ## Repository layout
 
 ```
