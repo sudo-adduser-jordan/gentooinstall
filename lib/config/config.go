@@ -815,8 +815,6 @@ func (cfg *Config) Validate() []error {
 	}
 	if !vfound {
 		addf("unknown stage3 variant %q", cfg.Gentoo.Stage3Variant)
-	} else if cfg.UsesSystemd() != cfg.System.SystemdNetworkd {
-		// networkd options only apply to systemd; not fatal but suspicious.
 	}
 
 	if cfg.Gentoo.Profile != "" && LookupProfile(cfg.Gentoo.Profile) == nil {
