@@ -9,11 +9,9 @@
 
 ## Install
 
-```sh
-# make install
-# go install
-# curl binary
-```
+- `task install` (from a checkout, installs into GOBIN)
+- `go install`
+- curl the binary
 
 ## Usage
 
@@ -77,7 +75,7 @@ Releases ship a minimal bootable live ISO that boots straight into the
 gentooinstall TUI (statically linked, running as PID 1). Build it yourself with:
 
 ```sh
-scripts/release.sh
+task iso
 ```
 
 The rootfs is a trimmed-down Alpine userland (busybox + util-linux + gptfdisk +

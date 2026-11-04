@@ -8,10 +8,10 @@ to develop against the terminal UI.
 ## Build & test
 
 ```sh
-make build     # -> ./bin/gentooinstall
-make test      # go vet ./... && go test ./...
-make fmt       # gofmt -l -w .
-make iso       # -> dist/gentooinstall-live-amd64.iso
+task build     # -> ./bin/gentooinstall
+task test      # go vet ./... && go test ./...
+task fmt       # gofmt -l -w .
+task iso       # -> bin/gentooinstall.iso
 ```
 
 All Go tests live in `tests/` (`package tests`) and exercise only
@@ -22,7 +22,7 @@ exported APIs — do not add `_test.go` files next to production packages.
 ### Run the real UI
 
 ```sh
-make build
+task build
 ./bin/gentooinstall builds/custom.toml  # any path; created on first save
 ./bin/gentooinstall                     # opens builds/custom.toml if present,
                                 # else the shipped builds/default.toml
@@ -66,7 +66,7 @@ fmt.Println(mm.(*tui.Model).View()) // full ANSI frame
 ### Fast rebuild loop
 
 ```sh
-find . -name '*.go' | entr -crs 'make build && ./bin/gentooinstall'
+find . -name '*.go' | entr -crs 'task build && ./bin/gentooinstall'
 ```
 
 ### Testing the install path
@@ -74,6 +74,6 @@ find . -name '*.go' | entr -crs 'make build && ./bin/gentooinstall'
 The installer is destructive by design — never run `install` against your
 host disks. There is no automated in-CI test that drives the real
 block-device install (partitioning, LUKS, mdadm, btrfs, stage3 extraction,
-chroot). CI runs only the hermetic unit test suite via `make test`, which
-covers the pure planning and configuration logic; `make test` stays hermetic
+chroot). CI runs only the hermetic unit test suite via `task test`, which
+covers the pure planning and configuration logic; `task test` stays hermetic
 and does not require any containers or elevated privileges.

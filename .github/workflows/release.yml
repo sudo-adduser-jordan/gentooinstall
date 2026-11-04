@@ -22,15 +22,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
+
       - name: Build live ISO
         run: |
           sudo apt-get update
           sudo apt-get install -y grub-pc-bin grub-efi-amd64-bin xorriso cpio mtools curl
-          # Hosted Azure kernel isn't world-readable; grant read, then build.
           sudo chmod 644 "/boot/vmlinuz-$(uname -r)"
-          scripts/release.sh
-          # ISO builds to bin/gentooinstall.iso (scripts/release.sh default); move it
-          # to live/ first so `goreleaser --clean` below never wipes it.
+          task iso
           mkdir -p live
           mv bin/gentooinstall.iso live/gentooinstall-live-amd64.iso
 

@@ -32,10 +32,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
       - name: Vet
         run: go vet ./...
       - name: Run tests
-        run: make test
+        run: task test
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v5

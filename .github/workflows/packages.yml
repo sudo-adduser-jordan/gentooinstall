@@ -2,8 +2,8 @@ name: Update packages
 
 on:
   schedule:
-    - cron: "0 3 * * *" # daily at 03:00 UTC
-  workflow_dispatch: {} # manual run
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -14,8 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.53.1
+
       - name: Refresh package lists
-        run: ./scripts/packages.sh
+        run: task packages
 
       - name: Commit updated lists
         run: |

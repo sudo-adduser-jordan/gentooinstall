@@ -97,7 +97,7 @@ func CheckFilesystemSupport(ctx *Context) error {
 	return fmt.Errorf("the live kernel has no vfat support so %s cannot be mounted "+
 		"(mkfs.fat formats the boot partition as FAT32); rebuild the live ISO on a host "+
 		"whose kernel provides vfat (CONFIG_VFAT_FS=y, or =m with the modules installed "+
-		"so release.sh can bundle vfat.ko and the live boot logs \"live: loaded module vfat\"); "+
+		"so task iso can bundle vfat.ko and the live boot logs \"live: loaded module vfat\"); "+
 		"retrying this install cannot help", mountpoint)
 }
 
