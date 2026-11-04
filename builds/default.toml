@@ -1,6 +1,3 @@
-# Default build configuration shipped with gentooinstall.
-# Running `gentooinstall` with no arguments opens this file; the first save writes
-# builds/custom.toml instead so the template is never overwritten.
 [disk]
     scheme = "classic_single_disk"
     boot_type = "bios"

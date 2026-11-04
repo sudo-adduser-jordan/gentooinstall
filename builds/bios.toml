@@ -1,4 +1,3 @@
-# Legacy-BIOS OpenRC build profile (GPT with a bios_grub partition).
 [disk]
     scheme = "classic_single_disk"
     boot_type = "bios"

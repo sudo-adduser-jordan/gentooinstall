@@ -1,4 +1,3 @@
-# Btrfs RAID0 systemd build profile over two devices.
 [disk]
     scheme = "btrfs_centric"
     boot_type = "efi"

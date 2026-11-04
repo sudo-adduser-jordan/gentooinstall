@@ -361,7 +361,7 @@ func TestEnableSSHDAndAuthorizedKeys(testingT *testing.T) {
 	if err := installer.InstallAuthorizedKeys(ctx); err != nil {
 		testingT.Fatal(err)
 	}
-	if got := readScratch(testingT, ctx, "/etc/ssh/sshd_config"); !strings.HasPrefix(got, "#") {
+	if got := readScratch(testingT, ctx, "/etc/ssh/sshd_config"); !strings.Contains(got, "PasswordAuthentication no") {
 		testingT.Fatalf("sshd_config = %q", got)
 	}
 	if got := readScratch(testingT, ctx, "/root/.ssh/authorized_keys"); got != "ssh-ed25519 AAAA test@host\n" {

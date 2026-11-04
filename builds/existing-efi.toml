@@ -1,5 +1,3 @@
-# Reuse pre-existing partitions (no partitioning or formatting performed).
-# Set device/boot_device/swap_device to your already-formatted partitions.
 [disk]
     scheme = "existing_partitions"
     boot_type = "efi"

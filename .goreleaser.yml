@@ -1,6 +1,3 @@
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# Build configuration for goreleaser >= v2. Run `goreleaser release`
-# on a v* tag to publish, see .github/workflows/release.yml.
 version: 2
 
 project_name: gentooinstall
@@ -45,10 +42,6 @@ checksum:
   name_template: 'checksums.txt'
 
 release:
-  # Attach the live ISO (moved to live/ by the release workflow before
-  # goreleaser runs) to the release so goreleaser uploads it atomically with
-  # the release creation, rather than a separate, fragile `gh release upload`
-  # step.
   extra_files:
     - glob: ./live/gentooinstall-live-amd64.iso
 

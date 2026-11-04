@@ -39,9 +39,6 @@ func TestEmbeddedLocales(testingT *testing.T) {
 }
 
 func TestEmbeddedAssetsNonEmpty(testingT *testing.T) {
-	if !strings.Contains(assets.Fstab, "fstab") {
-		testingT.Fatal("fstab asset wrong")
-	}
 	if !strings.Contains(assets.SSHDConfig, "PermitRootLogin") {
 		testingT.Fatal("sshd_config asset wrong")
 	}

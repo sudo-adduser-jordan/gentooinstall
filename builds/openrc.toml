@@ -1,4 +1,3 @@
-# Minimal OpenRC build profile.
 [disk]
     scheme = "classic_single_disk"
     boot_type = "efi"

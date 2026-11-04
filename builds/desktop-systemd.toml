@@ -1,4 +1,3 @@
-# Desktop systemd build profile.
 [disk]
     scheme = "classic_single_disk"
     boot_type = "efi"
@@ -37,7 +36,6 @@
 [makeconf]
     options = ["jobs"]
     extra = """
-# Custom make.conf content
 ACCEPT_LICENSE="*"
 PORTAGE_FETCH_JOBS=5
 """
