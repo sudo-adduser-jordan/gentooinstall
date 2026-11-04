@@ -155,9 +155,28 @@ func unmountTarget(ctx *Context, device string) error {
 	return nil
 }
 
+// logLsblk writes the current block device tree to the install log under
+// label. Skipped in capture/testing mode, like the live lsblk probes.
+func logLsblk(ctx *Context, label string) {
+	if ctx.Runner.Exec != nil {
+		return
+	}
+	out, err := ctx.Runner.QuietRun("lsblk")
+	if err != nil {
+		ctx.Runner.log("could not run lsblk: %v", err)
+		return
+	}
+	ctx.Runner.log("%s", label)
+	for _, line := range strings.Split(out, "\n") {
+		ctx.Runner.log("%s", line)
+	}
+}
+
 // ApplyDiskActions executes the layout's action list in order
 // (port of apply_disk_actions and all disk_* functions).
 func ApplyDiskActions(ctx *Context) error {
+	logLsblk(ctx, "Current lsblk output:")
+	defer logLsblk(ctx, "New lsblk output:")
 	for _, action := range ctx.Layout.Actions {
 		var err error
 		switch action.Action {

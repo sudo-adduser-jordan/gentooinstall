@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"gentooinstall/lib/config"
 	"gentooinstall/lib/installer"
 )
 
@@ -654,5 +655,23 @@ func TestExtractStage3MissingTarball(testingT *testing.T) {
 	err := installer.ExtractStage3(ctx, info)
 	if err == nil || !strings.Contains(err.Error(), "stage3 file not found") {
 		testingT.Fatalf("expected missing stage3 error, got %v", err)
+	}
+}
+
+func TestEnsureEncryptionKeyNonInteractiveFailsFast(testingT *testing.T) {
+	testingT.Setenv("GENTOO_INSTALL_ENCRYPTION_KEY", "")
+	cfg := config.Default(true)
+	cfg.Disk.Scheme = config.SchemeZFSCentric
+	cfg.Disk.Devices = []string{"/dev/sda", "/dev/sdb"}
+	cfg.Disk.UseSwap = false
+	cfg.Disk.ZFSEncrypt = true
+	ctx, _ := testContext(testingT, cfg, map[string]string{
+		"gpt_dev0": uGPT0, "part_efi_dev0": uEfi0, "part_root_dev0": uRoot0, "root_dev1": uRoot1,
+	})
+	ctx.EncryptionKey = ""
+
+	err := installer.EnsureEncryptionKey(ctx, strings.NewReader(""))
+	if err == nil || !strings.Contains(err.Error(), "GENTOO_INSTALL_ENCRYPTION_KEY") {
+		testingT.Fatalf("want fail-fast error naming the key variable, got %v", err)
 	}
 }

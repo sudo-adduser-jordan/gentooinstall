@@ -100,8 +100,12 @@ func (model *Model) confirmInstall() (tea.Model, tea.Cmd) {
 	}
 	body := "This will DESTROY all data on:\n  " + joinNonEmpty(targets, "\n  ") +
 		"\n\nEffective boot mode: " + model.cfg.Disk.BootType +
-		" (EFIID=" + layout.EFIID + " BIOSID=" + layout.BIOSID + ")" +
-		"\nThe partitioning step cannot be undone. Continue?"
+		" (EFIID=" + layout.EFIID + " BIOSID=" + layout.BIOSID + ")"
+	if !layout.Flags.NoPartitioningOrFormatting {
+		body += "\n\nBefore partitioning, mounted filesystems and swap on the target disks are released automatically." +
+			"\nStop any mdadm arrays and close any LUKS volumes on them yourself; otherwise partitioning may fail."
+	}
+	body += "\nThe partitioning step cannot be undone. Continue?"
 
 	model.overlay = overlay{
 		kind:    ovButtons,

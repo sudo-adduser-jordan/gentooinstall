@@ -195,14 +195,13 @@ func runHeadlessInstall(cfg, key string) {
 	if _, err := os.Stat(cfg); err != nil {
 		report("failed (" + cfg + " not found)")
 	}
-	if key == "" {
-		key = "gentooinstall-e2e-key-12345"
-	}
 	cmd := exec.Command("/proc/self/exe", "install", cfg)
 	cmd.Env = append(os.Environ(),
 		"GENTOOINSTALL_ASSUME_YES=1",
-		"GENTOO_NONINTERACTIVE=1",
-		"GENTOO_INSTALL_ENCRYPTION_KEY="+key)
+		"GENTOO_NONINTERACTIVE=1")
+	if key != "" {
+		cmd.Env = append(cmd.Env, "GENTOO_INSTALL_ENCRYPTION_KEY="+key)
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

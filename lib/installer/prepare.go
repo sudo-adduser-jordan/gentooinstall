@@ -191,6 +191,9 @@ func EnsureEncryptionKey(ctx *Context, stdin io.Reader) error {
 		return nil
 	}
 	key := os.Getenv(EncryptionKeyEnv)
+	if key == "" && ctx.Runner.NonInteractive {
+		return fmt.Errorf("encryption is enabled but no key was supplied; set %s (or gentooinstall.install-key= on the kernel command line)", EncryptionKeyEnv)
+	}
 	if key == "" {
 		fmt.Fprintln(ctx.Runner.stderr(),
 			"[+] You have enabled encryption, but haven't specified a key in the environment variable "+EncryptionKeyEnv+".")
